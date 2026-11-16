@@ -185,6 +185,15 @@ PRESET_SAFETENSORS_FILES: Dict[str, List[str]] = {
         "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
         "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
     ],
+    "unsloth/MiniMax-H3-GGUF": [
+        "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf",
+        "qwen3vl_32b_minimax_h3-Q2_K_M.gguf",
+        "vae/minimax_h3_video_vae_fp16.safetensors",
+        "vae/minimax_h3_audio_vae_fp32.safetensors",
+    ],
+    "Decorator/ReCaVSR": [
+        "recavsr_wan2.2_5B.pth",
+    ],
     "Qwen/Qwen-Image-2.1": [
         "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
         "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",

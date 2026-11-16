@@ -1684,8 +1684,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 免费 T4 16GB 专享模型区 (≤ 13.5 GB，0 CU 满速畅跑) -->
+    <!-- T4 16GB 模型区 -->
     <div style="display:none;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:12px;" id="presetModelGridT4">
+      <div class="folder-tag preset-card" id="preset_t4_minimax_h3" onclick="selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">🎬 MiniMax-H3 (T4 量化版)</div>
+          <div style="color:var(--muted);font-size:11px;">UD-Q2_K_XL 蒸馏主干 · 7.5 GB (8步有声)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_t4_recavsr" onclick="selectPresetModel('preset_t4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">✨ ReCaVSR (2K/4K 视频超分)</div>
+          <div style="color:var(--muted);font-size:11px;">Wan2.2-5B 单步超分 · 14.1 GB (云盘已存)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
       <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
         <div>
           <div style="font-weight:700;color:#34d399;font-size:13px;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
@@ -2931,7 +2947,8 @@ function renderGroupedDriveFolders(folders) {
   (folders || []).forEach(item => {
     savedDriveFolders.add(item.folder);
     const gb = typeof item.total_gb === 'number' ? item.total_gb : 0;
-    if (gb > 15.5) g4List.push(item);
+    const isT4Named = item.folder.includes('-T4-') || item.folder === 'ReCaVSR';
+    if (!isT4Named && gb > 15.5) g4List.push(item);
     else t4List.push(item);
   });
   const renderTag = item => {
@@ -2978,6 +2995,7 @@ function syncDriveFolderHighlight(folderName) {
     'Qwen3.8-27B-T4-MTP': 'Qwen3.8-27B(MTP)',
     'Qwen3-14B-T4-Q6': 'Qwen3-14B(Q6)',
     'Qwen3-VL-8B-T4-Q8': 'Qwen3-VL-8B(Q8)',
+    'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4版)',
     'ReCaVSR': 'ReCaVSR(超分)',
   };
   const shortLabel = shortMap[folderName] || folderName || '当前模型';
@@ -3039,6 +3057,8 @@ function selectDriveFolder(folderName, firstFile) {
     'Qwen3.8-27B-T4-MTP': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
     'Qwen3-14B-T4-Q6': 'bartowski/huihui-ai_Qwen3-14B-abliterated-GGUF',
     'Qwen3-VL-8B-T4-Q8': 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF',
+    'MiniMax-H3-T4-GGUF': 'unsloth/MiniMax-H3-GGUF',
+    'ReCaVSR': 'Decorator/ReCaVSR',
   };
   const cardMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'preset_qwen_bf16',
@@ -3052,6 +3072,8 @@ function selectDriveFolder(folderName, firstFile) {
     'Qwen3.8-27B-T4-MTP': 'preset_t4_qwen38_mtp',
     'Qwen3-14B-T4-Q6': 'preset_t4_qwen14b',
     'Qwen3-VL-8B-T4-Q8': 'preset_t4_qwenvl8b',
+    'MiniMax-H3-T4-GGUF': 'preset_t4_minimax_h3',
+    'ReCaVSR': 'preset_t4_recavsr',
   };
   const patternMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf',
@@ -3060,6 +3082,8 @@ function selectDriveFolder(folderName, firstFile) {
     'Qwen3.8-27B-T4-MTP': 'Huihui-Qwen3.8-27B-abliterated-GSQ-RCO-IQ3_S-mtp.gguf',
     'Qwen3-14B-T4-Q6': 'huihui-ai_Qwen3-14B-abliterated-Q6_K.gguf',
     'Qwen3-VL-8B-T4-Q8': '*Q8_0.gguf',
+    'MiniMax-H3-T4-GGUF': 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf',
+    'ReCaVSR': '*.pth',
   };
   if (repoMap[folderName]) {
     document.getElementById('inpRepo').value = repoMap[folderName];
