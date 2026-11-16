@@ -1427,66 +1427,72 @@ HTML_PAGE = r"""<!DOCTYPE html>
   .cu-card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px 18px;
+    border-radius: 12px;
+    padding: 10px 16px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
+    gap: 6px;
   }
   .cu-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
+    margin-bottom: 2px;
+    flex-wrap: nowrap;
     gap: 8px;
   }
   .cu-title {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 15px;
+    gap: 6px;
+    font-size: 14px;
     font-weight: 700;
+    white-space: nowrap;
   }
   .cu-metrics {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     text-align: center;
-    padding: 6px 0 2px 0;
+    padding: 2px 0 0 0;
   }
   .cu-col {
-    padding: 0 8px;
+    padding: 0 6px;
     border-right: 1px solid var(--border);
+    min-width: 0;
   }
   .cu-col:last-child {
     border-right: none;
   }
   .cu-col-label {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--muted);
-    margin-bottom: 4px;
+    margin-bottom: 2px;
+    white-space: nowrap;
   }
   .cu-col-val {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Mono", sans-serif;
   }
   .cu-controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    padding-top: 10px;
-    margin-top: 10px;
+    gap: 8px;
+    flex-wrap: nowrap;
+    padding-top: 8px;
+    margin-top: 6px;
     border-top: 1px solid var(--border);
   }
   .cu-select {
     background: #0f172a;
     color: var(--text);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 5px 10px;
+    border-radius: 7px;
+    padding: 4px 8px;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
@@ -1496,11 +1502,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     background: rgba(255,255,255,0.07);
     color: var(--text);
     border: 1px solid var(--border);
-    padding: 5px 12px;
-    border-radius: 8px;
+    padding: 4px 10px;
+    border-radius: 7px;
     font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .btn-release-all:hover:not(:disabled) {
     background: rgba(239,68,68,0.18);
@@ -1543,45 +1550,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="cu-col">
         <div class="cu-col-label">预计余额</div>
         <div class="cu-col-val" id="cuBalance">-- CU</div>
-        <div id="cuRemainHours" style="font-size:11px;color:var(--muted);margin-top:2px;">RTX PRO 6000 可跑约 -- 小时</div>
+        <div id="cuRemainHours" style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">可跑约 -- 小时</div>
       </div>
       <div class="cu-col">
         <div class="cu-col-label">扣费速率</div>
         <div class="cu-col-val" id="cuBurnRate" style="color:var(--muted)">0.00 CU/h</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">单批有效期 90 天</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;">有效期 90 天</div>
       </div>
       <div class="cu-col">
         <div class="cu-col-label">本次运行</div>
         <div class="cu-col-val" id="cuUptime" style="color:var(--muted)">00:00:00</div>
-        <div style="font-size:11px;margin-top:2px;">
-          <span id="cuResetDayLabel" onclick="setBillingResetDay()" style="color:var(--muted);cursor:pointer;" title="点击修改每月重置日">📅 下次重置: --</span>
+        <div style="font-size:11px;margin-top:2px;white-space:nowrap;">
+          <span id="cuResetDayLabel" onclick="setBillingResetDay()" style="color:var(--muted);cursor:pointer;" title="点击修改每月重置日">⚙️ 设重置日</span>
         </div>
       </div>
       <div class="cu-col">
         <div class="cu-col-label">本次消耗</div>
         <div class="cu-col-val" id="cuSessionUsed" style="color:var(--muted)">0.00 CU</div>
-        <div id="cuSessionUsedSub" style="font-size:11px;color:var(--muted);margin-top:2px;">实时累计: 0.000 CU</div>
+        <div id="cuSessionUsedSub" style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;">累计: 0.000 CU</div>
       </div>
     </div>
   </div>
 
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;padding:14px 18px;">
+  <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:10px 16px;border-radius:12px;">
     <div>
-      <h2 style="margin-bottom:8px;">
+      <h2 style="margin-bottom:4px;font-size:14px;">
         <span>☁️ Google Drive 云盘</span>
         <span id="syncBadge" style="font-size:12px;color:var(--green)">--</span>
       </h2>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
-          <span class="metric-val" id="driveVal" style="font-size:20px;margin-bottom:0;">-- / -- GB</span>
-          <span class="metric-sub" id="driveSub" style="margin-bottom:0;">剩余可用: -- GB</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:nowrap;margin-bottom:5px;" title="云盘模型目录：/content/drive/MyDrive/models/">
+        <div style="display:flex;align-items:baseline;gap:8px;white-space:nowrap;">
+          <span class="metric-val" id="driveVal" style="font-size:18px;margin-bottom:0;">-- / -- GB</span>
+          <span class="metric-sub" id="driveSub" style="margin-bottom:0;font-size:11.5px;">剩余: -- GB</span>
         </div>
-        <span style="font-size:11px;color:var(--muted);">目录：<code>/content/drive/MyDrive/models/</code></span>
+        <code style="font-size:11px;color:var(--muted);white-space:nowrap;">MyDrive/models/</code>
       </div>
-      <div class="progress-bar" style="height:6px;"><div class="progress-fill amber" id="driveBar" style="width:0%"></div></div>
+      <div class="progress-bar" style="height:5px;margin-top:0;"><div class="progress-fill amber" id="driveBar" style="width:0%"></div></div>
     </div>
     <div class="cu-controls">
-      <div style="display:flex;align-items:center;gap:6px;">
+      <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:0;">
         <span style="font-size:12px;color:var(--muted);">闲置自动释放<small id="idleElapsedHint" style="color:#64748b;margin-left:4px;"></small></span>
         <select id="idleSelect" class="cu-select" onchange="updateIdleConfig()">
           <option value="15">15 分钟</option>
@@ -1592,7 +1599,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </select>
       </div>
       <button class="btn-release-all" onclick="stopColab()" id="btnReleaseAll">
-        ⏻ 释放全部实例
+        ⏻ 释放实例
       </button>
     </div>
   </div>
@@ -2832,7 +2839,7 @@ function updateLiveSessionCuDisplay() {
         const usedMin = Math.floor(liveUptimeSec / 60);
         const remLow = Math.max(0.1, 3.0 - (liveUptimeSec / 3600.0)).toFixed(1);
         const remHigh = Math.max(0.5, 5.0 - (liveUptimeSec / 3600.0)).toFixed(1);
-        hrsEl.innerText = `已跑 ${usedMin}分 · 预计还可用 ≈ ${remLow}~${remHigh} 小时`;
+        hrsEl.innerText = `已跑 ${usedMin}m · 剩 ≈${remLow}~${remHigh}h`;
       }
       return;
     }
@@ -2873,8 +2880,8 @@ setInterval(() => {
       const remainSec = Math.max(0, liveIdleTimeoutMin * 60 - liveIdleSec);
       const rMin = Math.floor(remainSec / 60);
       const rSec = remainSec % 60;
-      cdEl.innerText = `无请求自动休眠倒计时：${rMin} 分 ${String(rSec).padStart(2, '0')} 秒`;
-      hintEl.innerText = `(当前已静置 ${Math.floor(liveIdleSec / 60)} 分钟)`;
+      cdEl.innerText = `自动休眠倒计时：${rMin} 分 ${String(rSec).padStart(2, '0')} 秒`;
+      hintEl.innerText = `(静置 ${Math.floor(liveIdleSec / 60)}m)`;
     } else {
       cdEl.innerText = '已设为「从不」自动休眠（3分钟心跳持续保活中）';
       hintEl.innerText = '';
@@ -3266,6 +3273,13 @@ async function refreshStatus(force = false) {
     const friendlyModelMap = {
       'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B(无审查)',
       'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B(无审查)',
+      'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4)',
+      'Qwen3.8-27B-T4-MTP': 'Qwen3.8-27B(MTP)',
+      'Qwen3-14B-T4-Q6': 'Qwen3-14B(Q6)',
+      'Qwen3-VL-8B-T4-Q8': 'Qwen3-VL-8B(Q8)',
+      'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4)',
+      'unsloth/MiniMax-H3-GGUF': 'MiniMax-H3(T4)',
+      'ReCaVSR': 'ReCaVSR',
       'Qwen3.8-27B-GGUF': 'Qwen3.8-27B(极速版)',
       'unsloth/Qwen3.8-27B-GGUF': 'Qwen3.8-27B(极速版)',
       'MiniMax-H3': 'MiniMax-H3(33B)',
@@ -3285,7 +3299,7 @@ async function refreshStatus(force = false) {
       badge.className = 'badge online';
       badge.innerText = `🟢 运行中: ${activeModelDisplay}`;
       if (relBtn) {
-        relBtn.innerText = `⏻ 释放实例 (${activeModelDisplay} 计费中)`;
+        relBtn.innerText = `⏻ 释放 (${activeModelDisplay})`;
         relBtn.style.borderColor = 'rgba(239,68,68,0.5)';
         relBtn.style.color = '#fca5a5';
       }
@@ -3299,7 +3313,7 @@ async function refreshStatus(force = false) {
       document.getElementById('cuBurnRate').style.color = 'var(--muted)';
       document.getElementById('cuUptime').innerText = '00:00:00';
       if (relBtn) {
-        relBtn.innerText = '✅ 已关机释放 (0.00 CU/h · 零消耗)';
+        relBtn.innerText = '✅ 已释放 (0.00 CU/h)';
         relBtn.style.borderColor = 'var(--border)';
         relBtn.style.color = '#10b981';
       }
