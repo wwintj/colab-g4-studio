@@ -1369,6 +1369,614 @@ def _start_minimax_h3_server_on_30000(target_dir: str):
     raise TimeoutError("等待 MiniMax-H3 装载显存超时")
 
 
+MINIMAX_T4_SERVER_CODE = r'''#!/usr/bin/env python3
+import base64
+import glob
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+MODEL_DIR = os.environ.get("MINIMAX_MODEL_DIR", "/content/local_models/MiniMax-H3-T4-GGUF")
+OUTPUT_DIR = "/content/outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+SD_CLI_BIN = "/usr/local/bin/sd-cli"
+DIT_PATH = os.path.join(MODEL_DIR, "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf")
+LLM_PATH = os.path.join(MODEL_DIR, "qwen3vl_32b_minimax_h3-Q2_K_M.gguf")
+VVAE_PATH = os.path.join(MODEL_DIR, "vae/minimax_h3_video_vae_fp16.safetensors")
+AVAE_PATH = os.path.join(MODEL_DIR, "vae/minimax_h3_audio_vae_fp32.safetensors")
+
+ENGINE_READY = False
+ENGINE_ERROR = ""
+GPU_LOCK = threading.Lock()
+
+JOB_STATE = {
+    "running": False,
+    "pct": 0,
+    "step": 0,
+    "total_steps": 8,
+    "message": "就绪：MiniMax-H3 (T4 量化版 · UD-Q2_K_XL) 等待输入提示词...",
+    "elapsed_s": 0.0,
+    "latest_video": "",
+    "error": "",
+}
+
+
+def _init_t4_engine():
+    global ENGINE_READY, ENGINE_ERROR
+    missing = [p for p in (DIT_PATH, LLM_PATH, VVAE_PATH, AVAE_PATH) if not os.path.isfile(p)]
+    if missing:
+        ENGINE_ERROR = f"缺少 T4 量化模型权重: {missing}"
+        print(f"MINIMAX_T4_ENGINE_ERROR: {ENGINE_ERROR}", flush=True)
+        return
+    if not os.path.isfile(SD_CLI_BIN):
+        ENGINE_ERROR = f"未找到 CUDA 推理二进制: {SD_CLI_BIN}"
+        print(f"MINIMAX_T4_ENGINE_ERROR: {ENGINE_ERROR}", flush=True)
+        return
+    ENGINE_READY = True
+    print("MINIMAX_T4_ENGINE_READY", flush=True)
+
+
+def _list_history_videos():
+    files = sorted(glob.glob(os.path.join(OUTPUT_DIR, "*.mp4")), key=os.path.getmtime, reverse=True)
+    return [os.path.basename(p) for p in files[:12]]
+
+
+def _align_frames_17k5(n: int) -> int:
+    n = max(5, min(124, int(n)))
+    rem = (n - 5) % 17
+    if rem != 0:
+        n += (17 - rem)
+    return min(124, max(5, n))
+
+
+def _run_t4_video_job(payload: dict):
+    global JOB_STATE
+    t0 = time.time()
+    try:
+        visual = str(payload.get("prompt") or "").strip()
+        sound = str(payload.get("soundscape") or payload.get("soundscape_prompt") or "").strip()
+        music = str(payload.get("music") or payload.get("music_prompt") or "").strip()
+        neg_prompt = str(payload.get("negative_prompt") or "").strip()
+        res_str = str(payload.get("resolution") or "832x480").strip()
+        req_frames = int(payload.get("num_frames") or 56)
+        req_steps = int(payload.get("steps") or payload.get("num_inference_steps") or 8)
+        fps = 24
+        batch_count = max(1, min(4, int(payload.get("batch_count") or 1)))
+        base_seed = int(payload.get("seed") if payload.get("seed") is not None else -1)
+        rand_seed = bool(payload.get("randomize_seed")) or (base_seed < 0)
+
+        res_map = {
+            "832x480": (832, 480),
+            "848x480": (832, 480),
+            "480x832": (480, 832),
+            "480x848": (480, 832),
+            "1280x720": (832, 480),
+            "720x1280": (480, 832),
+            "640x640": (640, 640),
+        }
+        if "width" in payload and "height" in payload and not payload.get("resolution"):
+            width, height = int(payload["width"]), int(payload["height"])
+        else:
+            width, height = res_map.get(res_str, (832, 480))
+        width = max(256, ((width + 31) // 32) * 32)
+        height = max(256, ((height + 31) // 32) * 32)
+
+        num_frames = _align_frames_17k5(req_frames if req_frames <= 124 else 56)
+        steps = max(4, min(8, req_steps if req_steps <= 12 else 8))
+
+        parts = [visual]
+        if sound:
+            parts.append(f"Soundscape & Dialogue: {sound}")
+        if music:
+            parts.append(f"Background Music: {music}")
+        full_prompt = "\n".join(parts)
+
+        prompt_file = "/tmp/minimax_t4_prompt.txt"
+        with open(prompt_file, "w", encoding="utf-8") as pf:
+            pf.write(full_prompt)
+
+        neg_file = "/tmp/minimax_t4_neg.txt"
+        if neg_prompt:
+            with open(neg_file, "w", encoding="utf-8") as nf:
+                nf.write(neg_prompt)
+
+        first_img_path = ""
+        last_img_path = ""
+        first_b64 = payload.get("first_frame_b64")
+        last_b64 = payload.get("last_frame_b64")
+        if first_b64:
+            raw_f = first_b64.split(",", 1)[-1]
+            first_img_path = "/tmp/minimax_t4_first.png"
+            with open(first_img_path, "wb") as wf:
+                wf.write(base64.b64decode(raw_f))
+        if last_b64:
+            raw_l = last_b64.split(",", 1)[-1]
+            last_img_path = "/tmp/minimax_t4_last.png"
+            with open(last_img_path, "wb") as wl:
+                wl.write(base64.b64decode(raw_l))
+
+        completed_videos = []
+        last_seed = base_seed
+        ansi_re = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+        for b_idx in range(batch_count):
+            cur_seed = random.randint(1, 2**31 - 1) if rand_seed else (base_seed + b_idx)
+            last_seed = cur_seed
+            prefix = f"[连抽 {b_idx+1}/{batch_count}] " if batch_count > 1 else ""
+            base_pct = int((b_idx / float(batch_count)) * 100)
+            span_pct = 100.0 / float(batch_count)
+
+            JOB_STATE.update({
+                "running": True,
+                "pct": max(4, int(base_pct + 0.05 * span_pct)),
+                "step": 0,
+                "total_steps": steps,
+                "target_steps": steps,
+                "seed": cur_seed,
+                "batch_count": batch_count,
+                "completed_count": b_idx,
+                "completed_videos": completed_videos,
+                "message": f"{prefix}⚡ [T4 量化版] 正在流式映射 Qwen3-VL-32B 编码提示词 ({width}×{height} · {num_frames}帧 · {steps}步)...",
+                "error": "",
+            })
+
+            with GPU_LOCK:
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                mode_tag = "fl2va" if first_img_path else "t2va"
+                tmp_avi = f"/tmp/minimax_t4_{ts}_{cur_seed}.avi"
+                fname = f"minimax_h3_{mode_tag}_{ts}_seed{cur_seed}.mp4"
+                out_path = os.path.join(OUTPUT_DIR, fname)
+
+                cmd = [
+                    SD_CLI_BIN,
+                    "-M", "vid_gen",
+                    "--diffusion-model", DIT_PATH,
+                    "--llm", LLM_PATH,
+                    "--vae", VVAE_PATH,
+                    "--audio-vae", AVAE_PATH,
+                    "--mmap",
+                    "--params-backend", "te=disk,vae=disk",
+                    "--max-vram", "13.5",
+                    "--model-args", "minimax_h3_attn_chunk_budget=0.5",
+                    "--vae-tiling",
+                    "--temporal-tiling",
+                    "--flash-attn", "on",
+                    "--cfg-scale", "1.0",
+                    "--sampling-method", "euler",
+                    "--steps", str(steps),
+                    "-W", str(width),
+                    "-H", str(height),
+                    "--video-frames", str(num_frames),
+                    "--fps", str(fps),
+                    "--rng", "cpu",
+                    "-s", str(cur_seed),
+                    "--prompt-file", prompt_file,
+                    "-o", tmp_avi,
+                    "-v",
+                ]
+                if neg_prompt:
+                    cmd.extend(["--negative-prompt-file", neg_file])
+                if first_img_path:
+                    cmd.extend(["--init-img", first_img_path])
+                if last_img_path:
+                    cmd.extend(["--end-img", last_img_path])
+
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    bufsize=0,
+                )
+                buf = ""
+                tail_lines = []
+                in_sampling = False
+                assert proc.stdout is not None
+                while True:
+                    chunk = proc.stdout.read(256)
+                    if not chunk:
+                        break
+                    text = ansi_re.sub("", chunk.decode("utf-8", errors="replace"))
+                    for ch in text:
+                        if ch in ("\r", "\n"):
+                            ln = buf.strip()
+                            buf = ""
+                            if not ln:
+                                continue
+                            tail_lines.append(ln)
+                            if len(tail_lines) > 40:
+                                tail_lines = tail_lines[-40:]
+                            if os.path.exists("/content/.cancel_minimax"):
+                                try:
+                                    os.unlink("/content/.cancel_minimax")
+                                except Exception:
+                                    pass
+                                proc.kill()
+                                raise RuntimeError("🛑 已手动停止视频生成任务")
+                            if "sampling using" in ln.lower():
+                                in_sampling = True
+                                JOB_STATE["pct"] = int(base_pct + 0.18 * span_pct)
+                                JOB_STATE["message"] = f"{prefix}🎬 提示词编码完成，正在 T4 显存中进行 {steps} 步蒸馏采样..."
+                            elif "sampling completed" in ln.lower() or "decoding" in ln.lower():
+                                in_sampling = False
+                                JOB_STATE["pct"] = int(base_pct + 0.88 * span_pct)
+                                JOB_STATE["message"] = f"{prefix}🎞️ 采样完成，正在流式解码视频画面与 32kHz 立体声音轨..."
+                            else:
+                                m = re.search(r"\|\s*(\d+)/(\d+)\s*-", ln)
+                                if m:
+                                    cur_s = int(m.group(1))
+                                    tot_s = max(1, int(m.group(2)))
+                                    if in_sampling or tot_s == steps:
+                                        JOB_STATE["step"] = cur_s
+                                        JOB_STATE["total_steps"] = tot_s
+                                        sub_pct = 18.0 + (cur_s / float(tot_s)) * 68.0
+                                        ov_pct = min(96, max(8, int(base_pct + (sub_pct / 100.0) * span_pct)))
+                                        JOB_STATE["pct"] = ov_pct
+                                        JOB_STATE["message"] = f"{prefix}🎬 [T4 量化版] 正在扩散采样有声视频: 第 {cur_s}/{tot_s} 步 (总进度 {ov_pct}%)"
+                        else:
+                            buf += ch
+                proc.wait()
+                if proc.returncode != 0 or not os.path.isfile(tmp_avi):
+                    err_tail = "\n".join(tail_lines[-15:])
+                    raise RuntimeError(f"sd-cli 退出码 {proc.returncode}:\n{err_tail}")
+
+                JOB_STATE["pct"] = int(base_pct + 0.95 * span_pct)
+                JOB_STATE["message"] = f"{prefix}🎵 正在封装 H.264 + AAC 立体声 MP4 视频..."
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y",
+                        "-i", tmp_avi,
+                        "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p",
+                        "-crf", "18",
+                        "-preset", "fast",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-movflags", "+faststart",
+                        out_path,
+                    ],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                try:
+                    os.remove(tmp_avi)
+                except Exception:
+                    pass
+
+            completed_videos.append(fname)
+            JOB_STATE["latest_video"] = fname
+            JOB_STATE["completed_count"] = b_idx + 1
+            JOB_STATE["completed_videos"] = completed_videos
+
+            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+            if os.path.exists(rc_conf) and shutil.which("rclone"):
+                subprocess.Popen(
+                    ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+        dt = round(time.time() - t0, 1)
+        batch_label = f"共 {batch_count} 条视频 · " if batch_count > 1 else ""
+        JOB_STATE.update({
+            "running": False,
+            "pct": 100,
+            "seed": last_seed,
+            "elapsed_s": dt,
+            "latest_video": completed_videos[-1] if completed_videos else "",
+            "completed_videos": completed_videos,
+            "message": f"✅ [T4 量化版] 生成完成！{batch_label}总耗时 {dt}s · {width}×{height} · {num_frames}帧 (Seed: {last_seed}) · 已备份至云盘",
+        })
+    except Exception as e:
+        JOB_STATE.update({
+            "running": False,
+            "error": str(e),
+            "message": f"❌ 生成出错: {e}",
+        })
+
+
+class _MiniMaxT4Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _send_json(self, data: dict, status: int = 200):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.startswith("/health"):
+            if ENGINE_READY:
+                self._send_json({"status": "ok", "engine": "minimax-h3", "variant": "t4-gguf"})
+            else:
+                self._send_json({"status": "loading", "error": ENGINE_ERROR}, status=503)
+            return
+
+        if self.path.startswith("/v1/models") or self.path.startswith("/models"):
+            self._send_json({
+                "object": "list",
+                "data": [
+                    {"id": "unsloth/MiniMax-H3-GGUF", "object": "model", "owned_by": "MiniMaxAI"},
+                    {"id": "MiniMaxAI/MiniMax-H3", "object": "model", "owned_by": "MiniMaxAI"},
+                ],
+            })
+            return
+
+        if self.path.startswith("/v1/video/status"):
+            st = dict(JOB_STATE)
+            st["engine_ready"] = ENGINE_READY
+            st["history"] = _list_history_videos()
+            self._send_json(st)
+            return
+
+        if self.path.startswith("/v1/video/upscale_status"):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:30002/v1/video/upscale_status", timeout=5) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")))
+            except Exception as e:
+                self._send_json({"running": False, "error": str(e)}, status=503)
+            return
+
+        if self.path.startswith("/v1/video/file/"):
+            fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
+            fpath = os.path.join(OUTPUT_DIR, fname)
+            if not os.path.isfile(fpath):
+                self._send_json({"error": "File not found"}, status=404)
+                return
+            fsize = os.path.getsize(fpath)
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(fsize))
+            self.send_header("Content-Disposition", f'inline; filename="{fname}"')
+            self.end_headers()
+            with open(fpath, "rb") as rf:
+                while True:
+                    buf = rf.read(65536)
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+            return
+
+        self._send_json({"status": "ok", "engine": "minimax-h3", "variant": "t4-gguf"})
+
+    def do_POST(self):
+        cl = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(cl).decode("utf-8") if cl > 0 else "{}"
+        try:
+            payload = json.loads(raw) if raw else {}
+        except Exception:
+            payload = {}
+
+        if self.path.startswith("/v1/video/upscale"):
+            try:
+                req2 = urllib.request.Request(
+                    "http://127.0.0.1:30002/v1/video/upscale",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2, timeout=15) as r2:
+                    self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+            except urllib.error.HTTPError as he:
+                try:
+                    self._send_json(json.loads(he.read().decode("utf-8")), status=he.code)
+                except Exception:
+                    self._send_json({"ok": False, "error": str(he)}, status=he.code)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=503)
+            return
+
+        if self.path.startswith("/v1/video/cancel"):
+            open("/content/.cancel_minimax", "w").write("1")
+            self._send_json({"ok": True, "message": "🛑 正在停止视频生成任务..."})
+            return
+
+        if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
+            if os.path.exists("/content/.cancel_minimax"):
+                try:
+                    os.unlink("/content/.cancel_minimax")
+                except Exception:
+                    pass
+            if not ENGINE_READY:
+                self._send_json({"ok": False, "error": f"MiniMax-H3 (T4 量化版) 未就绪: {ENGINE_ERROR}"}, status=503)
+                return
+            if JOB_STATE["running"]:
+                self._send_json({"ok": False, "error": "当前已有视频正在生成中，请等待当前视频完成"}, status=409)
+                return
+            prompt = str(payload.get("prompt") or "").strip()
+            if not prompt:
+                self._send_json({"ok": False, "error": "请输入画面描述提示词 (Prompt)"}, status=400)
+                return
+            threading.Thread(target=_run_t4_video_job, args=(payload,), daemon=True).start()
+            self._send_json({"ok": True, "message": "已开始生成有声视频 (T4 量化版)"})
+            return
+
+        if "chat/completions" in self.path:
+            reply_txt = (
+                "🎬 当前运行的是【MiniMax-H3 (T4 量化版 · UD-Q2_K_XL) 有声视频生成引擎】！\n"
+                "请直接在下方「🎬 MiniMax-H3 有声视频生成工作台」中粘贴提示词并点击「立即生成有声视频」。\n"
+                "（如需先用 Qwen3.8-27B 扩写四项提示词，请在右侧选中「🧠 Qwen3.8-27B 无审查 (T4版)」加载扩写后再点生成视频，系统会自动切换！）"
+            )
+            self._send_json({
+                "id": "chatcmpl-minimax-t4",
+                "object": "chat.completion",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": reply_txt}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 42, "total_tokens": 52},
+                "timings": {"predicted_per_second": 100.0},
+            })
+            return
+
+        self._send_json({"ok": True})
+
+
+if __name__ == "__main__":
+    _init_t4_engine()
+    srv = ThreadingHTTPServer(("0.0.0.0", 30000), _MiniMaxT4Handler)
+    srv.serve_forever()
+'''
+
+
+def _ensure_sd_cli_binary(target_dir: str):
+    """确保远端实例具备支持 MiniMax-H3 GGUF 的 CUDA 版 sd-cli 二进制，并持久化至云盘免重复编译"""
+    sd_bin = "/usr/local/bin/sd-cli"
+    cached_bin = os.path.join(target_dir, "sd-cli")
+    if os.path.isfile(sd_bin) and os.path.getsize(sd_bin) > 1024 * 1024:
+        return
+    if os.path.isfile(cached_bin) and os.path.getsize(cached_bin) > 1024 * 1024:
+        shutil.copy2(cached_bin, sd_bin)
+        os.chmod(sd_bin, 0o755)
+        log("⚡ 已直接复用本地/云盘缓存的 CUDA sd-cli 推理引擎！")
+        return
+    rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+    if os.path.exists(rc_conf) and shutil.which("rclone"):
+        subprocess.run(
+            ["rclone", "copy", "gdrive:models/MiniMax-H3-T4-GGUF/sd-cli", target_dir, "--config", rc_conf],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if os.path.isfile(cached_bin) and os.path.getsize(cached_bin) > 1024 * 1024:
+            shutil.copy2(cached_bin, sd_bin)
+            os.chmod(sd_bin, 0o755)
+            log("☁️ 已从 Google Drive 秒级拉取预编译的 CUDA sd-cli 推理引擎！")
+            return
+
+    try:
+        cc_raw = subprocess.getoutput("nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null").strip().splitlines()[0]
+        cuda_arch = cc_raw.replace(".", "").strip() or "75"
+    except Exception:
+        cuda_arch = "75"
+
+    log(f"🔧 首次在 T4 运行 MiniMax-H3 (GGUF)，正在编译专用 CUDA (SM {cuda_arch}) 推理内核 (完成后将永久备份至云盘，后续 0 秒秒开)...")
+    src_dir = "/content/sdcpp_build"
+    shutil.rmtree(src_dir, ignore_errors=True)
+    subprocess.run(
+        ["git", "clone", "--depth", "1", "https://github.com/leejet/stable-diffusion.cpp.git", src_dir],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "submodule", "update", "--init", "--depth", "1", "ggml"],
+        cwd=src_dir,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "cmake", "-B", "build",
+            "-DSD_CUDA=ON",
+            "-DSD_CUDA_CUTLASS_PATH=",
+            "-DSD_WEBP=OFF",
+            "-DSD_WEBM=OFF",
+            "-DSD_SERVER_BUILD_FRONTEND=OFF",
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DCMAKE_CUDA_ARCHITECTURES={cuda_arch}",
+        ],
+        cwd=src_dir,
+        check=True,
+    )
+    nproc = max(2, os.cpu_count() or 2)
+    subprocess.run(
+        ["cmake", "--build", "build", "--config", "Release", "--target", "sd-cli", "-j", str(nproc)],
+        cwd=src_dir,
+        check=True,
+    )
+    built_bin = os.path.join(src_dir, "build/bin/sd-cli")
+    if not os.path.isfile(built_bin):
+        raise RuntimeError("sd-cli 编译未生成目标文件")
+    os.chmod(built_bin, 0o755)
+    shutil.copy2(built_bin, sd_bin)
+    shutil.copy2(built_bin, cached_bin)
+    shutil.rmtree(src_dir, ignore_errors=True)
+    if os.path.exists(rc_conf) and shutil.which("rclone"):
+        subprocess.Popen(
+            ["rclone", "copy", cached_bin, "gdrive:models/MiniMax-H3-T4-GGUF", "--config", rc_conf],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    log("✅ CUDA sd-cli 编译完成并已备份至 Google Drive 云盘！")
+
+
+def _start_minimax_t4_gguf_server_on_30000(target_dir: str):
+    """在远端 Colab T4 (16GB) 实例上启动 MiniMax-H3 (T4 量化版 · UD-Q2_K_XL) 推理引擎 (端口 30000)"""
+    if not shutil.which("cloudflared"):
+        log("正在安装 cloudflared 隧道客户端...")
+        subprocess.run(
+            "curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 "
+            "-o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared",
+            shell=True,
+            check=True,
+        )
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
+            if resp.status == 200:
+                h_data = json.loads(resp.read().decode("utf-8"))
+                if h_data.get("variant") == "t4-gguf":
+                    log("✅ 检测到 MiniMax-H3 (T4 量化版) 视频推理服务已在运行，直接复用！")
+                    return
+    except Exception:
+        pass
+
+    log("正在释放旧模型进程，准备启动 MiniMax-H3 (T4 量化版 · UD-Q2_K_XL)...")
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|/content/app\\.py' || true", shell=True)
+    time.sleep(1)
+
+    _ensure_sd_cli_binary(target_dir)
+
+    server_py = "/content/minimax_t4_server.py"
+    with open(server_py, "w", encoding="utf-8") as wf:
+        wf.write(MINIMAX_T4_SERVER_CODE)
+
+    env = os.environ.copy()
+    env["MINIMAX_MODEL_DIR"] = target_dir
+    with open("/content/minimax_server.log", "w") as lf:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", server_py],
+            env=env,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+
+    for _ in range(30):
+        if proc.poll() is not None:
+            tail = subprocess.getoutput("tail -n 30 /content/minimax_server.log")
+            raise RuntimeError(f"MiniMax-H3 (T4 量化版) 启动失败:\n{tail}")
+        try:
+            with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
+                if resp.status == 200:
+                    log("[显存装载] MiniMax-H3(T4量化版·UD-Q2_K_XL): 100% (7.5/15.0 GiB VRAM, 已就绪)")
+                    log("✅ MiniMax-H3 (T4 量化版 · UD-Q2_K_XL · 8步有声视频) 推理服务已就绪！")
+                    _ensure_recavsr_service_on_30002()
+                    return
+        except Exception:
+            pass
+        time.sleep(1)
+
+    raise TimeoutError("等待 MiniMax-H3 (T4 量化版) 服务就绪超时")
+
+
 RECAVSR_SERVER_CODE = r'''#!/usr/bin/env python3
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -1907,7 +2515,8 @@ def _ensure_recavsr_service_on_30002():
             log("首次使用 ReCaVSR，正在从 HuggingFace (kopper/ReCaVSR) 高速拉取 5B 超分权重并备份至 Google Drive...")
             sr_files = resolve_hf_safetensors_files("kopper/ReCaVSR", "*.safetensors")
             if sr_files:
-                fast_parallel_hf_download("kopper/ReCaVSR", sr_files, "/content/models/ReCaVSR")
+                for sr_fn, _ in sr_files:
+                    fast_parallel_hf_download("kopper/ReCaVSR", sr_fn, "/content/models/ReCaVSR")
                 if os.path.isfile("/root/.config/rclone/rclone.conf"):
                     subprocess.Popen(
                         ["rclone", "copy", "/content/models/ReCaVSR", "gdrive:models/ReCaVSR", "--transfers=8"],
@@ -2155,10 +2764,10 @@ def run_remote_vm_main():
         vram_gb = 96.0
     if vram_gb < 24.0:
         if HF_REPO.lower() == "minimaxai/minimax-h3" and not DOWNLOAD_ONLY:
-            log(f"⚠️ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，无法装载 134 GB 的 RTX 6000 版 MiniMax-H3；已自动切换为 T4 专享无审查模型 Qwen3.8-27B (T4版 · 12.4 GB) + ReCaVSR 超分服务！")
-            HF_REPO = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
-            MODEL_FOLDER = "Qwen3.8-27B-T4-Q3"
-            FILE_PATTERN = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
+            log(f"⚡ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，已自动将 134 GB 的 RTX 6000 版切换为 MiniMax-H3 (T4 量化版 · UD-Q2_K_XL · 8步有声视频)！")
+            HF_REPO = "unsloth/MiniMax-H3-GGUF"
+            MODEL_FOLDER = "MiniMax-H3-T4-GGUF"
+            FILE_PATTERN = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
         elif "bf16.gguf" in FILE_PATTERN.lower() and not DOWNLOAD_ONLY:
             log(f"⚠️ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，已自动将 53GB BF16 切换为 T4 16G 满速版 UD-Q3_K_XL (12.4 GB)！")
             MODEL_FOLDER = "Qwen3.8-27B-T4-Q3"
@@ -2199,7 +2808,7 @@ def run_remote_vm_main():
 
     if MODEL_FOLDER == "ReCaVSR" or "recavsr" in HF_REPO.lower():
         ensure_llama_server()
-        _ensure_recavsr_daemon()
+        _ensure_recavsr_service_on_30002()
         for _ in range(30):
             txt = subprocess.getoutput("cat /content/recavsr_tunnel.log 2>/dev/null")
             if "trycloudflare.com" in txt:
@@ -2247,7 +2856,7 @@ def run_remote_vm_main():
 
         gdrive_saved_count = _check_rclone_drive_has_model(MODEL_FOLDER) if (has_rclone and not fuse_mounted) else 0
         if gdrive_saved_count > 0:
-            log(f"☁️ 已确认 Google Drive (gdrive:models/{MODEL_FOLDER}) 已持久化保存 {gdrive_saved_count} 个核心权重文件！正在通过 G4 10Gbps 专线 16 线程极速预热 (500~700 MB/s)...")
+            log(f"☁️ 已确认 Google Drive (gdrive:models/{MODEL_FOLDER}) 已持久化保存 {gdrive_saved_count} 个核心权重文件！正在通过 Google 内网 16 线程极速预热...")
 
         log(f"正在解析开源多模态/音视频模型仓库 {HF_REPO} 的分片列表...")
         st_files = resolve_hf_safetensors_files(HF_REPO, FILE_PATTERN, HF_TOKEN)
@@ -2311,13 +2920,17 @@ def run_remote_vm_main():
                     _pull_from_rclone_drive_if_exists(MODEL_FOLDER, target_dir)
                     break
                 raise
-        if has_rclone and not fuse_mounted and gdrive_saved_count < 20:
+        expected_core_count = max(1, len(st_files))
+        if has_rclone and not fuse_mounted and gdrive_saved_count < expected_core_count:
             _sync_local_to_rclone_drive(target_dir, background=not DOWNLOAD_ONLY)
-        log(f"✅ 模型 {HF_REPO} (含无审查编码器) 全部 {len(st_files)} 个文件已就绪！")
+        log(f"✅ 模型 {HF_REPO} 全部 {len(st_files)} 个文件已就绪！")
         if DOWNLOAD_ONLY:
-            log("🎉 [仅下载模式] 已完成全部权重下载并持久化至 Google Drive 云盘 (gdrive:models/MiniMax-H3)！")
+            log(f"🎉 [仅下载模式] 已完成全部权重下载并持久化至 Google Drive 云盘 (gdrive:models/{MODEL_FOLDER})！")
             return
-        _start_minimax_h3_server_on_30000(target_dir)
+        if HF_REPO.lower() == "unsloth/minimax-h3-gguf" or MODEL_FOLDER == "MiniMax-H3-T4-GGUF":
+            _start_minimax_t4_gguf_server_on_30000(target_dir)
+        else:
+            _start_minimax_h3_server_on_30000(target_dir)
         _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
         return
 

@@ -1125,7 +1125,13 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
             bal_val = cu_check.get("paid_balance")
             if bal_val is not None and float(bal_val) <= 0.0:
                 gpu = "T4"
-                if folder in g4_only_folders or "bf16.gguf" in (pattern or "").lower():
+                if folder in ("MiniMax-H3", "MiniMax-H3-Turbo"):
+                    old_folder = folder
+                    repo = "unsloth/MiniMax-H3-GGUF"
+                    folder = "MiniMax-H3-T4-GGUF"
+                    pattern = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
+                    auto_switched_note = f"⚡ [T4 智能适配] 当前为 T4 (16GB) 账号，已自动将 {old_folder} 切换为 T4 专享量化版 {folder} (UD-Q2_K_XL · 8步有声视频)"
+                elif folder in g4_only_folders or "bf16.gguf" in (pattern or "").lower():
                     old_folder = folder
                     repo = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
                     folder = "Qwen3.8-27B-T4-Q3"
@@ -1728,10 +1734,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     <!-- T4 16GB 模型区 -->
     <div style="display:none;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:12px;" id="presetModelGridT4">
-      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+      <div class="folder-tag preset-card" id="preset_t4_minimax_h3" onclick="selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
         <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
-          <div style="color:var(--muted);font-size:11px;">UD-Q3_K_XL · 12.4 GB (16G显存满速)</div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">🎬 MiniMax-H3 (T4 量化版)</div>
+          <div style="color:var(--muted);font-size:11px;">UD-Q2_K_XL 蒸馏 · 7.5 GB (8步有声)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
@@ -1740,6 +1746,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div>
           <div style="font-weight:700;color:#34d399;font-size:13px;">✨ ReCaVSR (2K/4K 视频超分)</div>
           <div style="color:var(--muted);font-size:11px;">Wan2.2-5B 单步超分 · 10.1 GB (云盘已存)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
+          <div style="color:var(--muted);font-size:11px;">UD-Q3_K_XL · 12.4 GB (16G显存满速)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
@@ -1756,6 +1770,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div>
           <div style="font-weight:700;color:#34d399;font-size:13px;">💎 Qwen3-14B 无审查 (Q6_K)</div>
           <div style="color:var(--muted);font-size:11px;">准无损精度 · 11.3 GB (~50 tok/s)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_t4_qwenvl8b" onclick="selectPresetModel('preset_t4_qwenvl8b', 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF', 'Qwen3-VL-8B-T4-Q8', '*Q8_0.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">👁️ Qwen3-VL-8B 视觉无审查</div>
+          <div style="color:var(--muted);font-size:11px;">满血 Q8_0 + 视觉 · 8.8 GB (~75 tok/s)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
@@ -5325,7 +5347,7 @@ p.wait()
                     tps = round(float(timings.get("predicted_per_second", 0.0)), 1)
                     toks = d.get("usage", {}).get("completion_tokens", 0)
                     structured_obj = None
-                    if structured_video and d.get("id") == "chatcmpl-minimax":
+                    if structured_video and d.get("id") in ("chatcmpl-minimax", "chatcmpl-minimax-t4"):
                         clean_idea = str(prompt or "").strip()
                         structured_obj = {
                             "visual": f"{clean_idea}. Masterpiece cinematic composition, realistic lighting and shadows, rich texture details, smooth 24fps camera movement, 4k film quality.",
@@ -5366,13 +5388,11 @@ p.wait()
             return
 
         if self.path == "/api/video_generate":
+            is_t4_account = False
             try:
                 cu_chk = _query_cu_usage(force=False)
                 if cu_chk.get("paid_balance") is not None and float(cu_chk.get("paid_balance")) <= 0.0:
-                    err_t4 = "当前账号为 T4 (15GB 显存 + 12.7GB 内存)，无法装载 65B 参数 (33B+32B) 的 MiniMax-H3 音视频生成模型！请点击右上角「👤 账号」切换至 RTX 6000 (96GB 显存 · 687.72 CU) 账号后再生成视频。"
-                    _append_panel_log(f"⚠️ [T4 显存限制] {err_t4}")
-                    self._send_json({"ok": False, "error": err_t4})
-                    return
+                    is_t4_account = True
             except Exception:
                 pass
             cfg = _load_endpoint_cfg()
@@ -5414,18 +5434,29 @@ p.wait()
                 _PENDING_VIDEO_JOB["payload"] = payload
                 _PENDING_VIDEO_JOB["error"] = ""
                 _PENDING_VIDEO_JOB["started_at"] = time.time()
-                _append_panel_log("🔄 [自动切换引擎] 检测到当前未运行 MiniMax-H3，正在自动从云盘加载 MiniMax-H3 并在显存就绪后立即生成视频...")
+                target_label = "MiniMax-H3 (T4 量化版)" if is_t4_account else "MiniMax-H3"
+                _append_panel_log(f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即生成有声视频...")
                 with _DEPLOY_LOCK:
                     already_deploying = bool(_DEPLOY_STATE.get("running"))
                 if not already_deploying:
-                    _start_deploy_background(
-                        repo="MiniMaxAI/MiniMax-H3",
-                        folder="MiniMax-H3",
-                        pattern="FL2VA/*.safetensors",
-                        ctx=262144,
-                        gpu="G4",
-                        download_only=False,
-                    )
+                    if is_t4_account:
+                        _start_deploy_background(
+                            repo="unsloth/MiniMax-H3-GGUF",
+                            folder="MiniMax-H3-T4-GGUF",
+                            pattern="minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf",
+                            ctx=262144,
+                            gpu="T4",
+                            download_only=False,
+                        )
+                    else:
+                        _start_deploy_background(
+                            repo="MiniMaxAI/MiniMax-H3",
+                            folder="MiniMax-H3",
+                            pattern="FL2VA/*.safetensors",
+                            ctx=262144,
+                            gpu="G4",
+                            download_only=False,
+                        )
 
                 def _auto_switch_and_submit(job_payload):
                     try:
