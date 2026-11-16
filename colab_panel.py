@@ -448,9 +448,14 @@ if PANEL_LOGS_FILE.exists():
     try:
         _init_logs_obj = json.loads(PANEL_LOGS_FILE.read_text(encoding="utf-8"))
         if isinstance(_init_logs_obj.get("logs"), list):
-            _DEPLOY_STATE["logs"] = _compact_progress_log_lines(_init_logs_obj["logs"])[-400:]
-        if "exit_code" in _init_logs_obj:
-            _DEPLOY_STATE["exit_code"] = _init_logs_obj["exit_code"]
+            _raw_init = _compact_progress_log_lines(_init_logs_obj["logs"])[-400:]
+            if any("RuntimeError" in x or "Traceback" in x or "[自动切换引擎]" in x for x in _raw_init):
+                _DEPLOY_STATE["logs"] = [f"[{time.strftime('%H:%M:%S')}] ✅ 控制台已就绪，请选择模型并点击「🚀 下载/加载并启动」或「▶️ 一键开机」。"]
+                _DEPLOY_STATE["exit_code"] = None
+            else:
+                _DEPLOY_STATE["logs"] = _raw_init
+                if "exit_code" in _init_logs_obj:
+                    _DEPLOY_STATE["exit_code"] = _init_logs_obj["exit_code"]
         _save_panel_logs_snapshot()
     except Exception:
         pass
@@ -1152,6 +1157,7 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
         _DEPLOY_STATE["logs"] = init_logs
         _DEPLOY_STATE["exit_code"] = None
         _DEPLOY_STATE["started_at"] = time.time()
+        _save_panel_logs_snapshot()
 
     cfg = _load_endpoint_cfg()
     cfg["last_activity_ts"] = time.time()
@@ -1199,11 +1205,13 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
                 _DEPLOY_STATE["exit_code"] = proc.returncode
                 _DEPLOY_STATE["running"] = False
                 _LAST_METRICS_CACHE["timestamp"] = 0.0
+                _save_panel_logs_snapshot()
         except Exception as e:
             with _DEPLOY_LOCK:
                 _DEPLOY_STATE["logs"].append(f"[错误] {e}")
                 _DEPLOY_STATE["exit_code"] = 1
                 _DEPLOY_STATE["running"] = False
+                _save_panel_logs_snapshot()
         finally:
             c2 = _load_endpoint_cfg()
             c2["last_activity_ts"] = time.time()
@@ -2099,6 +2107,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <span>📜 实时任务进度与部署日志</span>
     <div style="display:inline-flex;align-items:center;gap:8px;">
       <span id="deployStateText" style="font-size:12px;color:var(--muted)">空闲</span>
+      <button type="button" onclick="clearDeployLogs()" style="padding:2px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" title="清空下方历史日志">🧹 清空</button>
       <button type="button" id="btnStopTaskBottom" onclick="stopActiveVideoTask()" style="display:none;padding:3px 10px;font-size:11.5px;font-weight:800;border-radius:6px;border:1px solid rgba(239,68,68,0.65);background:rgba(239,68,68,0.18);color:#fca5a5;cursor:pointer;">🛑 停止当前任务</button>
     </div>
   </h2>
@@ -3411,6 +3420,21 @@ async function refreshStatus(force = false) {
     btn.disabled = false;
     btn.innerText = '🔄 刷新';
   }
+}
+
+async function clearDeployLogs() {
+  try {
+    await fetch('/api/clear_logs', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const pLabel = document.getElementById('taskProgressLabel');
+    const pSpeed = document.getElementById('taskProgressSpeed');
+    const pBar = document.getElementById('taskProgressBar');
+    const st = document.getElementById('deployStateText');
+    if (pLabel) pLabel.innerText = '当前进度：已就绪 (100%)';
+    if (pSpeed) pSpeed.innerText = '已就绪';
+    if (pBar) { pBar.className = 'progress-fill green'; pBar.style.width = '100%'; }
+    if (st) { st.innerText = '空闲'; st.style.color = 'var(--muted)'; }
+    await pollLogs();
+  } catch (e) {}
 }
 
 async function pollLogs() {
@@ -4810,7 +4834,11 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                                 _append_panel_log(f"[视频完成] {d.get('message')}")
                     self._send_json(d)
             except Exception as e:
-                self._send_json({"running": False, "error": str(e)})
+                err_s = str(e)
+                if "502" in err_s or "503" in err_s or "404" in err_s or "Connection refused" in err_s or "timed out" in err_s:
+                    self._send_json({"running": False, "engine_ready": False, "error": ""})
+                else:
+                    self._send_json({"running": False, "error": err_s})
             return
 
         if self.path.startswith("/api/video_upscale_status"):
@@ -4904,7 +4932,11 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                                     _append_panel_log(f"[视频超分完成] {d.get('message')}")
                     self._send_json(d)
             except Exception as e:
-                self._send_json({"running": False, "error": str(e)})
+                err_s = str(e)
+                if "502" in err_s or "503" in err_s or "404" in err_s or "Connection refused" in err_s or "timed out" in err_s:
+                    self._send_json({"running": False, "engine_ready": False, "error": ""})
+                else:
+                    self._send_json({"running": False, "error": err_s})
             return
 
         self.send_error(404)
@@ -5237,6 +5269,16 @@ p.wait()
             ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             msg = f"已设置闲置 {mins} 分钟后自动释放实例" if mins > 0 else "已设为「从不」自动释放（持续保活）"
             self._send_json({"ok": True, "idle_timeout_minutes": mins, "billing_reset_day": cfg.get("billing_reset_day", 0), "message": msg})
+            return
+
+        if self.path == "/api/clear_logs":
+            with _DEPLOY_LOCK:
+                _DEPLOY_STATE["logs"] = [f"[{time.strftime('%H:%M:%S')}] ✅ 日志已清空，等待下一步操作..."]
+                _DEPLOY_STATE["exit_code"] = None
+                _save_panel_logs_snapshot()
+            _PENDING_VIDEO_JOB["active"] = False
+            _PENDING_VIDEO_JOB["error"] = ""
+            self._send_json({"ok": True})
             return
 
         if self.path == "/api/custom_models":
