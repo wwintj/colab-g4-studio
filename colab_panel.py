@@ -680,6 +680,7 @@ def _query_cu_usage(force: bool = False) -> Dict[str, Any]:
 
 
 _ACCOUNT_INFO_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
+_PENDING_REMOTE_OAUTH: Dict[str, Any] = {"flow": None}
 
 
 def _load_saved_accounts() -> Dict[str, Dict[str, Any]]:
@@ -2097,13 +2098,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- 免安全码验证：远程授权链接 + 授权码粘贴区 -->
+    <div style="padding:12px 14px;margin-bottom:14px;border-radius:10px;background:#0f172a;border:1px dashed #3b82f6;">
+      <div style="font-size:12.5px;font-weight:700;color:#60a5fa;margin-bottom:4px;">📲 方式一（免 Android 安全码拦截 · 最推荐）：生成授权链接 + 粘贴授权码</div>
+      <div style="font-size:11.5px;color:#94a3b8;line-height:1.45;margin-bottom:8px;">
+        如果新账号（如 <code>ww7argentina@gmail.com</code>）已经在<b>另一个浏览器分身、手机浏览器或家人的电脑</b>上登录过，请点下方「1. 生成并复制授权链接」，粘贴到<b>已登录该账号的浏览器或发给家人微信点开</b>，点「允许」后把网页显示的授权码粘贴到下方即可（<b>完全不会触发新设备 Android 安全码验证</b>）！
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-outline" style="padding:5px 12px;font-size:12px;border-color:#3b82f6;color:#93c5fd;" onclick="generateRemoteAuthUrl()" id="btnGenRemoteUrl">🔗 1. 生成并复制授权链接</button>
+        <input id="inpRemoteAuthUrl" type="text" readonly placeholder="点击左侧按钮生成授权链接..." style="flex:1;min-width:180px;padding:5px 10px;font-size:11.5px;border-radius:7px;border:1px solid #334155;background:#020617;color:#94a3b8;" onclick="this.select()">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input id="inpRemoteAuthCode" type="text" placeholder="📋 2. 在此粘贴网页生成的 Google 授权码 (以 4/0A 开头)..." style="flex:1;min-width:220px;padding:6px 10px;font-size:12.5px;border-radius:7px;border:1px solid #3b82f6;background:#1e293b;color:#f8fafc;">
+        <button type="button" class="btn-primary" style="padding:6px 14px;font-size:12.5px;font-weight:700;" onclick="submitRemoteAuthCode()" id="btnSubmitRemoteCode">✅ 3. 验证授权码并绑定</button>
+      </div>
+    </div>
+
     <div id="accountActionStatus" style="display:none;padding:10px 12px;margin-bottom:12px;border-radius:8px;background:#0f172a;border:1px solid var(--border);font-size:12.5px;color:#93c5fd;"></div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-top:1px solid var(--border);padding-top:14px;">
       <button class="btn-outline" style="font-size:12px;border-color:rgba(245,158,11,0.45);color:#fcd34d;" onclick="rebindGoogleDriveAccount()" id="btnRebindDrive" title="仅当您希望把模型存储云盘也彻底换成另一个 Google Drive 账号时点击">☁️ 单独更换云盘存储账号</button>
       <div style="display:flex;gap:8px;">
         <button class="btn-outline" onclick="closeAccountModal()">关闭</button>
-        <button class="btn-primary" onclick="addNewColabAccount()" id="btnAddColabAcc">➕ 登录并添加新 Gmail Pro 账号</button>
+        <button class="btn-outline" style="border-color:#3b82f6;color:#93c5fd;" onclick="addNewColabAccount()" id="btnAddColabAcc">🌐 方式二：本机默认浏览器直接弹窗登录</button>
       </div>
     </div>
   </div>
@@ -2159,6 +2176,71 @@ function openAccountModal() {
   const st = document.getElementById('accountActionStatus');
   if (st) st.style.display = 'none';
   renderAccountModalList();
+}
+
+async function generateRemoteAuthUrl() {
+  const st = document.getElementById('accountActionStatus');
+  const urlInp = document.getElementById('inpRemoteAuthUrl');
+  try {
+    const r = await fetch('/api/accounts/remote_url', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    if (!d.ok || !d.auth_url) {
+      if (st) { st.style.display = 'block'; st.style.color = '#ef4444'; st.innerText = '❌ 生成授权链接失败: ' + (d.error || '未知错误'); }
+      return;
+    }
+    if (urlInp) {
+      urlInp.value = d.auth_url;
+      urlInp.select();
+    }
+    try { await navigator.clipboard.writeText(d.auth_url); } catch (e) {}
+    if (st) {
+      st.style.display = 'block';
+      st.style.color = '#10b981';
+      st.innerText = '✅ 已生成并复制授权链接！请将它粘贴到已登录该 Gmail 账号的浏览器（或发给家人手机/电脑打开），点「允许」后把授权码粘贴到上方第 2 步框内！';
+    }
+  } catch (e) {
+    if (st) { st.style.display = 'block'; st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  }
+}
+
+async function submitRemoteAuthCode() {
+  const codeInp = document.getElementById('inpRemoteAuthCode');
+  const code = (codeInp ? codeInp.value : '').trim();
+  const st = document.getElementById('accountActionStatus');
+  const btn = document.getElementById('btnSubmitRemoteCode');
+  if (!code) {
+    alert('请先粘贴网页上显示的 Google 授权码');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ 正在验证绑定...'; }
+  if (st) {
+    st.style.display = 'block';
+    st.style.color = '#60a5fa';
+    st.innerText = '⏳ 正在向 Google 验证授权码并获取新账号算力信息...';
+  }
+  try {
+    const r = await fetch('/api/accounts/remote_exchange', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 授权码验证失败: ' + (d.error || '请重新点击第 1 步生成新链接后再试'); }
+      return;
+    }
+    if (codeInp) codeInp.value = '';
+    if (d.account_info) renderAccountBadgeAndModal(d.account_info);
+    if (st) {
+      st.style.color = '#10b981';
+      st.innerText = `✅ 新账号 ${d.email} 绑定成功并已设为当前激活账号！（已为您永久保存在列表中，随时 1 秒互切）`;
+    }
+    await refreshStatus(true);
+  } catch (e) {
+    if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = '✅ 3. 验证授权码并绑定'; }
+  }
 }
 
 function closeAccountModal() {
@@ -4406,6 +4488,63 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw_body) if raw_body else {}
         except Exception:
             payload = {}
+
+        if self.path == "/api/accounts/remote_url":
+            try:
+                from importlib import resources
+                from google_auth_oauthlib.flow import InstalledAppFlow
+                from colab_cli.auth import PUBLIC_SCOPES, REMOTE_REDIRECT_URI
+
+                _get_accounts_status(force=True)
+                cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
+                client_config = json.loads(cfg_res.read_text())
+                flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                flow.redirect_uri = REMOTE_REDIRECT_URI
+                auth_url, _ = flow.authorization_url(prompt="select_account consent", token_usage="remote")
+                _PENDING_REMOTE_OAUTH["flow"] = flow
+                self._send_json({"ok": True, "auth_url": auth_url})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/accounts/remote_exchange":
+            raw_code = str(payload.get("code") or "").strip()
+            if not raw_code:
+                self._send_json({"ok": False, "error": "授权码不能为空"})
+                return
+            if "code=" in raw_code:
+                try:
+                    qs = urllib.parse.parse_qs(urllib.parse.urlparse(raw_code).query or raw_code)
+                    if qs.get("code"):
+                        raw_code = qs["code"][0]
+                except Exception:
+                    pass
+            try:
+                from importlib import resources
+                import keyring
+                from google_auth_oauthlib.flow import InstalledAppFlow
+                from colab_cli.auth import KEYRING_SERVICE_NAME, KEYRING_USERNAME, PUBLIC_SCOPES, REMOTE_REDIRECT_URI
+
+                flow = _PENDING_REMOTE_OAUTH.get("flow")
+                if flow is None:
+                    cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
+                    client_config = json.loads(cfg_res.read_text())
+                    flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                    flow.redirect_uri = REMOTE_REDIRECT_URI
+                flow.fetch_token(code=raw_code)
+                creds = flow.credentials
+                token_json = creds.to_json()
+                keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME, token_json)
+                _PENDING_REMOTE_OAUTH["flow"] = None
+                _reset_colab_cli_state()
+                cu_now = _query_cu_usage(force=True)
+                acc_now = _get_accounts_status(force=True, cu_balance=(cu_now or {}).get("paid_balance"))
+                new_email = acc_now.get("active_email") or ""
+                _append_panel_log(f"👤 [远程授权码绑定] 已成功登录并切换至 Google Colab Pro 账号: {new_email} (余额: {(cu_now or {}).get('paid_balance', '--')} CU)")
+                self._send_json({"ok": True, "email": new_email, "account_info": acc_now, "cu_info": cu_now})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
 
         if self.path == "/api/accounts/switch":
             target_email = str(payload.get("email") or "").strip()
