@@ -1444,19 +1444,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
 </head>
 <body>
 
-<header>
+<header style="padding:14px 20px;">
   <div class="title-area">
-    <h1>
-      🚀 NVIDIA RTX PRO 6000 Blackwell Server
+    <h1 style="font-size:18px;white-space:nowrap;">
+      🚀 NVIDIA RTX PRO 6000 Blackwell
       <span id="sessionBadge" class="badge offline">检测中...</span>
     </h1>
-    <p>云盘模型目录：<code>MyDrive/models/&lt;模型文件夹&gt;</code> · 本机永久固定接口：<code>http://127.0.0.1:30000/v1</code></p>
   </div>
-  <div class="btn-group">
-    <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或添加其他家人的 Google Colab Pro 账号（支持多账号一键秒切，并可共享现有云盘模型免重复下载！）" style="border-color:rgba(59,130,246,0.5);color:#93c5fd;">👤 <span id="headerAccountLabel">账号检测中...</span> ▾</button>
-    <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh">🔄 刷新显存与硬盘</button>
-    <button class="btn-success" onclick="startDeploy()" id="btnQuickStart">▶️ 一键开机 / 启动服务</button>
-    <button class="btn-danger" onclick="stopColab()" id="btnStop">🛑 关闭服务器</button>
+  <div class="btn-group" style="align-items:center;gap:8px;">
+    <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或添加 Google Colab Pro 账号" style="padding:7px 12px;border-color:rgba(59,130,246,0.5);color:#93c5fd;">👤 <span id="headerAccountLabel">账号检测中...</span> ▾</button>
+    <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="padding:7px 12px;">🔄 刷新</button>
+    <button class="btn-success" onclick="startDeploy()" id="btnQuickStart" style="padding:7px 14px;">▶️ 一键开机</button>
+    <button class="btn-danger" onclick="stopColab()" id="btnStop" style="padding:7px 14px;">🛑 关机</button>
   </div>
 </header>
 
@@ -2990,7 +2989,7 @@ async function refreshStatus(force = false) {
       liveUptimeSec = null;
       liveBurnRate = 0.0;
       badge.className = 'badge offline';
-      badge.innerText = '⚪ 已关机 (0.00 CU/h · 不消耗算力)';
+      badge.innerText = '⚪ 已关机 · 0.00 CU/h';
       document.getElementById('cuBurnRate').innerText = '0.00 CU/h';
       document.getElementById('cuBurnRate').style.color = 'var(--muted)';
       document.getElementById('cuUptime').innerText = '00:00:00';
@@ -3126,7 +3125,7 @@ async function refreshStatus(force = false) {
     console.error(e);
   } finally {
     btn.disabled = false;
-    btn.innerText = '🔄 刷新显存与硬盘';
+    btn.innerText = '🔄 刷新';
   }
 }
 
@@ -3328,7 +3327,7 @@ async function stopColab() {
     alert(d.message);
     await refreshStatus(true);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerText = '🛑 关闭服务器'; }
+    if (btn) { btn.disabled = false; btn.innerText = '🛑 关机'; }
     if (relBtn) { relBtn.disabled = false; }
   }
 }
