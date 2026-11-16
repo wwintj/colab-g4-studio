@@ -2251,8 +2251,8 @@ function renderAccountBadgeAndModal(accInfo) {
     const cuBadge = cuNum === null
       ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(148,163,184,0.18);color:#cbd5e1;font-weight:700;">-- CU</span>`
       : (hasG4
-          ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(16,185,129,0.2);color:#34d399;font-weight:700;">⚡ ${cuNum.toFixed(2)} CU · 支持 G4</span>`
-          : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.18);color:#93c5fd;font-weight:700;" title="0 CU 账号可完全免费使用 T4 (16GB)，单号每日可用约 3~5 小时，用完冷却后可切其他免费号无限接力">🟢 免费 T4 (可用 ≈3~5h/天)</span>`);
+          ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(16,185,129,0.2);color:#34d399;font-weight:700;">⚡ ${cuNum.toFixed(2)} CU · RTX 6000</span>`
+          : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.18);color:#93c5fd;font-weight:700;" title="T4 (16GB)，单号每日可用约 3~5 小时">⚡ T4 (16GB · ≈3~5h/天)</span>`);
     const actBtn = isAct
       ? `<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.22);color:#34d399;font-size:11.5px;font-weight:700;">✅ 当前使用</span>`
       : `<button type="button" class="btn-primary" style="padding:4px 10px;font-size:11.5px;" onclick="switchColabAccount('${escapeHtml(it.email)}')">⚡ 切换</button>`;
@@ -2791,7 +2791,7 @@ function updateLiveSessionCuDisplay() {
       usedEl.innerText = '0.00 CU';
       usedEl.style.color = '#10b981';
       if (subEl) {
-        subEl.innerText = '免费 T4 零算力消耗';
+        subEl.innerText = 'T4 零算力消耗';
         subEl.style.color = '#34d399';
       }
       if (hrsEl) {
@@ -3203,21 +3203,22 @@ async function refreshStatus(force = false) {
               : `按 RTX PRO 6000 (10.05/h) ≈ ${hrs.toFixed(1)} 小时`;
           }
         } else if (isFreeT4Available) {
-          balEl.innerText = '免费 T4';
+          balEl.innerText = 'T4 (16GB)';
           balEl.style.color = '#34d399';
           if (hrsEl) {
-            hrsEl.innerText = '🟢 今日免费配额可用 · 单次约 3~5 小时';
+            hrsEl.innerText = '🟢 今日配额可用 · 单次约 3~5 小时';
           }
         } else {
           balEl.innerText = 'T4 冷却中';
           balEl.style.color = '#f59e0b';
           if (hrsEl) {
-            hrsEl.innerText = '⏳ 今日免费 T4 已用完 (请切其他号接力)';
+            hrsEl.innerText = '⏳ 今日 T4 配额已用完 (请切其他号)';
           }
         }
       }
-      rateEl.innerText = `${br.toFixed(2)} CU/h`;
-      rateEl.style.color = br > 0 ? '#f59e0b' : 'var(--muted)';
+      const effBr = (basePaidBalance !== null && basePaidBalance <= 0) ? 0.0 : br;
+      rateEl.innerText = `${effBr.toFixed(2)} CU/h`;
+      rateEl.style.color = effBr > 0 ? '#f59e0b' : 'var(--muted)';
     }
 
     const badge = document.getElementById('sessionBadge');

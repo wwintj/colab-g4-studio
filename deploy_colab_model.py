@@ -2146,7 +2146,23 @@ def _sync_local_to_rclone_drive(local_dir: str, background: bool = False):
 
 
 def run_remote_vm_main():
+    global HF_REPO, MODEL_FOLDER, FILE_PATTERN
     t_start = time.time()
+    try:
+        vram_mib_str = subprocess.getoutput("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null").strip().splitlines()[0]
+        vram_gb = float(vram_mib_str) / 1024.0
+    except Exception:
+        vram_gb = 96.0
+    if vram_gb < 24.0:
+        if HF_REPO.lower() == "minimaxai/minimax-h3" and not DOWNLOAD_ONLY:
+            log(f"⚠️ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，无法装载 134 GB 的 RTX 6000 版 MiniMax-H3；已自动切换为 T4 专享无审查模型 Qwen3.8-27B (T4版 · 12.4 GB) + ReCaVSR 超分服务！")
+            HF_REPO = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
+            MODEL_FOLDER = "Qwen3.8-27B-T4-Q3"
+            FILE_PATTERN = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
+        elif "bf16.gguf" in FILE_PATTERN.lower() and not DOWNLOAD_ONLY:
+            log(f"⚠️ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，已自动将 53GB BF16 切换为 T4 16G 满速版 UD-Q3_K_XL (12.4 GB)！")
+            MODEL_FOLDER = "Qwen3.8-27B-T4-Q3"
+            FILE_PATTERN = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
     has_rclone = _has_vm_rclone_drive()
     fuse_mounted = os.path.ismount("/content/drive/MyDrive") or os.path.ismount("/content/drive")
     drive_mounted = fuse_mounted or has_rclone or os.path.isdir("/content/drive/MyDrive")
