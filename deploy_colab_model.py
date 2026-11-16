@@ -2626,10 +2626,23 @@ def _start_cloudflare_tunnel_and_print_summary(t_start: float, drive_model_dir: 
             break
         time.sleep(1)
 
+    recavsr_url = None
+    for _ in range(10):
+        rc_txt = subprocess.getoutput("cat /content/recavsr_tunnel.log 2>/dev/null")
+        m_rc = re.search(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", rc_txt)
+        if m_rc:
+            recavsr_url = m_rc.group(0)
+            break
+        time.sleep(1)
+
     total_dt = time.time() - t_start
+    combo_line = f"{tunnel_url} | {recavsr_url}" if recavsr_url else str(tunnel_url)
     print("\n" + "=" * 72)
     print(f"DEPLOYMENT SUCCESSFUL (总耗时 {total_dt:.1f}s)")
     print(f"TUNNEL_BASE_URL={tunnel_url}/v1")
+    if recavsr_url:
+        print(f"RECAVSR_TUNNEL_URL={recavsr_url}")
+    print(f"COPY_TO_LOCAL_PANEL={combo_line}")
     print(f"API_KEY={API_KEY}")
     print(f"MODEL_ID={HF_REPO or MODEL_FOLDER}")
     print(f"DRIVE_MODEL_FOLDER={drive_model_dir if drive_mounted else '未挂载 (仅本地)'}")

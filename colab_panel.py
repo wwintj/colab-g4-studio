@@ -2098,18 +2098,33 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- EasyColab 原版同款：点击打开浏览器弹出授权码 -> 粘贴授权码点确认 -->
-    <div style="padding:14px;margin-bottom:14px;border-radius:10px;background:#0f172a;border:1px solid #3b82f6;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;">🔑 切换 / 绑定新 Google 账号（EasyColab 授权码方式）</div>
-        <button type="button" class="btn-primary" style="padding:6px 14px;font-size:12.5px;font-weight:700;" onclick="addNewColabAccount()" id="btnAddColabAcc">🌐 1. 打开浏览器获取授权码</button>
+    <!-- 网页版 Colab (Untitled0.ipynb) 免安全码验证一键直连区 -->
+    <div style="padding:14px;margin-bottom:12px;border-radius:10px;background:rgba(59,130,246,0.1);border:1.5px solid #3b82f6;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:800;color:#60a5fa;">🚀 方式一：网页版 Colab 免安全码验证直连（专门解决跨区号卡安全码！）</div>
+        <button type="button" class="btn-primary" style="padding:6px 14px;font-size:12.5px;font-weight:700;" onclick="copyColabWebBootstrapCode()">📋 第 1 步：一键复制网页端启动代码</button>
       </div>
-      <div style="font-size:11.5px;color:#94a3b8;line-height:1.45;margin-bottom:10px;">
-        点击上方「1. 打开浏览器获取授权码」后，浏览器会自动打开 Google 授权页并在您点击允许后<b>直接弹出授权码</b>；复制该授权码粘贴到下方框内点「确认」即可完成绑定：
+      <div style="font-size:11.5px;color:#cbd5e1;line-height:1.55;margin-bottom:10px;">
+        1. 点击右上角「<b>📋 第 1 步：一键复制网页端启动代码</b>」（已自动包含您现有的 134GB 云盘模型权限）。<br>
+        2. 回到您刚才打开的网页版 Colab（<code>Untitled0.ipynb</code>），顶部菜单选 <b>Runtime (代码执行程序) ➔ Change runtime type (更改运行时类型) ➔ 选 G4 GPU</b>。<br>
+        3. 在网页的代码框里<b>粘贴（Cmd+V）</b>刚复制的代码，点击左边黑色的播放键 <b>▶</b> 运行。<br>
+        4. 运行完成后，把网页最底下打印出的 <code>https://xxxx.trycloudflare.com | https://yyyy.trycloudflare.com</code> 整行复制粘贴到下方框内，点「<b>⚡ 立即连接接管</b>」即可！
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input id="inpRemoteAuthCode" type="text" placeholder="粘贴浏览器显示的授权码 (4/0A...)" style="flex:1;min-width:220px;padding:7px 12px;font-size:13px;border-radius:7px;border:1px solid #3b82f6;background:#1e293b;color:#f8fafc;" onkeydown="if(event.key==='Enter')submitRemoteAuthCode()">
-        <button type="button" class="btn-success" style="padding:7px 18px;font-size:13px;font-weight:800;" onclick="submitRemoteAuthCode()" id="btnSubmitRemoteCode">确认</button>
+        <input id="inpManualTunnelUrl" type="text" placeholder="🔗 第 2 步：在此粘贴网页版 Colab 跑完输出的 trycloudflare.com 地址..." style="flex:1;min-width:220px;padding:7px 12px;font-size:13px;border-radius:7px;border:1px solid #3b82f6;background:#0f172a;color:#f8fafc;" onkeydown="if(event.key==='Enter')connectManualTunnelUrl()">
+        <button type="button" class="btn-success" style="padding:7px 16px;font-size:13px;font-weight:800;" onclick="connectManualTunnelUrl()" id="btnConnectTunnel">⚡ 立即连接接管</button>
+      </div>
+    </div>
+
+    <!-- EasyColab 原版同款：点击打开浏览器弹出授权码 -> 粘贴授权码点确认 -->
+    <div style="padding:14px;margin-bottom:14px;border-radius:10px;background:#0f172a;border:1px solid #334155;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:800;color:#f8fafc;">🔑 方式二：常规账号授权码绑定（适合非跨区、不弹安全码的账号）</div>
+        <button type="button" class="btn-outline" style="padding:5px 12px;font-size:12px;border-color:#3b82f6;color:#93c5fd;" onclick="addNewColabAccount()" id="btnAddColabAcc">🌐 打开浏览器获取授权码</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input id="inpRemoteAuthCode" type="text" placeholder="粘贴浏览器显示的授权码 (4/0A...)" style="flex:1;min-width:220px;padding:7px 12px;font-size:13px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#f8fafc;" onkeydown="if(event.key==='Enter')submitRemoteAuthCode()">
+        <button type="button" class="btn-primary" style="padding:7px 18px;font-size:13px;font-weight:800;" onclick="submitRemoteAuthCode()" id="btnSubmitRemoteCode">确认</button>
       </div>
     </div>
 
@@ -4551,47 +4566,25 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 cfg = _load_endpoint_cfg()
                 model_repo = cfg.get("model_id", "MiniMaxAI/MiniMax-H3")
                 model_folder = cfg.get("model_folder", "MiniMax-H3")
-                cell_code = f'''# 🚀 Colab G4 Pro 一键启动单元格 (免 OAuth 验证 · 自动复用现有 Google Drive 134GB 模型库)
-import base64, os, subprocess, sys, re, time
+                pattern = "FL2VA/*.safetensors" if "minimax" in model_repo.lower() else "*.gguf"
+                api_key = cfg.get("api_key", "sk-colab-ed28e54eb298d0c1")
+                cell_code = f'''# 🚀 Colab G4 Pro 网页端免验证一键启动脚本 (已自动内置您的共享 Google Drive 134GB 模型库)
+import base64, os, re, subprocess, sys, time
 if "{rclone_b64}":
     os.makedirs("/root/.config/rclone", exist_ok=True)
     open("/root/.config/rclone/rclone.conf", "wb").write(base64.b64decode("{rclone_b64}"))
-    print("✅ 已注入共享 Google Drive 模型库凭证 (免重新下载 134GB 模型)")
+    print("✅ 已成功注入共享 Google Drive 模型库凭证 (免重新下载 134GB 模型)")
+subprocess.run("curl -fsSL https://downloads.rclone.org/rclone-current-linux-amd64.zip -o /tmp/rc.zip && unzip -qo /tmp/rc.zip -d /tmp && cp /tmp/rclone-*-linux-amd64/rclone /usr/local/bin/rclone && chmod +x /usr/local/bin/rclone", shell=True, check=False)
 if not os.path.isdir("/content/colab-g4-studio"):
     subprocess.run(["git", "clone", "--depth", "1", "https://github.com/wwintj/colab-g4-studio.git", "/content/colab-g4-studio"], check=True)
 else:
     subprocess.run(["git", "-C", "/content/colab-g4-studio", "pull", "--ff-only"], check=False)
-print("⏳ 正在部署并加载模型 ({model_repo})，请等待输出 TUNNEL_URL...")
-# 在云端直接调用内部启动逻辑
-subprocess.run(["bash", "-lc", "curl -fsSL https://downloads.rclone.org/rclone-current-linux-amd64.zip -o /tmp/rc.zip && unzip -qo /tmp/rc.zip -d /tmp && cp /tmp/rclone-*-linux-amd64/rclone /usr/local/bin/rclone && chmod +x /usr/local/bin/rclone"], check=False)
-'''
-                # Also embed a direct remote runner snippet that launches MiniMax-H3 + ReCaVSR on the Colab VM and prints both tunnel URLs
-                cell_code += '''
-import importlib.util
-spec = importlib.util.spec_from_file_location("deploy_mod", "/content/colab-g4-studio/deploy_colab_model.py")
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
-os.makedirs("/content/local_models/MiniMax-H3", exist_ok=True)
-if not os.path.isfile("/content/local_models/MiniMax-H3/FL2VA/transformer/model-00001-of-00013.safetensors"):
-    print("📥 正在从共享 Google Drive 高速同步 MiniMax-H3 权重至本地 NVMe...")
-    subprocess.run(["rclone", "copy", "gdrive:models/MiniMax-H3", "/content/local_models/MiniMax-H3", "--transfers=16", "--checkers=16"], check=True)
-mod._start_minimax_h3_server_on_30000("/content/local_models/MiniMax-H3")
-mod._ensure_recavsr_service_on_30002()
-subprocess.run("pkill -f 'cloudflared tunnel.*30000' || true", shell=True)
-subprocess.Popen(["cloudflared", "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:30000"], stdout=open("/content/cf_tunnel.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
-for _ in range(30):
-    time.sleep(1)
-    lg = open("/content/cf_tunnel.log").read() if os.path.exists("/content/cf_tunnel.log") else ""
-    m = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", lg)
-    if m:
-        rc_lg = open("/content/recavsr_tunnel.log").read() if os.path.exists("/content/recavsr_tunnel.log") else ""
-        m2 = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", rc_lg)
-        out_str = m.group(0) + (f" | {m2.group(0)}" if m2 else "")
-        print("\\n" + "="*70)
-        print("🎉 启动成功！请复制下方整行地址粘贴回本地控制台「方案 A 第 2 步」：")
-        print(out_str)
-        print("="*70)
-        break
+env = os.environ.copy()
+env.update({{"HF_REPO": "{model_repo}", "MODEL_FOLDER": "{model_folder}", "FILE_PATTERN": "{pattern}", "COLAB_API_KEY": "{api_key}"}})
+p = subprocess.Popen([sys.executable, "-u", "/content/colab-g4-studio/deploy_colab_model.py"], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+for line in p.stdout:
+    print(line, end="", flush=True)
+p.wait()
 '''
                 self._send_json({"ok": True, "code": cell_code})
             except Exception as e:
