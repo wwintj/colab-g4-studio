@@ -2098,33 +2098,55 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 网页版 Colab (Untitled0.ipynb) 免安全码验证一键直连区 -->
-    <div style="padding:14px;margin-bottom:12px;border-radius:10px;background:rgba(59,130,246,0.1);border:1.5px solid #3b82f6;">
+    <!-- 方式一：直接在当前已登录浏览器点击超链接弹码（永久绑定） -->
+    <div style="padding:14px;margin-bottom:12px;border-radius:10px;background:rgba(16,185,129,0.1);border:1.5px solid #10b981;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-        <div style="font-size:13px;font-weight:800;color:#60a5fa;">🚀 方式一：网页版 Colab 免安全码验证直连（专门解决跨区号卡安全码！）</div>
-        <button type="button" class="btn-primary" style="padding:6px 14px;font-size:12.5px;font-weight:700;" onclick="copyColabWebBootstrapCode()">📋 第 1 步：一键复制网页端启动代码</button>
+        <div style="font-size:13.5px;font-weight:800;color:#34d399;">🔑 方式一：在当前已登录浏览器直接点链接弹窗取码（绑定一次永久生效）</div>
+        <button type="button" class="btn-outline" style="padding:3px 10px;font-size:11.5px;border-color:#10b981;color:#6ee7b7;" onclick="refreshModalOAuthLinks()">🔄 刷新链接</button>
+      </div>
+      <div style="font-size:11.5px;color:#d1fae5;line-height:1.55;margin-bottom:10px;">
+        💡 <b>为什么之前点按钮会跳错或弹安全码？</b>因为后台调用系统默认浏览器可能跳到了别的窗口，且带了强制重登参数。现在已直接做成<b>当前网页内的真实可点击超链接（<code>&lt;a target="_blank"&gt;</code>）</b>，您既然已在当前浏览器登录了账号，<b>直接点击下方任意一条蓝色/绿色链接</b>即可在当前浏览器新标签页弹出授权码：
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;">
+        <a id="linkOAuthSilent" href="#" target="_blank" rel="noopener" style="display:block;padding:8px 12px;border-radius:8px;background:#065f46;border:1px solid #10b981;color:#ecfdf5;font-size:12.5px;font-weight:800;text-decoration:none;">
+          👉 链接 A（强烈推荐 · 免选号直通）：点此直接在当前已登录浏览器弹出授权码（已剔除 select_account / remote / cloud-platform 风控）↗
+        </a>
+        <a id="linkOAuthColabCli" href="#" target="_blank" rel="noopener" style="display:block;padding:7px 12px;border-radius:8px;background:#0f172a;border:1px solid #3b82f6;color:#93c5fd;font-size:12px;font-weight:700;text-decoration:none;">
+          👉 链接 B（colab-cli 原生参数 · prompt=consent）：点此在当前浏览器打开官方授权码弹窗 ↗
+        </a>
+        <a id="linkOAuthEasyColab" href="#" target="_blank" rel="noopener" style="display:block;padding:7px 12px;border-radius:8px;background:#0f172a;border:1px solid #64748b;color:#cbd5e1;font-size:12px;font-weight:600;text-decoration:none;">
+          👉 链接 C（EasyColab 原版参数 · 带多账号选择列表 select_account）：点此在当前浏览器选择账号并弹码 ↗
+        </a>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input id="inpRemoteAuthCode" type="text" placeholder="📋 在此粘贴点击上方链接后网页弹出的授权码 (以 4/0A 开头)..." style="flex:1;min-width:220px;padding:8px 12px;font-size:13px;border-radius:7px;border:1.5px solid #10b981;background:#0f172a;color:#f8fafc;" onkeydown="if(event.key==='Enter')submitRemoteAuthCode()">
+        <button type="button" class="btn-success" style="padding:8px 18px;font-size:13px;font-weight:800;" onclick="submitRemoteAuthCode()" id="btnSubmitRemoteCode">✅ 验证授权码并永久绑定</button>
+      </div>
+    </div>
+
+    <!-- 方式二：网页版 Colab 免安全码验证一键直连区（真实可点击超链接 + 预置 GitHub 笔记本直达） -->
+    <div style="padding:14px;margin-bottom:14px;border-radius:10px;background:rgba(59,130,246,0.1);border:1.5px solid #3b82f6;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div style="font-size:13px;font-weight:800;color:#60a5fa;">🚀 方式二：网页版 Colab 免安全码直连（像 EasyColab_Server.ipynb 一样 100% 绕过安全码）</div>
+        <button type="button" class="btn-primary" style="padding:6px 12px;font-size:12px;font-weight:700;" onclick="copyColabWebBootstrapCode()">📋 第 1 步：一键复制网页端启动代码</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px;">
+        <a href="https://colab.research.google.com/github/wwintj/colab-g4-studio/blob/main/Colab_G4_Server.ipynb" target="_blank" rel="noopener" style="flex:1;min-width:240px;text-align:center;padding:8px 12px;border-radius:8px;background:#1d4ed8;border:1px solid #60a5fa;color:#ffffff;font-size:12.5px;font-weight:800;text-decoration:none;">
+          📓 点此在当前浏览器直接打开《Colab_G4_Server.ipynb》预置笔记本 ↗
+        </a>
+        <a href="https://colab.research.google.com/#create=true" target="_blank" rel="noopener" style="flex:1;min-width:200px;text-align:center;padding:8px 12px;border-radius:8px;background:#0f172a;border:1px solid #3b82f6;color:#93c5fd;font-size:12.5px;font-weight:700;text-decoration:none;">
+          🌐 点此在当前浏览器新建空白 Colab 笔记本 (#create=true) ↗
+        </a>
       </div>
       <div style="font-size:11.5px;color:#cbd5e1;line-height:1.55;margin-bottom:10px;">
-        1. 点击右上角「<b>📋 第 1 步：一键复制网页端启动代码</b>」（已自动包含您现有的 134GB 云盘模型权限）。<br>
-        2. 回到您刚才打开的网页版 Colab（<code>Untitled0.ipynb</code>），顶部菜单选 <b>Runtime (代码执行程序) ➔ Change runtime type (更改运行时类型) ➔ 选 G4 GPU</b>。<br>
-        3. 在网页的代码框里<b>粘贴（Cmd+V）</b>刚复制的代码，点击左边黑色的播放键 <b>▶</b> 运行。<br>
-        4. 运行完成后，把网页最底下打印出的 <code>https://xxxx.trycloudflare.com | https://yyyy.trycloudflare.com</code> 整行复制粘贴到下方框内，点「<b>⚡ 立即连接接管</b>」即可！
+        1. 点击上方「<b>📋 第 1 步：一键复制网页端启动代码</b>」（已自动包含您现有的 134GB 云盘模型权限）。<br>
+        2. 点击上方蓝色超链接 <a href="https://colab.research.google.com/github/wwintj/colab-g4-studio/blob/main/Colab_G4_Server.ipynb" target="_blank" rel="noopener" style="color:#60a5fa;font-weight:700;text-decoration:underline;">打开预置笔记本 Colab_G4_Server.ipynb ↗</a>（或 <a href="https://colab.research.google.com/#create=true" target="_blank" rel="noopener" style="color:#60a5fa;font-weight:700;text-decoration:underline;">新建空白笔记本 ↗</a>），顶部菜单选 <b>Runtime ➔ Change runtime type ➔ 选 G4 GPU</b>。<br>
+        3. 在网页的代码框里<b>粘贴（Cmd+V）</b>刚复制的代码，点击左边播放键 <b>▶</b> 运行。<br>
+        4. 运行完成后，把网页底部打印出的 <code>https://xxxx.trycloudflare.com</code> 粘贴到下方框内，点「<b>⚡ 立即连接接管</b>」即可！
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <input id="inpManualTunnelUrl" type="text" placeholder="🔗 第 2 步：在此粘贴网页版 Colab 跑完输出的 trycloudflare.com 地址..." style="flex:1;min-width:220px;padding:7px 12px;font-size:13px;border-radius:7px;border:1px solid #3b82f6;background:#0f172a;color:#f8fafc;" onkeydown="if(event.key==='Enter')connectManualTunnelUrl()">
         <button type="button" class="btn-success" style="padding:7px 16px;font-size:13px;font-weight:800;" onclick="connectManualTunnelUrl()" id="btnConnectTunnel">⚡ 立即连接接管</button>
-      </div>
-    </div>
-
-    <!-- EasyColab 原版同款：点击打开浏览器弹出授权码 -> 粘贴授权码点确认 -->
-    <div style="padding:14px;margin-bottom:14px;border-radius:10px;background:#0f172a;border:1px solid #334155;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;">🔑 方式二：常规账号授权码绑定（适合非跨区、不弹安全码的账号）</div>
-        <button type="button" class="btn-outline" style="padding:5px 12px;font-size:12px;border-color:#3b82f6;color:#93c5fd;" onclick="addNewColabAccount()" id="btnAddColabAcc">🌐 打开浏览器获取授权码</button>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input id="inpRemoteAuthCode" type="text" placeholder="粘贴浏览器显示的授权码 (4/0A...)" style="flex:1;min-width:220px;padding:7px 12px;font-size:13px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#f8fafc;" onkeydown="if(event.key==='Enter')submitRemoteAuthCode()">
-        <button type="button" class="btn-primary" style="padding:7px 18px;font-size:13px;font-weight:800;" onclick="submitRemoteAuthCode()" id="btnSubmitRemoteCode">确认</button>
       </div>
     </div>
 
@@ -2183,12 +2205,32 @@ function renderAccountBadgeAndModal(accInfo) {
   }).join('');
 }
 
+async function refreshModalOAuthLinks() {
+  try {
+    const r = await fetch('/api/accounts/remote_url', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({open_browser: false}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const aSilent = document.getElementById('linkOAuthSilent');
+      const aCli = document.getElementById('linkOAuthColabCli');
+      const aEasy = document.getElementById('linkOAuthEasyColab');
+      if (aSilent && d.url_silent_light) aSilent.href = d.url_silent_light;
+      if (aCli && d.url_colab_cli) aCli.href = d.url_colab_cli;
+      if (aEasy && d.url_easycolab) aEasy.href = d.url_easycolab;
+    }
+  } catch (e) {}
+}
+
 function openAccountModal() {
   const m = document.getElementById('accountSwitchModal');
   if (m) m.style.display = 'flex';
   const st = document.getElementById('accountActionStatus');
   if (st) st.style.display = 'none';
   renderAccountModalList();
+  refreshModalOAuthLinks();
 }
 
 async function copyColabWebBootstrapCode() {
@@ -2350,6 +2392,40 @@ async function switchColabAccount(targetEmail) {
     await refreshStatus(true);
   } catch (e) {
     if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  }
+}
+
+async function tryZeroChallengeLocalLogin() {
+  const shareDrive = document.getElementById('chkShareExistingDrive') ? document.getElementById('chkShareExistingDrive').checked : true;
+  const btn = document.getElementById('btnZeroChallenge');
+  const st = document.getElementById('accountActionStatus');
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ 请在浏览器中点击账号...'; }
+  if (st) {
+    st.style.display = 'block';
+    st.style.color = '#60a5fa';
+    st.innerText = '🌐 已打开极简授权页（无 cloud-platform 高危权限、无 remote 标记），请在已登录的浏览器中点击账号...';
+  }
+  try {
+    const r = await fetch('/api/accounts/add_colab', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({bind_new_drive: !shareDrive}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 登录未完成: ' + (d.error || '已取消或超时'); }
+      return;
+    }
+    if (d.account_info) renderAccountBadgeAndModal(d.account_info);
+    if (st) {
+      st.style.color = '#10b981';
+      st.innerText = `✅ 账号 ${d.email} 已永久绑定成功！以后随时在上方列表中 1 秒切换，无需再开网页！`;
+    }
+    await refreshStatus(true);
+  } catch (e) {
+    if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = '⚡ 免安全码极简直登 (推荐先试)'; }
   }
 }
 
@@ -4613,6 +4689,8 @@ p.wait()
 
         if self.path == "/api/accounts/remote_url":
             try:
+                import base64
+                import hashlib
                 from importlib import resources
                 from google_auth_oauthlib.flow import InstalledAppFlow
                 from colab_cli.auth import PUBLIC_SCOPES, REMOTE_REDIRECT_URI
@@ -4620,18 +4698,57 @@ p.wait()
                 _get_accounts_status(force=True)
                 cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
                 client_config = json.loads(cfg_res.read_text())
-                flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
-                flow.redirect_uri = REMOTE_REDIRECT_URI
-                auth_url, _ = flow.authorization_url(prompt="select_account consent", token_usage="remote")
+
+                light_scopes = [
+                    "openid",
+                    "https://www.googleapis.com/auth/userinfo.profile",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                    "https://www.googleapis.com/auth/colaboratory",
+                ]
+                f_light = InstalledAppFlow.from_client_config(client_config, light_scopes)
+                f_light.redirect_uri = REMOTE_REDIRECT_URI
+                url_silent_light, _ = f_light.authorization_url()
+                verifier = f_light.code_verifier
+                challenge = (
+                    base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
+                    .rstrip(b"=")
+                    .decode("ascii")
+                )
+
+                f_cli = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                f_cli.redirect_uri = REMOTE_REDIRECT_URI
+                f_cli.code_verifier = verifier
+                url_colab_cli, _ = f_cli.authorization_url(
+                    code_challenge=challenge,
+                    code_challenge_method="S256",
+                    prompt="consent",
+                    token_usage="remote",
+                )
+
+                f_easy = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                f_easy.redirect_uri = REMOTE_REDIRECT_URI
+                f_easy.code_verifier = verifier
+                url_easycolab, _ = f_easy.authorization_url(
+                    code_challenge=challenge,
+                    code_challenge_method="S256",
+                    prompt="select_account consent",
+                    token_usage="remote",
+                )
+
                 pkce_path = os.path.expanduser("~/.config/colab-cli/pkce_verifier.txt")
                 os.makedirs(os.path.dirname(pkce_path), exist_ok=True)
-                if getattr(flow, "code_verifier", None):
-                    with open(pkce_path, "w", encoding="utf-8") as vf:
-                        vf.write(flow.code_verifier)
-                _PENDING_REMOTE_OAUTH["flow"] = flow
-                if payload.get("open_browser", True):
-                    webbrowser.open(auth_url)
-                self._send_json({"ok": True, "auth_url": auth_url})
+                with open(pkce_path, "w", encoding="utf-8") as vf:
+                    vf.write(verifier)
+                _PENDING_REMOTE_OAUTH["flow"] = f_cli
+                if payload.get("open_browser", False):
+                    webbrowser.open(url_silent_light)
+                self._send_json({
+                    "ok": True,
+                    "auth_url": url_silent_light,
+                    "url_silent_light": url_silent_light,
+                    "url_colab_cli": url_colab_cli,
+                    "url_easycolab": url_easycolab,
+                })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
             return
@@ -4654,6 +4771,7 @@ p.wait()
                 from google_auth_oauthlib.flow import InstalledAppFlow
                 from colab_cli.auth import KEYRING_SERVICE_NAME, KEYRING_USERNAME, PUBLIC_SCOPES, REMOTE_REDIRECT_URI
 
+                os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
                 cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
                 client_config = json.loads(cfg_res.read_text())
                 flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
@@ -4666,7 +4784,9 @@ p.wait()
                     flow.code_verifier = _PENDING_REMOTE_OAUTH["flow"].code_verifier
                 flow.fetch_token(code=raw_code)
                 creds = flow.credentials
-                token_json = creds.to_json()
+                tok_dict = json.loads(creds.to_json())
+                tok_dict.pop("scopes", None)
+                token_json = json.dumps(tok_dict)
                 keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME, token_json)
                 tok_file = os.path.expanduser("~/.config/colab-cli/token.json")
                 os.makedirs(os.path.dirname(tok_file), exist_ok=True)
