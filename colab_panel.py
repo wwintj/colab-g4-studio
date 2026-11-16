@@ -2075,88 +2075,66 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
 <!-- Google Colab Pro & 云盘多账号管理与秒切模态弹窗 -->
 <div id="accountSwitchModal" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.78);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:20px;">
-  <div style="width:100%;max-width:640px;max-height:90vh;overflow-y:auto;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:20px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.6);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <div>
-        <div style="font-size:17px;font-weight:800;color:#f8fafc;">👤 Google Colab Pro 多账号切换与绑定</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px;">支持绑定家人/朋友的多个 Gmail Pro 账号，算力用完时 1 秒无缝互切，并可共享同一套云盘大模型免重新下载！</div>
-      </div>
-      <button class="btn-outline" style="padding:4px 10px;font-size:14px;" onclick="closeAccountModal()">✕</button>
+  <div style="width:100%;max-width:560px;max-height:90vh;overflow-y:auto;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:18px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.6);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="font-size:16px;font-weight:800;color:#f8fafc;">👤 Google Colab 账号管理与切换</div>
+      <button class="btn-outline" style="padding:3px 9px;font-size:13px;" onclick="closeAccountModal()">✕</button>
     </div>
 
-    <div style="padding:11px 14px;margin-bottom:14px;border-radius:10px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.35);">
-      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12.5px;color:#d1fae5;line-height:1.45;">
-        <input type="checkbox" id="chkShareExistingDrive" checked style="margin-top:3px;width:15px;height:15px;accent-color:#10b981;flex-shrink:0;">
-        <span><b>🔗 共享当前 Google Drive 模型云盘（强烈推荐）</b><br><span style="font-size:11.5px;color:#a7f3d0;">勾选后：仅切换 Colab Pro 算力扣费账号（使用家人的 CU 额度开机），但云端依然直接高速读取您现有云盘里已存好的 134GB MiniMax-H3 / ReCaVSR / Qwen3.8 模型，<b>0 秒免重新下载</b>！</span></span>
-      </label>
-    </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;margin-bottom:12px;border-radius:8px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);font-size:12px;color:#d1fae5;">
+      <input type="checkbox" id="chkShareExistingDrive" checked style="width:14px;height:14px;accent-color:#10b981;flex-shrink:0;">
+      <span><b>🔗 共享当前 Google Drive 云盘模型库</b>（切换账号免重下 134GB 模型）</span>
+    </label>
 
-    <div style="margin-bottom:14px;">
-      <div style="font-size:12.5px;font-weight:700;color:#93c5fd;margin-bottom:8px;">📋 已保存的 Google Colab 账号（点击即可 1 秒切换）：</div>
-      <div id="savedAccountsList" style="display:flex;flex-direction:column;gap:8px;">
-        <div style="font-size:12px;color:var(--muted);padding:12px;text-align:center;">正在读取已绑定的账号...</div>
+    <div style="margin-bottom:12px;">
+      <div id="savedAccountsList" style="display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:12px;color:var(--muted);padding:10px;text-align:center;">正在读取已绑定的账号...</div>
       </div>
     </div>
 
-    <!-- 方式一：直接在当前已登录浏览器点击超链接弹码（永久绑定） -->
-    <div style="padding:14px;margin-bottom:12px;border-radius:10px;background:rgba(16,185,129,0.1);border:1.5px solid #10b981;">
+    <!-- 简洁添加新账号区 -->
+    <div style="padding:12px;margin-bottom:10px;border-radius:10px;background:#0f172a;border:1px solid #334155;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-        <div style="font-size:13.5px;font-weight:800;color:#34d399;">🔑 方式一：在当前已登录浏览器直接点链接弹窗取码（绑定一次永久生效）</div>
-        <button type="button" class="btn-outline" style="padding:3px 10px;font-size:11.5px;border-color:#10b981;color:#6ee7b7;" onclick="refreshModalOAuthLinks()">🔄 刷新链接</button>
+        <span style="font-size:12.5px;font-weight:700;color:#f8fafc;">➕ 添加新账号</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <a id="linkOAuthEasyColab" href="#" target="_blank" rel="noopener" style="padding:5px 11px;border-radius:6px;background:#2563eb;color:#ffffff;font-size:12px;font-weight:700;text-decoration:none;">
+            🌐 1. 打开授权页选号取码 ↗
+          </a>
+          <a id="linkOAuthSilent" href="#" target="_blank" rel="noopener" style="padding:5px 10px;border-radius:6px;background:#1e293b;border:1px solid #475569;color:#cbd5e1;font-size:11.5px;text-decoration:none;" title="不弹账号选择器，直接沿用当前浏览器默认已登录账号">
+            ⚡ 当前已登录号直通 ↗
+          </a>
+        </div>
       </div>
-      <div style="font-size:11.5px;color:#d1fae5;line-height:1.55;margin-bottom:10px;">
-        💡 <b>为什么之前点按钮会跳错或弹安全码？</b>因为后台调用系统默认浏览器可能跳到了别的窗口，且带了强制重登参数。现在已直接做成<b>当前网页内的真实可点击超链接（<code>&lt;a target="_blank"&gt;</code>）</b>，您既然已在当前浏览器登录了账号，<b>直接点击下方任意一条蓝色/绿色链接</b>即可在当前浏览器新标签页弹出授权码：
-      </div>
-      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px;">
-        <a id="linkOAuthSilent" href="#" target="_blank" rel="noopener" style="display:block;padding:8px 12px;border-radius:8px;background:#065f46;border:1px solid #10b981;color:#ecfdf5;font-size:12.5px;font-weight:800;text-decoration:none;">
-          👉 链接 A（强烈推荐 · 免选号直通）：点此直接在当前已登录浏览器弹出授权码（已剔除 select_account / remote / cloud-platform 风控）↗
-        </a>
-        <a id="linkOAuthColabCli" href="#" target="_blank" rel="noopener" style="display:block;padding:7px 12px;border-radius:8px;background:#0f172a;border:1px solid #3b82f6;color:#93c5fd;font-size:12px;font-weight:700;text-decoration:none;">
-          👉 链接 B（colab-cli 原生参数 · prompt=consent）：点此在当前浏览器打开官方授权码弹窗 ↗
-        </a>
-        <a id="linkOAuthEasyColab" href="#" target="_blank" rel="noopener" style="display:block;padding:7px 12px;border-radius:8px;background:#0f172a;border:1px solid #64748b;color:#cbd5e1;font-size:12px;font-weight:600;text-decoration:none;">
-          👉 链接 C（EasyColab 原版参数 · 带多账号选择列表 select_account）：点此在当前浏览器选择账号并弹码 ↗
-        </a>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input id="inpRemoteAuthCode" type="text" placeholder="📋 在此粘贴点击上方链接后网页弹出的授权码 (以 4/0A 开头)..." style="flex:1;min-width:220px;padding:8px 12px;font-size:13px;border-radius:7px;border:1.5px solid #10b981;background:#0f172a;color:#f8fafc;" onkeydown="if(event.key==='Enter')submitRemoteAuthCode()">
-        <button type="button" class="btn-success" style="padding:8px 18px;font-size:13px;font-weight:800;" onclick="submitRemoteAuthCode()" id="btnSubmitRemoteCode">✅ 验证授权码并永久绑定</button>
-      </div>
-    </div>
-
-    <!-- 方式二：网页版 Colab 免安全码验证一键直连区（真实可点击超链接 + 预置 GitHub 笔记本直达） -->
-    <div style="padding:14px;margin-bottom:14px;border-radius:10px;background:rgba(59,130,246,0.1);border:1.5px solid #3b82f6;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-        <div style="font-size:13px;font-weight:800;color:#60a5fa;">🚀 方式二：网页版 Colab 免安全码直连（像 EasyColab_Server.ipynb 一样 100% 绕过安全码）</div>
-        <button type="button" class="btn-primary" style="padding:6px 12px;font-size:12px;font-weight:700;" onclick="copyColabWebBootstrapCode()">📋 第 1 步：一键复制网页端启动代码</button>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:9px;">
-        <a href="https://colab.research.google.com/github/wwintj/colab-g4-studio/blob/main/Colab_G4_Server.ipynb" target="_blank" rel="noopener" style="flex:1;min-width:240px;text-align:center;padding:8px 12px;border-radius:8px;background:#1d4ed8;border:1px solid #60a5fa;color:#ffffff;font-size:12.5px;font-weight:800;text-decoration:none;">
-          📓 点此在当前浏览器直接打开《Colab_G4_Server.ipynb》预置笔记本 ↗
-        </a>
-        <a href="https://colab.research.google.com/#create=true" target="_blank" rel="noopener" style="flex:1;min-width:200px;text-align:center;padding:8px 12px;border-radius:8px;background:#0f172a;border:1px solid #3b82f6;color:#93c5fd;font-size:12.5px;font-weight:700;text-decoration:none;">
-          🌐 点此在当前浏览器新建空白 Colab 笔记本 (#create=true) ↗
-        </a>
-      </div>
-      <div style="font-size:11.5px;color:#cbd5e1;line-height:1.55;margin-bottom:10px;">
-        1. 点击上方「<b>📋 第 1 步：一键复制网页端启动代码</b>」（已自动包含您现有的 134GB 云盘模型权限）。<br>
-        2. 点击上方蓝色超链接 <a href="https://colab.research.google.com/github/wwintj/colab-g4-studio/blob/main/Colab_G4_Server.ipynb" target="_blank" rel="noopener" style="color:#60a5fa;font-weight:700;text-decoration:underline;">打开预置笔记本 Colab_G4_Server.ipynb ↗</a>（或 <a href="https://colab.research.google.com/#create=true" target="_blank" rel="noopener" style="color:#60a5fa;font-weight:700;text-decoration:underline;">新建空白笔记本 ↗</a>），顶部菜单选 <b>Runtime ➔ Change runtime type ➔ 选 G4 GPU</b>。<br>
-        3. 在网页的代码框里<b>粘贴（Cmd+V）</b>刚复制的代码，点击左边播放键 <b>▶</b> 运行。<br>
-        4. 运行完成后，把网页底部打印出的 <code>https://xxxx.trycloudflare.com</code> 粘贴到下方框内，点「<b>⚡ 立即连接接管</b>」即可！
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input id="inpManualTunnelUrl" type="text" placeholder="🔗 第 2 步：在此粘贴网页版 Colab 跑完输出的 trycloudflare.com 地址..." style="flex:1;min-width:220px;padding:7px 12px;font-size:13px;border-radius:7px;border:1px solid #3b82f6;background:#0f172a;color:#f8fafc;" onkeydown="if(event.key==='Enter')connectManualTunnelUrl()">
-        <button type="button" class="btn-success" style="padding:7px 16px;font-size:13px;font-weight:800;" onclick="connectManualTunnelUrl()" id="btnConnectTunnel">⚡ 立即连接接管</button>
-      </div>
-    </div>
-
-    <div id="accountActionStatus" style="display:none;padding:10px 12px;margin-bottom:12px;border-radius:8px;background:#0f172a;border:1px solid var(--border);font-size:12.5px;color:#93c5fd;"></div>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-top:1px solid var(--border);padding-top:14px;">
-      <button class="btn-outline" style="font-size:12px;border-color:rgba(245,158,11,0.45);color:#fcd34d;" onclick="rebindGoogleDriveAccount()" id="btnRebindDrive" title="仅当您希望把模型存储云盘也彻底换成另一个 Google Drive 账号时点击">☁️ 单独更换云盘存储账号</button>
       <div style="display:flex;gap:8px;">
-        <button class="btn-outline" onclick="closeAccountModal()">关闭</button>
+        <input id="inpRemoteAuthCode" type="text" placeholder="2. 粘贴网页弹出的授权码 (4/0A...)" style="flex:1;min-width:180px;padding:7px 10px;font-size:12.5px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#f8fafc;" onkeydown="if(event.key==='Enter')submitRemoteAuthCode()">
+        <button type="button" class="btn-success" style="padding:7px 16px;font-size:12.5px;font-weight:800;white-space:nowrap;" onclick="submitRemoteAuthCode()" id="btnSubmitRemoteCode">✅ 绑定</button>
       </div>
+    </div>
+
+    <!-- 折叠收纳：仅在个别账号卡验证时展开 -->
+    <details style="margin-bottom:12px;border-radius:8px;background:#0f172a;border:1px solid #334155;padding:8px 12px;">
+      <summary style="cursor:pointer;font-size:12px;color:#94a3b8;font-weight:600;user-select:none;">
+        💡 个别账号卡安全码验证？点此展开「网页版 Colab 隧道直连」
+      </summary>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #1e293b;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+          <button type="button" class="btn-primary" style="padding:5px 10px;font-size:11.5px;" onclick="copyColabWebBootstrapCode()">📋 1. 复制启动代码</button>
+          <a href="https://colab.research.google.com/github/wwintj/colab-g4-studio/blob/main/Colab_G4_Server.ipynb" target="_blank" rel="noopener" style="padding:5px 10px;border-radius:6px;background:#1e293b;border:1px solid #3b82f6;color:#93c5fd;font-size:11.5px;font-weight:600;text-decoration:none;">
+            📓 2. 打开 Colab 预置笔记本 (选 G4 运行) ↗
+          </a>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <input id="inpManualTunnelUrl" type="text" placeholder="3. 粘贴跑完输出的 trycloudflare.com 地址..." style="flex:1;padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#f8fafc;" onkeydown="if(event.key==='Enter')connectManualTunnelUrl()">
+          <button type="button" class="btn-success" style="padding:6px 12px;font-size:12px;font-weight:700;white-space:nowrap;" onclick="connectManualTunnelUrl()" id="btnConnectTunnel">⚡ 接管</button>
+        </div>
+      </div>
+    </details>
+
+    <div id="accountActionStatus" style="display:none;padding:8px 10px;margin-bottom:10px;border-radius:8px;background:#0f172a;border:1px solid var(--border);font-size:12px;color:#93c5fd;"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:12px;">
+      <button class="btn-outline" style="padding:5px 10px;font-size:11.5px;border-color:rgba(245,158,11,0.4);color:#fcd34d;" onclick="rebindGoogleDriveAccount()" id="btnRebindDrive">☁️ 单独更换云盘账号</button>
+      <button class="btn-outline" style="padding:5px 14px;font-size:12px;" onclick="closeAccountModal()">关闭</button>
     </div>
   </div>
 </div>
@@ -2184,22 +2162,19 @@ function renderAccountBadgeAndModal(accInfo) {
     const isAct = Boolean(it.is_active);
     const borderCol = isAct ? '#10b981' : 'var(--border)';
     const bgCol = isAct ? 'rgba(16,185,129,0.12)' : '#0f172a';
-    const cuTxt = (it.cu_balance !== null && typeof it.cu_balance !== 'undefined') ? `${Number(it.cu_balance).toFixed(2)} CU` : '点击切换后刷新 CU';
+    const cuTxt = (it.cu_balance !== null && typeof it.cu_balance !== 'undefined') ? `${Number(it.cu_balance).toFixed(2)} CU` : '-- CU';
     const actBtn = isAct
-      ? `<span style="padding:4px 10px;border-radius:6px;background:rgba(16,185,129,0.22);color:#34d399;font-size:12px;font-weight:700;">✅ 当前使用中</span>`
-      : `<button type="button" class="btn-primary" style="padding:5px 12px;font-size:12px;" onclick="switchColabAccount('${escapeHtml(it.email)}')">⚡ 一键切换至此账号</button>`;
+      ? `<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.22);color:#34d399;font-size:11.5px;font-weight:700;">✅ 当前使用</span>`
+      : `<button type="button" class="btn-primary" style="padding:4px 10px;font-size:11.5px;" onclick="switchColabAccount('${escapeHtml(it.email)}')">⚡ 切换</button>`;
     return `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid ${borderCol};background:${bgCol};">
-        <div style="min-width:0;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span style="font-size:13.5px;font-weight:800;color:#f8fafc;">${escapeHtml(it.email)}</span>
-            <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.2);color:#93c5fd;font-weight:700;">⚡ ${cuTxt}</span>
-          </div>
-          <div style="font-size:11.5px;color:#94a3b8;margin-top:3px;">姓名: ${escapeHtml(it.name || it.email)} · 最近同步: ${escapeHtml(it.updated_at || '刚刚')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid ${borderCol};background:${bgCol};">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:700;color:#f8fafc;">${escapeHtml(it.email)}</span>
+          <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.2);color:#93c5fd;font-weight:700;">⚡ ${cuTxt}</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           ${actBtn}
-          <button type="button" title="从列表中移除该账号备份" onclick="deleteSavedAccount('${escapeHtml(it.email)}')" style="background:transparent;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:4px 6px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#64748b'">✕</button>
+          <button type="button" title="移除账号" onclick="deleteSavedAccount('${escapeHtml(it.email)}')" style="background:transparent;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:2px 5px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#64748b'">✕</button>
         </div>
       </div>`;
   }).join('');
@@ -2287,7 +2262,7 @@ async function connectManualTunnelUrl() {
   } catch (e) {
     if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
   } finally {
-    if (btn) { btn.disabled = false; btn.innerText = '⚡ 立即接管此 G4 实例'; }
+    if (btn) { btn.disabled = false; btn.innerText = '⚡ 接管'; }
   }
 }
 
@@ -2344,6 +2319,7 @@ async function submitRemoteAuthCode() {
     }
     if (codeInp) codeInp.value = '';
     if (d.account_info) renderAccountBadgeAndModal(d.account_info);
+    refreshModalOAuthLinks();
     if (st) {
       st.style.color = '#10b981';
       st.innerText = `✅ 新账号 ${d.email} 绑定成功并已设为当前激活账号！（已为您永久保存在列表中，随时 1 秒互切）`;
@@ -2352,7 +2328,7 @@ async function submitRemoteAuthCode() {
   } catch (e) {
     if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
   } finally {
-    if (btn) { btn.disabled = false; btn.innerText = '✅ 3. 验证授权码并绑定'; }
+    if (btn) { btn.disabled = false; btn.innerText = '✅ 绑定'; }
   }
 }
 
