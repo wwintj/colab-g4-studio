@@ -1,0 +1,25 @@
+# Local virtual environment & Python cache
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Private credentials, tokens & runtime logs (NEVER commit!)
+.gdrive_rclone.conf
+.colab_endpoint.json
+.colab_panel_logs.json
+.custom_hf_models.json
+*.token
+*.key
+
+# Unrelated local directories & documents
+easycolab/
+colab-qwen38-g4/
+build_revised_agreement.py
+*.pdf
+*.docx
+
+# macOS / IDE metadata
+.DS_Store
+.idea/
+.vscode/
