@@ -1814,6 +1814,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
               ✨ ReCaVSR 超分至 2K
             </button>
           </div>
+          <input type="file" id="inpExternalVideo" accept="video/*,.mp4,.mov,.webm,.mkv" style="display:none;" onchange="handleExternalVideoImport(this)">
+          <button type="button" class="btn-outline" title="从本机任意位置选择其他 AI 生成的短视频 (.mp4/.mov/.webm)，导入后直接用 ReCaVSR 放大至 2K/4K" style="padding:5px 12px;font-size:12.5px;font-weight:700;background:rgba(139,92,246,0.14);border-color:rgba(139,92,246,0.45);color:#ddd6fe;" onclick="triggerImportExternalVideo(true)">📤 导入视频并超分</button>
           <button type="button" class="btn-outline" title="自动截取当前视频最后一帧作为「首帧参考图」，无缝接力续写下一段 15~20 秒有声视频 (30s/45s/60s 长视频)" style="padding:5px 12px;font-size:12.5px;font-weight:700;background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.45);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 提取尾帧续写</button>
           <button type="button" class="btn-outline" style="padding:5px 14px;font-size:12.5px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="replayCurrentVideo()">重播</button>
           <button type="button" class="btn-outline" style="padding:5px 14px;font-size:12.5px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="revealInFinder(false)">在 Finder 中显示</button>
@@ -1832,7 +1834,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <div id="localHistoryCount" style="font-size:11.5px;color:#94a3b8;margin-top:2px;">加载中...</div>
           </div>
         </div>
-        <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="background:transparent;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:2px 6px;border-radius:6px;">↻</button>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button type="button" title="导入本机其他 AI 生成的视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;font-size:11.5px;font-weight:700;cursor:pointer;padding:3px 8px;border-radius:6px;">📤 导入</button>
+          <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="background:transparent;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:2px 6px;border-radius:6px;">↻</button>
+        </div>
       </div>
 
       <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:8px;max-height:515px;overflow-y:auto;padding-right:2px;flex:1;">
@@ -3049,6 +3054,62 @@ async function continueFromCurrentVideoLastFrame() {
 
 let localHistoryItems = [];
 let currentSelectedVideoName = '';
+let autoUpscaleAfterImport = false;
+
+function triggerImportExternalVideo(autoUpscale = false) {
+  autoUpscaleAfterImport = Boolean(autoUpscale);
+  const inp = document.getElementById('inpExternalVideo');
+  if (inp) {
+    inp.value = '';
+    inp.click();
+  }
+}
+
+async function handleExternalVideoImport(inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  if (file.size > 120 * 1024 * 1024) {
+    alert('导入的视频文件过大（建议小于 120MB），请直接将该文件拖入 ~/Movies/EasyColab/ 文件夹中再点刷新');
+    return;
+  }
+  const st = document.getElementById('videoGenStatus');
+  const tLabel = document.getElementById('taskProgressLabel');
+  if (st) {
+    st.innerText = `⏳ 正在导入外部视频「${file.name}」...`;
+    st.style.color = '#60a5fa';
+  }
+  if (tLabel) tLabel.innerText = `⏳ 正在导入外部视频「${file.name}」至 ~/Movies/EasyColab/...`;
+  const reader = new FileReader();
+  reader.onload = async function(ev) {
+    try {
+      const r = await fetch('/api/import_external_video', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({filename: file.name, video_b64: ev.target.result}),
+      });
+      const d = await r.json();
+      await pollLogs();
+      if (!d.ok || !d.filename) {
+        alert('导入外部视频失败: ' + (d.error || '未知错误'));
+        return;
+      }
+      await loadLocalVideoHistory(false);
+      const idx = localHistoryItems.findIndex(x => x.name === d.filename);
+      if (idx >= 0) selectLocalHistoryItem(idx);
+      else playHistoryVideo(d.filename);
+      if (autoUpscaleAfterImport) {
+        const presetVal = (document.getElementById('upscalePresetSelect') || {}).value || '2k';
+        upscaleVideoByName(d.filename, presetVal);
+      } else if (st) {
+        st.innerText = `✅ 已成功导入外部视频「${d.filename}」！点击下方「✨ ReCaVSR 超分」即可放大至 2K/4K，或点「🔗 提取尾帧续写」`;
+        st.style.color = '#10b981';
+      }
+    } catch (e) {
+      alert('导入外部视频请求异常: ' + e);
+    }
+  };
+  reader.readAsDataURL(file);
+}
 
 async function loadLocalVideoHistory(autoSelectFirst = false) {
   const hBox = document.getElementById('mmHistoryList');
@@ -4341,6 +4402,52 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"ok": False, "error": f"连接云端 ReCaVSR 超分服务失败: {e}"})
                 return
+
+        if self.path == "/api/import_external_video":
+            import base64
+            raw_name = os.path.basename(str(payload.get("filename") or "imported_video.mp4").strip())
+            video_b64 = str(payload.get("video_b64") or "").strip()
+            if not video_b64:
+                self._send_json({"ok": False, "error": "未收到视频文件数据"})
+                return
+            LOCAL_MOVIES_DIR.mkdir(parents=True, exist_ok=True)
+            stem, ext = os.path.splitext(raw_name)
+            safe_stem = re.sub(r"[^a-zA-Z0-9_\u4e00-\u9fa5-]", "_", stem).strip("_") or "external_video"
+            ext_low = ext.lower() if ext else ".mp4"
+            raw_bytes = base64.b64decode(video_b64.split(",", 1)[-1])
+            final_name = f"{safe_stem}.mp4"
+            final_path = LOCAL_MOVIES_DIR / final_name
+            if final_path.exists():
+                final_name = f"{safe_stem}_{int(time.time())}.mp4"
+                final_path = LOCAL_MOVIES_DIR / final_name
+            try:
+                if ext_low == ".mp4":
+                    final_path.write_bytes(raw_bytes)
+                else:
+                    tmp_in = LOCAL_MOVIES_DIR / f".tmp_import_{int(time.time())}{ext_low}"
+                    tmp_in.write_bytes(raw_bytes)
+                    try:
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-y", "-v", "error",
+                                "-i", str(tmp_in),
+                                "-c:v", "libx264", "-crf", "17", "-preset", "fast",
+                                "-c:a", "aac", "-b:a", "192k",
+                                "-movflags", "+faststart",
+                                str(final_path),
+                            ],
+                            check=True,
+                            timeout=60,
+                        )
+                    finally:
+                        if tmp_in.exists():
+                            tmp_in.unlink()
+                sz_mb = round(final_path.stat().st_size / (1024 * 1024), 1)
+                _append_panel_log(f"📤 [外部视频导入] 已导入 {final_name} ({sz_mb} MB) 至 ~/Movies/EasyColab/")
+                self._send_json({"ok": True, "filename": final_name})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
 
         if self.path == "/api/extract_last_frame":
             import base64
