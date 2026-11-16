@@ -3187,18 +3187,28 @@ def run_local_wizard():
     save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": True})
 
     if f"[{session_name}]" not in sess_out and session_name not in sess_out:
-        print(f"\n-> 正在申请分配 Google Colab {args.gpu} 实例 '{session_name}'...")
-        res_new = subprocess.run([colab_bin, "new", "-s", session_name, "--gpu", args.gpu], check=False)
+        target_gpu = args.gpu
+        try:
+            from colab_cli.common import state
+            u_info = state.client.get_consumption_user_info()
+            if float(getattr(u_info, "paid_compute_units_balance", 0.0) or 0.0) <= 0.0 and target_gpu.upper() != "T4":
+                print(f"\n💡 检测到当前账号 Colab 付费算力余额为 0.00 CU，已自动切换为申请【免费 T4 (16GB 显存 · 0.00 CU/h 不扣费)】实例...")
+                target_gpu = "T4"
+        except Exception:
+            pass
+        print(f"\n-> 正在申请分配 Google Colab {target_gpu} 实例 '{session_name}'...")
+        res_new = subprocess.run([colab_bin, "new", "-s", session_name, "--gpu", target_gpu], check=False)
+        if res_new.returncode != 0 and target_gpu.upper() != "T4":
+            print(f"\n⚠️ 当前账号无 {target_gpu} 权限 (0.00 CU)，正在自动降级申请【免费 T4 (16GB 显存 · 0.00 CU/h)】实例...")
+            res_new = subprocess.run([colab_bin, "new", "-s", session_name, "--gpu", "T4"], check=False)
         if res_new.returncode != 0:
             print(
-                f"\n❌ [分配失败] 当前 Google 账号无法分配 {args.gpu} (RTX PRO 6000 96GB) 实例！\n"
-                f"   原因：Google Colab 官方接口返回该账号当前 Colab 算力余额为 0.00 CU（仅开放免费 T4，禁止分配 G4/A100/H100）。\n"
-                f"   💡 注意：「Google One AI Pro (Gemini Advanced 2TB)」会员不包含 Colab 付费算力单元 (CU)；需要单独开通「Colab Pro / Pro+」或「Google One AI Ultra」才有 G4 算力额度。\n"
-                f"   👉 请点击控制台右上角「👤 账号」按钮，切换回有 CU 余额的账号（如 ww7turkey@gmail.com · 687.72 CU）后再点击开机！"
+                f"\n❌ [分配失败] 当前 Google 账号无法分配 GPU 实例（可能免费 T4 配额暂时受限或需在网页端首次激活）。\n"
+                f"   👉 若需使用 RTX PRO 6000 (G4 · 96GB 显存)，请点击控制台右上角「👤 账号」按钮切换至有 CU 余额的账号（如 687.72 CU 账号）！"
             )
             sys.exit(1)
     else:
-        print(f"\n-> 复用当前运行中的 Colab G4 实例 '{session_name}'。")
+        print(f"\n-> 复用当前运行中的 Colab 实例 '{session_name}'。")
 
     if mount_drive:
         print(f"\n-> 正在将完整 Google Drive 挂载到实例 '{session_name}' (/content/drive/MyDrive)...")
