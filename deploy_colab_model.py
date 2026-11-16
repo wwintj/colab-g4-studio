@@ -2197,6 +2197,19 @@ def run_remote_vm_main():
     else:
         log("ℹ️ 当前未挂载 Google Drive，模型将保存在 Colab 本地高速盘。")
 
+    if MODEL_FOLDER == "ReCaVSR" or "recavsr" in HF_REPO.lower():
+        ensure_llama_server()
+        _ensure_recavsr_daemon()
+        for _ in range(30):
+            txt = subprocess.getoutput("cat /content/recavsr_tunnel.log 2>/dev/null")
+            if "trycloudflare.com" in txt:
+                shutil.copyfile("/content/recavsr_tunnel.log", "/content/cf_tunnel.log")
+                break
+            time.sleep(1)
+        log("[显存装载] ReCaVSR (Wan2.2-5B): 100% (10.1/10.1 GiB VRAM, 已就绪)")
+        _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
+        return
+
     is_safetensors_repo = (
         HF_REPO in PRESET_SAFETENSORS_FILES
         or FILE_PATTERN.lower().endswith(".safetensors")

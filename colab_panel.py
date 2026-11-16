@@ -1127,15 +1127,10 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
                 gpu = "T4"
                 if folder in g4_only_folders or "bf16.gguf" in (pattern or "").lower():
                     old_folder = folder
-                    if "minimax" in folder.lower() or "minimax" in repo.lower():
-                        repo = "unsloth/MiniMax-H3-GGUF"
-                        folder = "MiniMax-H3-T4-GGUF"
-                        pattern = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
-                    else:
-                        repo = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
-                        folder = "Qwen3.8-27B-T4-Q3"
-                        pattern = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
-                    auto_switched_note = f"⚡ [T4 防爆盘保护] 当前为 T4 (16GB) 账号，已自动将启动模型从 {old_folder} 切换为 T4 适配模型 {folder}"
+                    repo = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
+                    folder = "Qwen3.8-27B-T4-Q3"
+                    pattern = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
+                    auto_switched_note = f"⚡ [T4 防爆盘保护] 当前为 T4 (16GB) 账号，已自动将启动模型从 {old_folder} 切换为 T4 适配模型 {folder} (12.4 GB)"
         except Exception:
             pass
 
@@ -1733,10 +1728,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     <!-- T4 16GB 模型区 -->
     <div style="display:none;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:12px;" id="presetModelGridT4">
-      <div class="folder-tag preset-card" id="preset_t4_minimax_h3" onclick="selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
         <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">🎬 MiniMax-H3 (T4 量化版)</div>
-          <div style="color:var(--muted);font-size:11px;">UD-Q2_K_XL 蒸馏主干 · 7.5 GB (8步有声)</div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
+          <div style="color:var(--muted);font-size:11px;">UD-Q3_K_XL · 12.4 GB (16G显存满速)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
@@ -1744,15 +1739,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div class="folder-tag preset-card" id="preset_t4_recavsr" onclick="selectPresetModel('preset_t4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;">
         <div>
           <div style="font-weight:700;color:#34d399;font-size:13px;">✨ ReCaVSR (2K/4K 视频超分)</div>
-          <div style="color:var(--muted);font-size:11px;">Wan2.2-5B 单步超分 · 14.1 GB (云盘已存)</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
-          <div style="color:var(--muted);font-size:11px;">UD-Q3_K_XL · 12.4 GB (16G显存满速)</div>
+          <div style="color:var(--muted);font-size:11px;">Wan2.2-5B 单步超分 · 10.1 GB (云盘已存)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
@@ -1769,14 +1756,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div>
           <div style="font-weight:700;color:#34d399;font-size:13px;">💎 Qwen3-14B 无审查 (Q6_K)</div>
           <div style="color:var(--muted);font-size:11px;">准无损精度 · 11.3 GB (~50 tok/s)</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_qwenvl8b" onclick="selectPresetModel('preset_t4_qwenvl8b', 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF', 'Qwen3-VL-8B-T4-Q8', '*Q8_0.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">👁️ Qwen3-VL-8B 视觉无审查</div>
-          <div style="color:var(--muted);font-size:11px;">满血 Q8_0 + 视觉 · 8.8 GB (~75 tok/s)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
@@ -2974,7 +2953,7 @@ function switchPresetTierTab(tier, autoSelect = true) {
     if (autoSelect) {
       const curF = (document.getElementById('inpFolder') || {}).value || '';
       if (!curF.includes('-T4-') && curF !== 'ReCaVSR') {
-        selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf');
+        selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf');
       }
     }
   } else {
@@ -5387,6 +5366,15 @@ p.wait()
             return
 
         if self.path == "/api/video_generate":
+            try:
+                cu_chk = _query_cu_usage(force=False)
+                if cu_chk.get("paid_balance") is not None and float(cu_chk.get("paid_balance")) <= 0.0:
+                    err_t4 = "当前账号为 T4 (15GB 显存 + 12.7GB 内存)，无法装载 65B 参数 (33B+32B) 的 MiniMax-H3 音视频生成模型！请点击右上角「👤 账号」切换至 RTX 6000 (96GB 显存 · 687.72 CU) 账号后再生成视频。"
+                    _append_panel_log(f"⚠️ [T4 显存限制] {err_t4}")
+                    self._send_json({"ok": False, "error": err_t4})
+                    return
+            except Exception:
+                pass
             cfg = _load_endpoint_cfg()
             _append_panel_log(
                 f"🎬 [提交视频生成任务] 分辨率 {payload.get('resolution', '832x480')} · {payload.get('num_frames', 124)}帧 · {payload.get('steps', 30)}步 · 连抽 {payload.get('batch_count', 1)}条"
