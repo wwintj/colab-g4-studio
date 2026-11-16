@@ -2916,8 +2916,11 @@ function copyText(id) {
 }
 
 const savedDriveFolders = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'ReCaVSR']);
+let lastDriveFoldersRaw = [];
+let currentPresetTier = 'g4';
 
-function switchPresetTierTab(tier) {
+function switchPresetTierTab(tier, autoSelect = true) {
+  currentPresetTier = tier;
   const gG4 = document.getElementById('presetModelGrid');
   const gT4 = document.getElementById('presetModelGridT4');
   const bG4 = document.getElementById('tabPresetG4');
@@ -2935,6 +2938,12 @@ function switchPresetTierTab(tier) {
       bG4.style.background = '#0f172a';
       bG4.style.color = '#94a3b8';
     }
+    if (autoSelect) {
+      const curF = (document.getElementById('inpFolder') || {}).value || '';
+      if (!curF.includes('-T4-') && curF !== 'ReCaVSR') {
+        selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf');
+      }
+    }
   } else {
     if (gG4) gG4.style.display = 'grid';
     if (gT4) gT4.style.display = 'none';
@@ -2948,17 +2957,24 @@ function switchPresetTierTab(tier) {
       bT4.style.background = '#0f172a';
       bT4.style.color = '#94a3b8';
     }
+    if (autoSelect) {
+      const curF = (document.getElementById('inpFolder') || {}).value || '';
+      if (curF.includes('-T4-') || curF === 'ReCaVSR') {
+        selectPresetModel('preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf');
+      }
+    }
   }
 }
 
-function renderGroupedDriveFolders(folders) {
+function renderGroupedDriveFolders(folders, updateButtons = true) {
+  if (Array.isArray(folders)) lastDriveFoldersRaw = folders;
   const fBox = document.getElementById('driveFoldersList');
   if (!fBox) return;
   const curSelFolder = (document.getElementById('inpFolder') || {}).value || '';
   savedDriveFolders.clear();
   const g4List = [];
   const t4List = [];
-  (folders || []).forEach(item => {
+  (lastDriveFoldersRaw || []).forEach(item => {
     savedDriveFolders.add(item.folder);
     const gb = typeof item.total_gb === 'number' ? item.total_gb : 0;
     const isT4Named = item.folder.includes('-T4-') || item.folder === 'ReCaVSR';
@@ -2979,22 +2995,40 @@ function renderGroupedDriveFolders(folders) {
       <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:${chkDisp};margin-left:4px;">✔</span>
     </div>`;
   };
-  let html = '';
-  if (g4List.length > 0) {
-    html += `<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:3px;">🔥 RTX 6000 (96GB) 云盘模型：</div><div>${g4List.map(renderTag).join('')}</div></div>`;
+  let pendingG4Html = '';
+  let pendingT4Html = '';
+  if (curSelFolder && !savedDriveFolders.has(curSelFolder)) {
+    const pendingTag = `<div class="folder-tag" data-folder="${curSelFolder}" title="该模型尚未存入您的 Google Drive 云盘；点击下方按钮即可从 HuggingFace 下载并永久保存到云盘" style="border:1.5px dashed #3b82f6;background:rgba(59,130,246,0.14);">
+      ☁️ <b>${curSelFolder}</b> <span style="color:#93c5fd;">(尚未存云盘 · 点下方按钮下载入盘)</span>
+      <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:inline;margin-left:4px;">✔</span>
+    </div>`;
+    if (curSelFolder.includes('-T4-') || currentPresetTier === 't4') {
+      pendingT4Html = pendingTag;
+    } else {
+      pendingG4Html = pendingTag;
+    }
   }
-  if (t4List.length > 0) {
-    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:3px;">⚡ T4 (16GB) 云盘模型：</div><div>${t4List.map(renderTag).join('')}</div></div>`;
+  let html = '';
+  if (g4List.length > 0 || pendingG4Html) {
+    html += `<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:3px;">🔥 RTX 6000 (96GB) 云盘模型：</div><div>${g4List.map(renderTag).join('')}${pendingG4Html}</div></div>`;
+  }
+  if (t4List.length > 0 || pendingT4Html) {
+    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:3px;">⚡ T4 (16GB) 云盘模型：</div><div>${t4List.map(renderTag).join('')}${pendingT4Html}</div></div>`;
   }
   fBox.innerHTML = html || '当前 MyDrive/models/ 下暂无模型文件夹';
-  syncDriveFolderHighlight(curSelFolder);
+  if (updateButtons) syncDriveFolderHighlight(curSelFolder, false);
 }
 
-function syncDriveFolderHighlight(folderName) {
+function syncDriveFolderHighlight(folderName, rerenderList = true) {
+  if (rerenderList && lastDriveFoldersRaw.length > 0) {
+    renderGroupedDriveFolders(lastDriveFoldersRaw, false);
+  }
   document.querySelectorAll('#driveFoldersList .folder-tag').forEach(el => {
     const active = el.getAttribute('data-folder') === folderName;
-    el.style.borderColor = active ? '#3b82f6' : 'var(--border)';
-    el.style.background = active ? 'rgba(59,130,246,0.16)' : '#0f172a';
+    if (!el.style.borderStyle || el.style.borderStyle !== 'dashed') {
+      el.style.borderColor = active ? '#3b82f6' : 'var(--border)';
+      el.style.background = active ? 'rgba(59,130,246,0.16)' : '#0f172a';
+    }
     const chk = el.querySelector('.drive-folder-check');
     if (chk) chk.style.display = active ? 'inline' : 'none';
   });
@@ -3005,12 +3039,12 @@ function syncDriveFolderHighlight(folderName) {
     'Qwen3.8-27B-GGUF': 'Qwen3.8-27B-Q4',
     'Qwen-Image-2.1': 'Qwen-Image-2.1',
     'Z-Image-Turbo': 'Z-Image-Turbo',
-    'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4版)',
+    'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4)',
     'Qwen3.8-27B-T4-MTP': 'Qwen3.8-27B(MTP)',
     'Qwen3-14B-T4-Q6': 'Qwen3-14B(Q6)',
     'Qwen3-VL-8B-T4-Q8': 'Qwen3-VL-8B(Q8)',
-    'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4版)',
-    'ReCaVSR': 'ReCaVSR(超分)',
+    'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4)',
+    'ReCaVSR': 'ReCaVSR',
   };
   const shortLabel = shortMap[folderName] || folderName || '当前模型';
   const inDrive = savedDriveFolders.has(folderName);
@@ -3018,12 +3052,12 @@ function syncDriveFolderHighlight(folderName) {
   const btnDep = document.getElementById('btnDeployForm');
   if (btnDl && !btnDl.disabled) {
     if (inDrive) {
-      btnDl.innerText = '✅ 云盘已存妥 (校验/补全文件)';
+      btnDl.innerText = '✅ 云盘已存妥 (校验文件)';
       btnDl.style.borderColor = 'rgba(16,185,129,0.5)';
       btnDl.style.color = '#6ee7b7';
       btnDl.title = '该模型已保存在您的 Google Drive 云盘中；点击仅校验或补全云盘缺失文件，不加载进显存';
     } else {
-      btnDl.innerText = '☁️ 仅从 HF 转存至云盘 (不启动)';
+      btnDl.innerText = '☁️ 仅从 HF 转存至云盘';
       btnDl.style.borderColor = '#3b82f6';
       btnDl.style.color = '#93c5fd';
       btnDl.title = '从 HuggingFace 下载模型并永久保存到您的 Google Drive 云盘，下载完成后不启动推理服务';
@@ -3031,10 +3065,10 @@ function syncDriveFolderHighlight(folderName) {
   }
   if (btnDep && !btnDep.disabled) {
     if (inDrive) {
-      btnDep.innerText = `🚀 从云盘加载至显存并启动 (${shortLabel})`;
+      btnDep.innerText = `🚀 从云盘加载并启动 (${shortLabel})`;
       btnDep.title = '直接从您的 Google Drive 云盘极速预热并装载至 GPU 显存启动运行（无需从 HF 重新下载）';
     } else {
-      btnDep.innerText = `🚀 从 HF 下载入云盘并启动 (${shortLabel})`;
+      btnDep.innerText = `🚀 下载入盘并启动 (${shortLabel})`;
       btnDep.title = '从 HuggingFace 下载模型、自动备份至 Google Drive 云盘，并立即加载到 GPU 显存启动运行';
     }
   }
