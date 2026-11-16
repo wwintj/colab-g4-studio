@@ -35,6 +35,20 @@ ELAPSED_META_FILE = LOCAL_MOVIES_DIR / ".elapsed_meta.json"
 PANEL_PORT = int(os.environ.get("COLAB_PANEL_PORT", "18080"))
 _HF_TRENDING_CACHE: Dict[str, Any] = {}
 
+try:
+    import colab_cli.auth as _c_auth
+    _c_auth.PUBLIC_SCOPES[:] = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/colaboratory",
+    ]
+    def _non_blocking_remote_flow(_cfg):
+        raise RuntimeError("OAuth 凭证已过期或需要重新绑定")
+    _c_auth._run_remote_flow = _non_blocking_remote_flow
+except Exception:
+    pass
+
 
 def _format_short_elapsed(sec: float) -> str:
     s = max(1, int(round(sec)))
