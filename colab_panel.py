@@ -1912,52 +1912,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <video id="mmVideoPlayer" controls autoplay loop style="width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;display:block;"></video>
       </div>
 
-      <!-- 底部文件信息栏：左「🎞️ 文件名 + 8m32s 徽章」，右「重播 + 在 Finder 中显示 + 下载」 -->
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px;padding-top:4px;">
-        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-          <span style="color:#94a3b8;font-size:14px;">🎞️</span>
-          <span id="mmVideoMeta" style="font-size:13px;color:#cbd5e1;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">尚未选择视频</span>
-          <span id="previewBottomShortBadge" style="display:none;background:#1e293b;color:#94a3b8;border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:700;">--</span>
+      <!-- 底部文件信息栏：单行紧凑对齐 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px;margin-top:12px;padding-top:4px;">
+        <div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1;overflow:hidden;">
+          <span style="color:#94a3b8;font-size:14px;flex-shrink:0;">🎞️</span>
+          <span id="mmVideoMeta" title="" style="font-size:12.5px;color:#cbd5e1;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">尚未选择视频</span>
+          <span id="previewBottomShortBadge" style="display:none;background:#1e293b;color:#94a3b8;border:1px solid var(--border);padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;flex-shrink:0;">--</span>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:8px;padding:2px 6px;">
-            <select id="upscalePresetSelect" class="cu-select" style="border:none;background:transparent;color:#ddd6fe;font-size:12px;font-weight:700;padding:3px 4px;cursor:pointer;" onchange="onUpscalePresetChange(this.value)">
-              <option value="2k" selected>2K 超清 (1440P)</option>
-              <option value="1080p">1080P 全高清</option>
-              <option value="4k">4× 极清放大</option>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
+          <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:8px;padding:2px 5px;">
+            <select id="upscalePresetSelect" class="cu-select" style="border:none;background:transparent;color:#ddd6fe;font-size:11.5px;font-weight:700;padding:2px 3px;cursor:pointer;" onchange="onUpscalePresetChange(this.value)">
+              <option value="2k" selected>2K (1440P)</option>
+              <option value="1080p">1080P</option>
+              <option value="4k">4K 极清</option>
             </select>
-            <button type="button" id="btnUpscaleVideo" onclick="upscaleCurrentVideo()" style="padding:4px 11px;font-size:12.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#ffffff;cursor:pointer;box-shadow:0 4px 12px -2px rgba(139,92,246,0.5);">
-              ✨ ReCaVSR 超分至 2K
+            <button type="button" id="btnUpscaleVideo" onclick="upscaleCurrentVideo()" style="padding:4px 9px;font-size:12px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#ffffff;cursor:pointer;">
+              ✨ 超分至 2K
             </button>
           </div>
           <input type="file" id="inpExternalVideo" accept="video/*,.mp4,.mov,.webm,.mkv" style="display:none;" onchange="handleExternalVideoImport(this)">
-          <button type="button" class="btn-outline" title="从本机任意位置选择其他 AI 生成的短视频 (.mp4/.mov/.webm)，导入后直接用 ReCaVSR 放大至 2K/4K" style="padding:5px 12px;font-size:12.5px;font-weight:700;background:rgba(139,92,246,0.14);border-color:rgba(139,92,246,0.45);color:#ddd6fe;" onclick="triggerImportExternalVideo(true)">📤 导入视频并超分</button>
-          <button type="button" class="btn-outline" title="自动截取当前视频最后一帧作为「首帧参考图」，无缝接力续写下一段 15~20 秒有声视频 (30s/45s/60s 长视频)" style="padding:5px 12px;font-size:12.5px;font-weight:700;background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.45);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 提取尾帧续写</button>
-          <button type="button" class="btn-outline" style="padding:5px 14px;font-size:12.5px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="replayCurrentVideo()">重播</button>
-          <button type="button" class="btn-outline" style="padding:5px 14px;font-size:12.5px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="revealInFinder(false)">在 Finder 中显示</button>
-          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;padding:5px 12px;font-size:12px;text-decoration:none;border-color:#10b981;color:#10b981;">⬇️ 另存为</a>
+          <button type="button" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="padding:5px 10px;font-size:12px;font-weight:700;background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.45);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
+          <button type="button" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="replayCurrentVideo()">重播</button>
+          <button type="button" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="revealInFinder(false)">Finder</button>
+          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;padding:5px 10px;font-size:12px;text-decoration:none;border-color:#10b981;color:#10b981;">⬇️ 另存为</a>
         </div>
       </div>
     </div>
 
     <!-- 右卡片：🕒 本地历史 (~/Movies/EasyColab) -->
     <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="color:#3b82f6;font-size:16px;">🕒</span>
-          <div>
-            <div style="font-size:15px;font-weight:800;color:#f8fafc;line-height:1.2;">本地历史</div>
-            <div id="localHistoryCount" style="font-size:11.5px;color:#94a3b8;margin-top:2px;">加载中...</div>
-          </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="color:#3b82f6;font-size:15px;">🕒</span>
+          <span style="font-size:14.5px;font-weight:800;color:#f8fafc;">本地历史</span>
+          <span id="localHistoryCount" style="font-size:11.5px;color:#94a3b8;">(0)</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
-          <button type="button" title="导入本机其他 AI 生成的视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;font-size:11.5px;font-weight:700;cursor:pointer;padding:3px 8px;border-radius:6px;">📤 导入</button>
-          <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="background:transparent;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:2px 6px;border-radius:6px;">↻</button>
+          <button type="button" title="导入本机其他视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;font-size:11.5px;font-weight:700;cursor:pointer;padding:3px 9px;border-radius:6px;">＋ 导入视频</button>
+          <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="background:transparent;border:none;color:#94a3b8;font-size:15px;cursor:pointer;padding:2px 6px;border-radius:6px;">↻</button>
         </div>
       </div>
 
       <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:8px;max-height:515px;overflow-y:auto;padding-right:2px;flex:1;">
-        <div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">正在扫描 ~/Movies/EasyColab ...</div>
+        <div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">正在扫描...</div>
       </div>
 
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b;">
@@ -3635,10 +3632,30 @@ async function loadLocalVideoHistory(autoSelectFirst = false) {
     const r = await fetch('/api/local_videos');
     const d = await r.json();
     localHistoryItems = (d && Array.isArray(d.items)) ? d.items : [];
-    if (cntEl) cntEl.innerText = `${localHistoryItems.length} 个媒体文件`;
+    if (cntEl) cntEl.innerText = `(${localHistoryItems.length})`;
     renderLocalHistoryList();
     if (autoSelectFirst && localHistoryItems.length > 0) {
       selectLocalHistoryItem(0);
+    } else if (currentSelectedVideoName && !localHistoryItems.some(x => x.name === currentSelectedVideoName)) {
+      if (localHistoryItems.length > 0) {
+        selectLocalHistoryItem(0);
+      } else {
+        currentSelectedVideoName = '';
+        const player = document.getElementById('mmVideoPlayer');
+        const dl = document.getElementById('mmVideoDownload');
+        const emptyEl = document.getElementById('videoEmptyPlaceholder');
+        const rWrap = document.getElementById('videoResultWrap');
+        const topBadge = document.getElementById('previewElapsedBadge');
+        const botBadge = document.getElementById('previewBottomShortBadge');
+        const metaEl = document.getElementById('mmVideoMeta');
+        if (player) { player.pause(); player.removeAttribute('src'); player.removeAttribute('data-fname'); }
+        if (rWrap) rWrap.style.display = 'none';
+        if (emptyEl) emptyEl.style.display = 'flex';
+        if (dl) dl.style.display = 'none';
+        if (topBadge) topBadge.style.display = 'none';
+        if (botBadge) botBadge.style.display = 'none';
+        if (metaEl) { metaEl.innerText = '尚未选择视频'; metaEl.title = ''; }
+      }
     }
   } catch (e) {
     if (hBox) hBox.innerHTML = `<div style="font-size:12px;color:var(--muted);">读取本地历史失败: ${e}</div>`;
@@ -3649,7 +3666,7 @@ function renderLocalHistoryList() {
   const hBox = document.getElementById('mmHistoryList');
   if (!hBox) return;
   if (!localHistoryItems.length) {
-    hBox.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:16px 0;text-align:center;">暂无本地视频记录<br><span style="font-size:11px;color:#64748b;">(将保存在 ~/Movies/EasyColab)</span></div>`;
+    hBox.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:24px 0;text-align:center;">暂无本地视频记录</div>`;
     return;
   }
   hBox.innerHTML = localHistoryItems.map((it, idx) => {
@@ -3704,7 +3721,11 @@ function selectLocalHistoryItem(idx) {
   dl.href = url;
   dl.download = it.name;
   dl.style.display = 'inline-flex';
-  document.getElementById('mmVideoMeta').innerText = it.name;
+  const metaEl = document.getElementById('mmVideoMeta');
+  if (metaEl) {
+    metaEl.innerText = it.name;
+    metaEl.title = it.name;
+  }
   if (topBadge) {
     if (it.elapsed_long) {
       topBadge.innerText = `⏱ ${it.elapsed_long}`;
@@ -4085,8 +4106,8 @@ let lastAutoUpscaledVideo = '';
 function onUpscalePresetChange(val) {
   const btn = document.getElementById('btnUpscaleVideo');
   if (!btn || btn.getAttribute('data-running') === '1') return;
-  const labelMap = {'2k': '✨ ReCaVSR 超分至 2K', '1080p': '✨ ReCaVSR 超分至 1080P', '4k': '✨ ReCaVSR 4× 极清放大'};
-  btn.innerText = labelMap[val] || '✨ ReCaVSR 超分至 2K';
+  const labelMap = {'2k': '✨ 超分至 2K', '1080p': '✨ 超分至 1080P', '4k': '✨ 超分至 4K'};
+  btn.innerText = labelMap[val] || '✨ 超分至 2K';
 }
 
 async function upscaleCurrentVideo() {
