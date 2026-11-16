@@ -1110,12 +1110,45 @@ print("PANEL_JSON_START:" + json.dumps(res, ensure_ascii=False) + ":PANEL_JSON_E
 
 
 def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu: str, download_only: bool = False):
+    g4_only_folders = {
+        "Huihui-Qwen3.8-27B-abliterated-GGUF",
+        "MiniMax-H3",
+        "MiniMax-H3-Turbo",
+        "Qwen3.8-27B-GGUF",
+        "Qwen-Image-2.1",
+        "Z-Image-Turbo",
+    }
+    auto_switched_note = ""
+    if not download_only:
+        try:
+            cu_check = _query_cu_usage(force=False)
+            bal_val = cu_check.get("paid_balance")
+            if bal_val is not None and float(bal_val) <= 0.0:
+                gpu = "T4"
+                if folder in g4_only_folders or "bf16.gguf" in (pattern or "").lower():
+                    old_folder = folder
+                    if "minimax" in folder.lower() or "minimax" in repo.lower():
+                        repo = "unsloth/MiniMax-H3-GGUF"
+                        folder = "MiniMax-H3-T4-GGUF"
+                        pattern = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
+                    else:
+                        repo = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
+                        folder = "Qwen3.8-27B-T4-Q3"
+                        pattern = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
+                    auto_switched_note = f"⚡ [T4 防爆盘保护] 当前为 T4 (16GB) 账号，已自动将启动模型从 {old_folder} 切换为 T4 适配模型 {folder}"
+        except Exception:
+            pass
+
     with _DEPLOY_LOCK:
         if _DEPLOY_STATE["running"]:
             return False, "已有部署/下载任务正在运行中"
         _DEPLOY_STATE["running"] = True
         action_label = "仅下载模型至 Google Drive 云盘" if download_only else "一键部署与加载模型"
-        _DEPLOY_STATE["logs"] = [f"[{time.strftime('%H:%M:%S')}] 🚀 开始执行 [{action_label}] ({repo})..."]
+        init_logs = []
+        if auto_switched_note:
+            init_logs.append(f"[{time.strftime('%H:%M:%S')}] {auto_switched_note}")
+        init_logs.append(f"[{time.strftime('%H:%M:%S')}] 🚀 开始执行 [{action_label}] ({repo} · {folder})...")
+        _DEPLOY_STATE["logs"] = init_logs
         _DEPLOY_STATE["exit_code"] = None
         _DEPLOY_STATE["started_at"] = time.time()
 
@@ -3207,6 +3240,11 @@ async function refreshStatus(force = false) {
           balEl.style.color = '#34d399';
           if (hrsEl) {
             hrsEl.innerText = '🟢 今日配额可用 · 单次约 3~5 小时';
+          }
+          const curF = (document.getElementById('inpFolder') || {}).value || '';
+          const g4OnlySet = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'MiniMax-H3-Turbo', 'Qwen3.8-27B-GGUF', 'Qwen-Image-2.1', 'Z-Image-Turbo']);
+          if (g4OnlySet.has(curF)) {
+            switchPresetTierTab('t4', true);
           }
         } else {
           balEl.innerText = 'T4 冷却中';
