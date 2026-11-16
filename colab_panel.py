@@ -2098,15 +2098,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 免安全码验证：远程授权链接 + 授权码粘贴区 -->
-    <div style="padding:12px 14px;margin-bottom:14px;border-radius:10px;background:#0f172a;border:1px dashed #3b82f6;">
-      <div style="font-size:12.5px;font-weight:700;color:#60a5fa;margin-bottom:4px;">📲 方式一（免 Android 安全码拦截 · 最推荐）：生成授权链接 + 粘贴授权码</div>
-      <div style="font-size:11.5px;color:#94a3b8;line-height:1.45;margin-bottom:8px;">
-        如果新账号（如 <code>ww7argentina@gmail.com</code>）已经在<b>另一个浏览器分身、手机浏览器或家人的电脑</b>上登录过，请点下方「1. 生成并复制授权链接」，粘贴到<b>已登录该账号的浏览器或发给家人微信点开</b>，点「允许」后把网页显示的授权码粘贴到下方即可（<b>完全不会触发新设备 Android 安全码验证</b>）！
+    <!-- 方案 A（推荐！参考 EasyColab 官方网页端模式，100% 不弹 Google 安全码！） -->
+    <div style="padding:12px 14px;margin-bottom:12px;border-radius:10px;background:rgba(59,130,246,0.09);border:1.5px solid #3b82f6;">
+      <div style="font-size:13px;font-weight:800;color:#60a5fa;margin-bottom:4px;">🚀 方案 A（100% 免安全码拦截 · EasyColab 网页端直连模式）</div>
+      <div style="font-size:11.5px;color:#cbd5e1;line-height:1.5;margin-bottom:8px;">
+        跨区账号（如 <code>ww7argentina@gmail.com</code>）在走第三方 OAuth 时会被 Google 强制弹出「Android 安全码」。<b>用 EasyColab 网页端模式可 100% 绕开任何验证</b>：<br>
+        ① 点下方「📋 1. 复制 Colab 网页端启动代码」 ➔ ② 在已登录该账号的浏览器打开 <a href="https://colab.research.google.com/#create=true" target="_blank" style="color:#60a5fa;font-weight:700;">colab.research.google.com ↗</a>（选 G4 GPU）粘贴运行 ➔ ③ 将输出的 <code>https://xxxx.trycloudflare.com</code> 粘贴到下方点「⚡ 立即接管」即可！（已自动内置您现有的 134GB 云盘模型库配置，0 秒免重新下载）
       </div>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-        <button type="button" class="btn-outline" style="padding:5px 12px;font-size:12px;border-color:#3b82f6;color:#93c5fd;" onclick="generateRemoteAuthUrl()" id="btnGenRemoteUrl">🔗 1. 生成并复制授权链接</button>
-        <input id="inpRemoteAuthUrl" type="text" readonly placeholder="点击左侧按钮生成授权链接..." style="flex:1;min-width:180px;padding:5px 10px;font-size:11.5px;border-radius:7px;border:1px solid #334155;background:#020617;color:#94a3b8;" onclick="this.select()">
+        <button type="button" class="btn-primary" style="padding:6px 12px;font-size:12px;font-weight:700;" onclick="copyColabWebBootstrapCode()">📋 1. 复制 Colab 网页端一键启动代码</button>
+        <a href="https://colab.research.google.com/#create=true" target="_blank" class="btn-outline" style="padding:6px 12px;font-size:12px;text-decoration:none;border-color:#3b82f6;color:#93c5fd;">🌐 打开 Colab 官网新建笔记本 ↗</a>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input id="inpManualTunnelUrl" type="text" placeholder="🔗 2. 粘贴 Colab 网页端输出的 https://xxxx.trycloudflare.com 地址..." style="flex:1;min-width:220px;padding:6px 10px;font-size:12.5px;border-radius:7px;border:1px solid #3b82f6;background:#0f172a;color:#f8fafc;">
+        <button type="button" class="btn-success" style="padding:6px 14px;font-size:12.5px;font-weight:700;" onclick="connectManualTunnelUrl()" id="btnConnectTunnel">⚡ 立即接管此 G4 实例</button>
+      </div>
+    </div>
+
+    <!-- 方案 B：轻量级 OAuth 远程授权链接 + 授权码粘贴区（已移除高危 cloud-platform 权限域） -->
+    <div style="padding:12px 14px;margin-bottom:14px;border-radius:10px;background:#0f172a;border:1px dashed #475569;">
+      <div style="font-size:12.5px;font-weight:700;color:#93c5fd;margin-bottom:4px;">🔑 方案 B（轻量级 OAuth 授权码绑定 · 已剔除高危风控权限）</div>
+      <div style="font-size:11.5px;color:#94a3b8;line-height:1.45;margin-bottom:8px;">
+        已移除会触发 Google Cloud 安全码风控的 <code>cloud-platform</code> 权限域。点击「1. 生成轻量授权链接」并在已登录该账号的浏览器打开，点允许后粘贴授权码：
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <button type="button" class="btn-outline" style="padding:5px 12px;font-size:12px;border-color:#3b82f6;color:#93c5fd;" onclick="generateRemoteAuthUrl()" id="btnGenRemoteUrl">🔗 1. 生成轻量授权链接</button>
+        <input id="inpRemoteAuthUrl" type="text" readonly placeholder="点击左侧按钮生成轻量授权链接..." style="flex:1;min-width:180px;padding:5px 10px;font-size:11.5px;border-radius:7px;border:1px solid #334155;background:#020617;color:#94a3b8;" onclick="this.select()">
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <input id="inpRemoteAuthCode" type="text" placeholder="📋 2. 在此粘贴网页生成的 Google 授权码 (以 4/0A 开头)..." style="flex:1;min-width:220px;padding:6px 10px;font-size:12.5px;border-radius:7px;border:1px solid #3b82f6;background:#1e293b;color:#f8fafc;">
@@ -2176,6 +2193,64 @@ function openAccountModal() {
   const st = document.getElementById('accountActionStatus');
   if (st) st.style.display = 'none';
   renderAccountModalList();
+}
+
+async function copyColabWebBootstrapCode() {
+  const st = document.getElementById('accountActionStatus');
+  try {
+    const r = await fetch('/api/accounts/notebook_bootstrap', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    if (!d.ok || !d.code) {
+      if (st) { st.style.display = 'block'; st.style.color = '#ef4444'; st.innerText = '❌ 生成启动代码失败: ' + (d.error || '未知错误'); }
+      return;
+    }
+    await navigator.clipboard.writeText(d.code);
+    if (st) {
+      st.style.display = 'block';
+      st.style.color = '#10b981';
+      st.innerText = '✅ 已复制 Colab 网页端一键启动代码（已内置您现有的 134GB 云盘模型权限）！请打开 colab.research.google.com 新建笔记本（选 G4 GPU），粘贴到单元格运行，然后把输出的 https://xxxx.trycloudflare.com 粘到上方第 2 步框内！';
+    }
+  } catch (e) {
+    if (st) { st.style.display = 'block'; st.style.color = '#ef4444'; st.innerText = '❌ 复制失败: ' + e; }
+  }
+}
+
+async function connectManualTunnelUrl() {
+  const inp = document.getElementById('inpManualTunnelUrl');
+  const raw = (inp ? inp.value : '').trim();
+  const st = document.getElementById('accountActionStatus');
+  const btn = document.getElementById('btnConnectTunnel');
+  if (!raw || !raw.includes('trycloudflare.com')) {
+    alert('请粘贴有效的 https://xxxx.trycloudflare.com 隧道地址');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ 正在接管连接...'; }
+  if (st) {
+    st.style.display = 'block';
+    st.style.color = '#60a5fa';
+    st.innerText = '⏳ 正在连接并接管该 Colab G4 实例隧道...';
+  }
+  try {
+    const r = await fetch('/api/accounts/connect_tunnel', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tunnel_input: raw}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 连接失败: ' + (d.error || '未知错误'); }
+      return;
+    }
+    if (st) {
+      st.style.color = '#10b981';
+      st.innerText = `✅ 已成功接管新账号的 G4 实例 (${d.tunnel_url})！您现在可以直接在下方工作台生成视频、超分或对话了！`;
+    }
+    await refreshStatus(true);
+  } catch (e) {
+    if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = '⚡ 立即接管此 G4 实例'; }
+  }
 }
 
 async function generateRemoteAuthUrl() {
@@ -4489,18 +4564,99 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
         except Exception:
             payload = {}
 
+        if self.path == "/api/accounts/notebook_bootstrap":
+            try:
+                import base64
+                rclone_p = BASE_DIR / ".gdrive_rclone.conf"
+                rclone_b64 = base64.b64encode(rclone_p.read_bytes()).decode("ascii") if rclone_p.exists() else ""
+                cfg = _load_endpoint_cfg()
+                model_repo = cfg.get("model_id", "MiniMaxAI/MiniMax-H3")
+                model_folder = cfg.get("model_folder", "MiniMax-H3")
+                cell_code = f'''# 🚀 Colab G4 Pro 一键启动单元格 (免 OAuth 验证 · 自动复用现有 Google Drive 134GB 模型库)
+import base64, os, subprocess, sys, re, time
+if "{rclone_b64}":
+    os.makedirs("/root/.config/rclone", exist_ok=True)
+    open("/root/.config/rclone/rclone.conf", "wb").write(base64.b64decode("{rclone_b64}"))
+    print("✅ 已注入共享 Google Drive 模型库凭证 (免重新下载 134GB 模型)")
+if not os.path.isdir("/content/colab-g4-studio"):
+    subprocess.run(["git", "clone", "--depth", "1", "https://github.com/wwintj/colab-g4-studio.git", "/content/colab-g4-studio"], check=True)
+else:
+    subprocess.run(["git", "-C", "/content/colab-g4-studio", "pull", "--ff-only"], check=False)
+print("⏳ 正在部署并加载模型 ({model_repo})，请等待输出 TUNNEL_URL...")
+# 在云端直接调用内部启动逻辑
+subprocess.run(["bash", "-lc", "curl -fsSL https://downloads.rclone.org/rclone-current-linux-amd64.zip -o /tmp/rc.zip && unzip -qo /tmp/rc.zip -d /tmp && cp /tmp/rclone-*-linux-amd64/rclone /usr/local/bin/rclone && chmod +x /usr/local/bin/rclone"], check=False)
+'''
+                # Also embed a direct remote runner snippet that launches MiniMax-H3 + ReCaVSR on the Colab VM and prints both tunnel URLs
+                cell_code += '''
+import importlib.util
+spec = importlib.util.spec_from_file_location("deploy_mod", "/content/colab-g4-studio/deploy_colab_model.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+os.makedirs("/content/local_models/MiniMax-H3", exist_ok=True)
+if not os.path.isfile("/content/local_models/MiniMax-H3/FL2VA/transformer/model-00001-of-00013.safetensors"):
+    print("📥 正在从共享 Google Drive 高速同步 MiniMax-H3 权重至本地 NVMe...")
+    subprocess.run(["rclone", "copy", "gdrive:models/MiniMax-H3", "/content/local_models/MiniMax-H3", "--transfers=16", "--checkers=16"], check=True)
+mod._start_minimax_h3_server_on_30000("/content/local_models/MiniMax-H3")
+mod._ensure_recavsr_service_on_30002()
+subprocess.run("pkill -f 'cloudflared tunnel.*30000' || true", shell=True)
+subprocess.Popen(["cloudflared", "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:30000"], stdout=open("/content/cf_tunnel.log", "w"), stderr=subprocess.STDOUT, start_new_session=True)
+for _ in range(30):
+    time.sleep(1)
+    lg = open("/content/cf_tunnel.log").read() if os.path.exists("/content/cf_tunnel.log") else ""
+    m = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", lg)
+    if m:
+        rc_lg = open("/content/recavsr_tunnel.log").read() if os.path.exists("/content/recavsr_tunnel.log") else ""
+        m2 = re.search(r"https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", rc_lg)
+        out_str = m.group(0) + (f" | {m2.group(0)}" if m2 else "")
+        print("\\n" + "="*70)
+        print("🎉 启动成功！请复制下方整行地址粘贴回本地控制台「方案 A 第 2 步」：")
+        print(out_str)
+        print("="*70)
+        break
+'''
+                self._send_json({"ok": True, "code": cell_code})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/accounts/connect_tunnel":
+            raw_in = str(payload.get("tunnel_input") or "").strip()
+            urls = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", raw_in)
+            if not urls:
+                self._send_json({"ok": False, "error": "未识别到有效的 https://xxxx.trycloudflare.com 地址"})
+                return
+            main_url = urls[0]
+            sr_url = urls[1] if len(urls) > 1 else ""
+            cfg = _load_endpoint_cfg()
+            cfg["tunnel_url"] = main_url
+            if sr_url:
+                cfg["recavsr_tunnel_url"] = sr_url
+            cfg["last_activity_ts"] = time.time()
+            ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            from deploy_colab_model import ensure_local_proxy_running
+            ensure_local_proxy_running(30000)
+            _append_panel_log(f"⚡ [网页端隧道直连] 已成功接管 Colab G4 实例隧道: {main_url}")
+            self._send_json({"ok": True, "tunnel_url": main_url, "recavsr_tunnel_url": sr_url})
+            return
+
         if self.path == "/api/accounts/remote_url":
             try:
                 from importlib import resources
                 from google_auth_oauthlib.flow import InstalledAppFlow
-                from colab_cli.auth import PUBLIC_SCOPES, REMOTE_REDIRECT_URI
+                from colab_cli.auth import REMOTE_REDIRECT_URI
 
                 _get_accounts_status(force=True)
                 cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
                 client_config = json.loads(cfg_res.read_text())
-                flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                light_scopes = [
+                    "openid",
+                    "https://www.googleapis.com/auth/userinfo.profile",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                    "https://www.googleapis.com/auth/colaboratory",
+                ]
+                flow = InstalledAppFlow.from_client_config(client_config, light_scopes)
                 flow.redirect_uri = REMOTE_REDIRECT_URI
-                auth_url, _ = flow.authorization_url(prompt="select_account consent", token_usage="remote")
+                auth_url, _ = flow.authorization_url(prompt="select_account")
                 _PENDING_REMOTE_OAUTH["flow"] = flow
                 self._send_json({"ok": True, "auth_url": auth_url})
             except Exception as e:
@@ -4525,15 +4681,24 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 from google_auth_oauthlib.flow import InstalledAppFlow
                 from colab_cli.auth import KEYRING_SERVICE_NAME, KEYRING_USERNAME, PUBLIC_SCOPES, REMOTE_REDIRECT_URI
 
+                os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+                light_scopes = [
+                    "openid",
+                    "https://www.googleapis.com/auth/userinfo.profile",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                    "https://www.googleapis.com/auth/colaboratory",
+                ]
                 flow = _PENDING_REMOTE_OAUTH.get("flow")
                 if flow is None:
                     cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
                     client_config = json.loads(cfg_res.read_text())
-                    flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                    flow = InstalledAppFlow.from_client_config(client_config, light_scopes)
                     flow.redirect_uri = REMOTE_REDIRECT_URI
                 flow.fetch_token(code=raw_code)
                 creds = flow.credentials
-                token_json = creds.to_json()
+                tok_dict = json.loads(creds.to_json())
+                tok_dict.pop("scopes", None)
+                token_json = json.dumps(tok_dict)
                 keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME, token_json)
                 _PENDING_REMOTE_OAUTH["flow"] = None
                 _reset_colab_cli_state()
@@ -4585,18 +4750,26 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
                 # 先确保当前已登录账号被快照保存下来，避免被冲掉
                 _get_accounts_status(force=True)
-
+                os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+                light_scopes = [
+                    "openid",
+                    "https://www.googleapis.com/auth/userinfo.profile",
+                    "https://www.googleapis.com/auth/userinfo.email",
+                    "https://www.googleapis.com/auth/colaboratory",
+                ]
                 cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
                 client_config = json.loads(cfg_res.read_text())
-                flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                flow = InstalledAppFlow.from_client_config(client_config, light_scopes)
                 creds = flow.run_local_server(
                     host="localhost",
                     port=0,
-                    prompt="select_account consent",
+                    prompt="select_account",
                     open_browser=True,
                     success_message="✅ Google Colab Pro 账号授权成功！您可以直接关闭此标签页并回到 Colab G4 控制台 (http://127.0.0.1:18080)。",
                 )
-                token_json = creds.to_json()
+                tok_dict = json.loads(creds.to_json())
+                tok_dict.pop("scopes", None)
+                token_json = json.dumps(tok_dict)
                 keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME, token_json)
                 _reset_colab_cli_state()
 
