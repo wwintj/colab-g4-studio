@@ -656,17 +656,32 @@ def _fetch_hf_repo_detail(repo_id: str) -> Dict[str, Any]:
 
 
 def _query_cu_usage(force: bool = False) -> Dict[str, Any]:
-    """查询 Google Colab 算力余额 (CU) 与实时扣费速率 (CU/h)"""
+    """查询 Google Colab 算力余额 (CU)、实时扣费速率 (CU/h) 与免费 T4 可用状态"""
     now = time.time()
     if not force and _LAST_CU_CACHE["data"] and (now - _LAST_CU_CACHE["timestamp"] < 20):
         return _LAST_CU_CACHE["data"]
     try:
+        from urllib.parse import urljoin
+        from colab_cli.client import TUN_ENDPOINT
         from colab_cli.common import state
-        info = state.client.get_consumption_user_info()
+
+        url = urljoin(state.client.colab_domain, f"{TUN_ENDPOINT}/ccu-info")
+        resp = state.client.session.request(
+            "GET",
+            url,
+            headers={"Accept": "application/json", "X-Colab-Client-Agent": "colab-cli"},
+            params={"authuser": "0"},
+            timeout=10,
+        )
+        raw_txt = state.client._strip_xssi_prefix(resp.text)
+        raw_obj = json.loads(raw_txt) if raw_txt else {}
+        el_gpus = [str(g).upper() for g in (raw_obj.get("eligibleGpus") or [])]
         data = {
-            "paid_balance": round(float(info.paid_compute_units_balance), 2),
-            "burn_rate_hourly": round(float(info.consumption_rate_hourly), 2),
-            "active_assignments": int(info.assignments_count),
+            "paid_balance": round(float(raw_obj.get("currentBalance") or 0.0), 2),
+            "burn_rate_hourly": round(float(raw_obj.get("consumptionRateHourly") or 0.0), 2),
+            "active_assignments": int(raw_obj.get("assignmentsCount") or 0),
+            "eligible_gpus": el_gpus,
+            "t4_available": ("T4" in el_gpus) or (len(el_gpus) > 0),
         }
         _LAST_CU_CACHE["data"] = data
         _LAST_CU_CACHE["timestamp"] = now
@@ -676,6 +691,8 @@ def _query_cu_usage(force: bool = False) -> Dict[str, Any]:
             "paid_balance": None,
             "burn_rate_hourly": 0.0,
             "active_assignments": 0,
+            "eligible_gpus": ["T4"],
+            "t4_available": True,
         }
 
 
@@ -2164,7 +2181,7 @@ function renderAccountBadgeAndModal(accInfo) {
       ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(148,163,184,0.18);color:#cbd5e1;font-weight:700;">-- CU</span>`
       : (hasG4
           ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(16,185,129,0.2);color:#34d399;font-weight:700;">⚡ ${cuNum.toFixed(2)} CU · 支持 G4</span>`
-          : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(245,158,11,0.18);color:#fcd34d;font-weight:700;" title="Google One AI Pro (2TB) 不含 Colab 算力单元；Colab 余额为 0 CU 时仅开放免费 T4，无法分配 G4">⚠️ 0.00 CU · 仅免费 T4</span>`);
+          : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.18);color:#93c5fd;font-weight:700;" title="0 CU 账号可完全免费使用 T4 (16GB)，单号每日可用约 3~5 小时，用完冷却后可切其他免费号无限接力">🟢 免费 T4 (可用 ≈3~5h/天)</span>`);
     const actBtn = isAct
       ? `<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.22);color:#34d399;font-size:11.5px;font-weight:700;">✅ 当前使用</span>`
       : `<button type="button" class="btn-primary" style="padding:4px 10px;font-size:11.5px;" onclick="switchColabAccount('${escapeHtml(it.email)}')">⚡ 切换</button>`;
@@ -2671,6 +2688,7 @@ let liveUptimeSec = null;
 let liveBurnRate = 0.0;
 let basePaidBalance = null;
 let baseBalanceSyncTs = 0;
+let isFreeT4Available = true;
 let liveIdleSec = 0;
 let liveIdleTimeoutMin = 30;
 let isInstanceOnline = false;
@@ -2687,8 +2705,24 @@ function updateLiveSessionCuDisplay() {
   const usedEl = document.getElementById('cuSessionUsed');
   const subEl = document.getElementById('cuSessionUsedSub');
   const balEl = document.getElementById('cuBalance');
+  const hrsEl = document.getElementById('cuRemainHours');
   if (!usedEl) return;
   if (isInstanceOnline && liveUptimeSec !== null && liveUptimeSec >= 0) {
+    if (basePaidBalance !== null && basePaidBalance <= 0) {
+      usedEl.innerText = '0.00 CU';
+      usedEl.style.color = '#10b981';
+      if (subEl) {
+        subEl.innerText = '免费 T4 零算力消耗';
+        subEl.style.color = '#34d399';
+      }
+      if (hrsEl) {
+        const usedMin = Math.floor(liveUptimeSec / 60);
+        const remLow = Math.max(0.1, 3.0 - (liveUptimeSec / 3600.0)).toFixed(1);
+        const remHigh = Math.max(0.5, 5.0 - (liveUptimeSec / 3600.0)).toFixed(1);
+        hrsEl.innerText = `已跑 ${usedMin}分 · 预计还可用 ≈ ${remLow}~${remHigh} 小时`;
+      }
+      return;
+    }
     const effRate = liveBurnRate > 0 ? liveBurnRate : 10.05;
     const usedCu = (liveUptimeSec / 3600.0) * effRate;
     usedEl.innerText = `${usedCu.toFixed(2)} CU`;
@@ -2945,13 +2979,29 @@ async function refreshStatus(force = false) {
         const bal = Number(d.cu_info.paid_balance);
         basePaidBalance = bal;
         baseBalanceSyncTs = Date.now();
-        balEl.innerText = `${bal.toFixed(2)} CU`;
-        if (hrsEl) {
-          const refRate = br > 0 ? br : 10.05;
-          const hrs = bal / refRate;
-          hrsEl.innerText = br > 0
-            ? `当前速率可跑 ≈ ${hrs.toFixed(1)} 小时`
-            : `按 RTX PRO 6000 (10.05/h) ≈ ${hrs.toFixed(1)} 小时`;
+        isFreeT4Available = d.cu_info.t4_available !== false;
+        if (bal > 0) {
+          balEl.innerText = `${bal.toFixed(2)} CU`;
+          balEl.style.color = '#f8fafc';
+          if (hrsEl) {
+            const refRate = br > 0 ? br : 10.05;
+            const hrs = bal / refRate;
+            hrsEl.innerText = br > 0
+              ? `当前速率可跑 ≈ ${hrs.toFixed(1)} 小时`
+              : `按 RTX PRO 6000 (10.05/h) ≈ ${hrs.toFixed(1)} 小时`;
+          }
+        } else if (isFreeT4Available) {
+          balEl.innerText = '免费 T4';
+          balEl.style.color = '#34d399';
+          if (hrsEl) {
+            hrsEl.innerText = '🟢 今日免费配额可用 · 单次约 3~5 小时';
+          }
+        } else {
+          balEl.innerText = 'T4 冷却中';
+          balEl.style.color = '#f59e0b';
+          if (hrsEl) {
+            hrsEl.innerText = '⏳ 今日免费 T4 已用完 (请切其他号接力)';
+          }
         }
       }
       rateEl.innerText = `${br.toFixed(2)} CU/h`;
