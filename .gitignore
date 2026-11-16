@@ -6,6 +6,7 @@ __pycache__/
 
 # Private credentials, tokens & runtime logs (NEVER commit!)
 .gdrive_rclone.conf
+.colab_accounts.json
 .colab_endpoint.json
 .colab_panel_logs.json
 .custom_hf_models.json

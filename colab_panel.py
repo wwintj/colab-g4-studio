@@ -29,6 +29,7 @@ COLAB_BIN = BASE_DIR / ".venv" / "bin" / "colab"
 PYTHON_BIN = BASE_DIR / ".venv" / "bin" / "python"
 ENDPOINT_FILE = BASE_DIR / ".colab_endpoint.json"
 CUSTOM_MODELS_FILE = BASE_DIR / ".custom_hf_models.json"
+ACCOUNTS_FILE = BASE_DIR / ".colab_accounts.json"
 LOCAL_MOVIES_DIR = Path.home() / "Movies" / "EasyColab"
 ELAPSED_META_FILE = LOCAL_MOVIES_DIR / ".elapsed_meta.json"
 PANEL_PORT = int(os.environ.get("COLAB_PANEL_PORT", "18080"))
@@ -676,6 +677,112 @@ def _query_cu_usage(force: bool = False) -> Dict[str, Any]:
             "burn_rate_hourly": 0.0,
             "active_assignments": 0,
         }
+
+
+_ACCOUNT_INFO_CACHE: Dict[str, Any] = {"timestamp": 0.0, "data": None}
+
+
+def _load_saved_accounts() -> Dict[str, Dict[str, Any]]:
+    if ACCOUNTS_FILE.exists():
+        try:
+            obj = json.loads(ACCOUNTS_FILE.read_text(encoding="utf-8"))
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+    return {}
+
+
+def _save_saved_accounts(acc_map: Dict[str, Dict[str, Any]]):
+    ACCOUNTS_FILE.write_text(json.dumps(acc_map, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        os.chmod(ACCOUNTS_FILE, 0o600)
+    except Exception:
+        pass
+
+
+def _reset_colab_cli_state():
+    try:
+        from colab_cli.common import state
+        state._client = None
+        state._sessions = None
+    except Exception:
+        pass
+    _LAST_CU_CACHE["data"] = None
+    _LAST_CU_CACHE["timestamp"] = 0.0
+    _LAST_METRICS_CACHE["data"] = None
+    _LAST_METRICS_CACHE["timestamp"] = 0.0
+    _ACCOUNT_INFO_CACHE["data"] = None
+    _ACCOUNT_INFO_CACHE["timestamp"] = 0.0
+
+
+def _get_accounts_status(force: bool = False, cu_balance: Any = None) -> Dict[str, Any]:
+    now = time.time()
+    if not force and _ACCOUNT_INFO_CACHE["data"] and (now - _ACCOUNT_INFO_CACHE["timestamp"] < 45):
+        cached = dict(_ACCOUNT_INFO_CACHE["data"])
+        if cu_balance is not None and cached.get("active_email"):
+            for it in cached.get("accounts", []):
+                if it.get("email") == cached["active_email"]:
+                    it["cu_balance"] = cu_balance
+        return cached
+
+    acc_map = _load_saved_accounts()
+    active_email = ""
+    active_name = ""
+    active_pic = ""
+    try:
+        import keyring
+        from colab_cli.auth import KEYRING_SERVICE_NAME, KEYRING_USERNAME
+        from colab_cli.common import state
+
+        token_json = keyring.get_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME)
+        if token_json:
+            resp = state.client.session.get("https://www.googleapis.com/oauth2/v2/userinfo", timeout=6)
+            if resp.status_code == 200:
+                uinfo = resp.json()
+                active_email = str(uinfo.get("email") or "").strip()
+                active_name = str(uinfo.get("name") or active_email).strip()
+                active_pic = str(uinfo.get("picture") or "").strip()
+                if active_email:
+                    prev = acc_map.get(active_email, {})
+                    rclone_p = BASE_DIR / ".gdrive_rclone.conf"
+                    rclone_txt = prev.get("rclone_conf", "")
+                    if not rclone_txt and rclone_p.exists() and len(acc_map) == 0:
+                        rclone_txt = rclone_p.read_text(encoding="utf-8")
+                    acc_map[active_email] = {
+                        "email": active_email,
+                        "name": active_name,
+                        "picture": active_pic,
+                        "token_json": token_json,
+                        "rclone_conf": rclone_txt,
+                        "cu_balance": cu_balance if cu_balance is not None else prev.get("cu_balance"),
+                        "updated_at": time.strftime("%Y-%m-%d %H:%M"),
+                    }
+                    _save_saved_accounts(acc_map)
+    except Exception:
+        pass
+
+    public_list = []
+    for em, info in acc_map.items():
+        public_list.append({
+            "email": em,
+            "name": info.get("name") or em,
+            "picture": info.get("picture") or "",
+            "cu_balance": info.get("cu_balance"),
+            "has_drive_conf": bool(info.get("rclone_conf")),
+            "updated_at": info.get("updated_at") or "",
+            "is_active": (em == active_email),
+        })
+    public_list.sort(key=lambda x: (0 if x["is_active"] else 1, x["email"]))
+    res = {
+        "active_email": active_email,
+        "active_name": active_name,
+        "accounts": public_list,
+    }
+    _ACCOUNT_INFO_CACHE["data"] = res
+    _ACCOUNT_INFO_CACHE["timestamp"] = now
+    return res
+
 
 
 _GDRIVE_REFRESHING = False
@@ -1345,6 +1452,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <p>云盘模型目录：<code>MyDrive/models/&lt;模型文件夹&gt;</code> · 本机永久固定接口：<code>http://127.0.0.1:30000/v1</code></p>
   </div>
   <div class="btn-group">
+    <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或添加其他家人的 Google Colab Pro 账号（支持多账号一键秒切，并可共享现有云盘模型免重复下载！）" style="border-color:rgba(59,130,246,0.5);color:#93c5fd;">👤 <span id="headerAccountLabel">账号检测中...</span> ▾</button>
     <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh">🔄 刷新显存与硬盘</button>
     <button class="btn-success" onclick="startDeploy()" id="btnQuickStart">▶️ 一键开机 / 启动服务</button>
     <button class="btn-danger" onclick="stopColab()" id="btnStop">🛑 关闭服务器</button>
@@ -1964,9 +2072,205 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- Google Colab Pro & 云盘多账号管理与秒切模态弹窗 -->
+<div id="accountSwitchModal" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.78);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div style="width:100%;max-width:640px;max-height:90vh;overflow-y:auto;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:20px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.6);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <div style="font-size:17px;font-weight:800;color:#f8fafc;">👤 Google Colab Pro 多账号切换与绑定</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">支持绑定家人/朋友的多个 Gmail Pro 账号，算力用完时 1 秒无缝互切，并可共享同一套云盘大模型免重新下载！</div>
+      </div>
+      <button class="btn-outline" style="padding:4px 10px;font-size:14px;" onclick="closeAccountModal()">✕</button>
+    </div>
+
+    <div style="padding:11px 14px;margin-bottom:14px;border-radius:10px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.35);">
+      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12.5px;color:#d1fae5;line-height:1.45;">
+        <input type="checkbox" id="chkShareExistingDrive" checked style="margin-top:3px;width:15px;height:15px;accent-color:#10b981;flex-shrink:0;">
+        <span><b>🔗 共享当前 Google Drive 模型云盘（强烈推荐）</b><br><span style="font-size:11.5px;color:#a7f3d0;">勾选后：仅切换 Colab Pro 算力扣费账号（使用家人的 CU 额度开机），但云端依然直接高速读取您现有云盘里已存好的 134GB MiniMax-H3 / ReCaVSR / Qwen3.8 模型，<b>0 秒免重新下载</b>！</span></span>
+      </label>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <div style="font-size:12.5px;font-weight:700;color:#93c5fd;margin-bottom:8px;">📋 已保存的 Google Colab 账号（点击即可 1 秒切换）：</div>
+      <div id="savedAccountsList" style="display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:12px;color:var(--muted);padding:12px;text-align:center;">正在读取已绑定的账号...</div>
+      </div>
+    </div>
+
+    <div id="accountActionStatus" style="display:none;padding:10px 12px;margin-bottom:12px;border-radius:8px;background:#0f172a;border:1px solid var(--border);font-size:12.5px;color:#93c5fd;"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-top:1px solid var(--border);padding-top:14px;">
+      <button class="btn-outline" style="font-size:12px;border-color:rgba(245,158,11,0.45);color:#fcd34d;" onclick="rebindGoogleDriveAccount()" id="btnRebindDrive" title="仅当您希望把模型存储云盘也彻底换成另一个 Google Drive 账号时点击">☁️ 单独更换云盘存储账号</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-outline" onclick="closeAccountModal()">关闭</button>
+        <button class="btn-primary" onclick="addNewColabAccount()" id="btnAddColabAcc">➕ 登录并添加新 Gmail Pro 账号</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let currentHFCat = 'all';
 let customModelsCache = [];
+let cachedAccountInfo = {active_email: '', accounts: []};
+
+function renderAccountBadgeAndModal(accInfo) {
+  if (!accInfo) return;
+  cachedAccountInfo = accInfo;
+  const lbl = document.getElementById('headerAccountLabel');
+  if (lbl) {
+    lbl.innerText = accInfo.active_email || '未登录 (点击绑定)';
+  }
+  const listEl = document.getElementById('savedAccountsList');
+  if (!listEl) return;
+  const arr = Array.isArray(accInfo.accounts) ? accInfo.accounts : [];
+  if (!arr.length) {
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:12px;background:#0f172a;border-radius:8px;text-align:center;">暂未检测到已保存账号，请点击下方「➕ 登录并添加新 Gmail Pro 账号」</div>`;
+    return;
+  }
+  listEl.innerHTML = arr.map(it => {
+    const isAct = Boolean(it.is_active);
+    const borderCol = isAct ? '#10b981' : 'var(--border)';
+    const bgCol = isAct ? 'rgba(16,185,129,0.12)' : '#0f172a';
+    const cuTxt = (it.cu_balance !== null && typeof it.cu_balance !== 'undefined') ? `${Number(it.cu_balance).toFixed(2)} CU` : '点击切换后刷新 CU';
+    const actBtn = isAct
+      ? `<span style="padding:4px 10px;border-radius:6px;background:rgba(16,185,129,0.22);color:#34d399;font-size:12px;font-weight:700;">✅ 当前使用中</span>`
+      : `<button type="button" class="btn-primary" style="padding:5px 12px;font-size:12px;" onclick="switchColabAccount('${escapeHtml(it.email)}')">⚡ 一键切换至此账号</button>`;
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid ${borderCol};background:${bgCol};">
+        <div style="min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:13.5px;font-weight:800;color:#f8fafc;">${escapeHtml(it.email)}</span>
+            <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.2);color:#93c5fd;font-weight:700;">⚡ ${cuTxt}</span>
+          </div>
+          <div style="font-size:11.5px;color:#94a3b8;margin-top:3px;">姓名: ${escapeHtml(it.name || it.email)} · 最近同步: ${escapeHtml(it.updated_at || '刚刚')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          ${actBtn}
+          <button type="button" title="从列表中移除该账号备份" onclick="deleteSavedAccount('${escapeHtml(it.email)}')" style="background:transparent;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:4px 6px;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#64748b'">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openAccountModal() {
+  const m = document.getElementById('accountSwitchModal');
+  if (m) m.style.display = 'flex';
+  const st = document.getElementById('accountActionStatus');
+  if (st) st.style.display = 'none';
+  renderAccountModalList();
+}
+
+function closeAccountModal() {
+  const m = document.getElementById('accountSwitchModal');
+  if (m) m.style.display = 'none';
+}
+
+function renderAccountModalList() {
+  renderAccountBadgeAndModal(cachedAccountInfo);
+}
+
+async function switchColabAccount(targetEmail) {
+  const shareDrive = document.getElementById('chkShareExistingDrive') ? document.getElementById('chkShareExistingDrive').checked : true;
+  const st = document.getElementById('accountActionStatus');
+  if (st) {
+    st.style.display = 'block';
+    st.style.color = '#60a5fa';
+    st.innerText = `⏳ 正在切换 Colab Pro 算力账号至 ${targetEmail}...`;
+  }
+  try {
+    const r = await fetch('/api/accounts/switch', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email: targetEmail, switch_drive: !shareDrive}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 切换失败: ' + (d.error || '未知错误'); }
+      return;
+    }
+    if (d.account_info) renderAccountBadgeAndModal(d.account_info);
+    if (st) {
+      st.style.color = '#10b981';
+      st.innerText = `✅ 已成功切换至 ${targetEmail}！正在刷新该账号的算力余额 (CU)...`;
+    }
+    await refreshStatus(true);
+  } catch (e) {
+    if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  }
+}
+
+async function addNewColabAccount() {
+  const shareDrive = document.getElementById('chkShareExistingDrive') ? document.getElementById('chkShareExistingDrive').checked : true;
+  const btn = document.getElementById('btnAddColabAcc');
+  const st = document.getElementById('accountActionStatus');
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ 请在弹出的浏览器中选择新账号...'; }
+  if (st) {
+    st.style.display = 'block';
+    st.style.color = '#f59e0b';
+    st.innerText = '🌐 已在您的浏览器中打开 Google 官方账号选择页，请点击家人/朋友的 Gmail 账号并点「允许」（完成后此窗口将自动更新）...';
+  }
+  try {
+    const r = await fetch('/api/accounts/add_colab', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({bind_new_drive: !shareDrive}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 登录绑定未完成: ' + (d.error || '已取消或超时'); }
+      return;
+    }
+    if (d.account_info) renderAccountBadgeAndModal(d.account_info);
+    if (st) {
+      st.style.color = '#10b981';
+      st.innerText = `✅ 新账号 ${d.email} 绑定成功并已设为当前激活账号！（已为您保留在账号列表中，随时可 1 秒互切）`;
+    }
+    await refreshStatus(true);
+  } catch (e) {
+    if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = '➕ 登录并添加新 Gmail Pro 账号'; }
+  }
+}
+
+async function rebindGoogleDriveAccount() {
+  const btn = document.getElementById('btnRebindDrive');
+  const st = document.getElementById('accountActionStatus');
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ 请在浏览器授权 Google Drive...'; }
+  if (st) {
+    st.style.display = 'block';
+    st.style.color = '#f59e0b';
+    st.innerText = '🌐 正在打开浏览器授权新的 Google Drive 云盘账号，请在网页中点击允许...';
+  }
+  try {
+    const r = await fetch('/api/accounts/bind_drive', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const d = await r.json();
+    if (!d.ok) {
+      if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 云盘绑定失败: ' + (d.error || '未知错误'); }
+      return;
+    }
+    if (st) { st.style.color = '#10b981'; st.innerText = '✅ Google Drive 云盘账号已更新！正在重新扫描云盘目录...'; }
+    await refreshStatus(true);
+  } catch (e) {
+    if (st) { st.style.color = '#ef4444'; st.innerText = '❌ 请求异常: ' + e; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = '☁️ 单独更换云盘存储账号'; }
+  }
+}
+
+async function deleteSavedAccount(email) {
+  if (!confirm(`确定要从已保存列表中移除账号 ${email} 吗？`)) return;
+  try {
+    const r = await fetch('/api/accounts/delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email}),
+    });
+    const d = await r.json();
+    if (d.account_info) renderAccountBadgeAndModal(d.account_info);
+  } catch (e) {}
+}
 
 function renderCustomPresets(list) {
   customModelsCache = Array.isArray(list) ? list : [];
@@ -2410,6 +2714,9 @@ async function refreshStatus(force = false) {
     document.getElementById('modelId').innerText = d.endpoint_cfg.model_id || 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF';
     document.getElementById('tunnelUrl').innerText = d.endpoint_cfg.tunnel_url ? (d.endpoint_cfg.tunnel_url + '/v1') : '--';
     renderCustomPresets(d.custom_models || []);
+    if (d.account_info) {
+      renderAccountBadgeAndModal(d.account_info);
+    }
 
     if (typeof d.endpoint_cfg.idle_timeout_minutes !== 'undefined') {
       liveIdleTimeoutMin = parseInt(d.endpoint_cfg.idle_timeout_minutes, 10);
@@ -3824,10 +4131,12 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     except Exception:
                         metrics = _LAST_METRICS_CACHE["data"]
             idle_sec = int(max(0.0, time.time() - float(cfg.get("last_activity_ts", time.time()) or time.time())))
+            acc_info = _get_accounts_status(force=force, cu_balance=(cu_info or {}).get("paid_balance"))
             self._send_json({
                 "sessions": sessions,
                 "endpoint_cfg": cfg,
                 "cu_info": cu_info,
+                "account_info": acc_info,
                 "idle_seconds": idle_sec,
                 "metrics": metrics,
                 "gdrive_info": _query_local_gdrive_info(force=force),
@@ -4097,6 +4406,125 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw_body) if raw_body else {}
         except Exception:
             payload = {}
+
+        if self.path == "/api/accounts/switch":
+            target_email = str(payload.get("email") or "").strip()
+            switch_drive = bool(payload.get("switch_drive", False))
+            acc_map = _load_saved_accounts()
+            if not target_email or target_email not in acc_map:
+                self._send_json({"ok": False, "error": f"未找到已保存的账号: {target_email}"})
+                return
+            try:
+                import keyring
+                from colab_cli.auth import KEYRING_SERVICE_NAME, KEYRING_USERNAME
+                info = acc_map[target_email]
+                token_json = str(info.get("token_json") or "").strip()
+                if not token_json:
+                    self._send_json({"ok": False, "error": "该账号的授权凭证为空，请重新点击添加登录"})
+                    return
+                keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME, token_json)
+                if switch_drive and info.get("rclone_conf"):
+                    (BASE_DIR / ".gdrive_rclone.conf").write_text(str(info["rclone_conf"]), encoding="utf-8")
+                    _LAST_GDRIVE_CACHE["data"] = None
+                    _LAST_GDRIVE_CACHE["timestamp"] = 0.0
+                _reset_colab_cli_state()
+                cu_now = _query_cu_usage(force=True)
+                acc_now = _get_accounts_status(force=True, cu_balance=(cu_now or {}).get("paid_balance"))
+                _append_panel_log(f"👤 [账号切换] 已将当前 Colab Pro 算力账号切换为: {target_email} (余额: {(cu_now or {}).get('paid_balance', '--')} CU)")
+                self._send_json({"ok": True, "email": target_email, "account_info": acc_now, "cu_info": cu_now})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/accounts/add_colab":
+            bind_new_drive = bool(payload.get("bind_new_drive", False))
+            try:
+                from importlib import resources
+                import keyring
+                from google_auth_oauthlib.flow import InstalledAppFlow
+                from colab_cli.auth import KEYRING_SERVICE_NAME, KEYRING_USERNAME, PUBLIC_SCOPES
+
+                # 先确保当前已登录账号被快照保存下来，避免被冲掉
+                _get_accounts_status(force=True)
+
+                cfg_res = resources.files("colab_cli").joinpath("oauth_config.json")
+                client_config = json.loads(cfg_res.read_text())
+                flow = InstalledAppFlow.from_client_config(client_config, PUBLIC_SCOPES)
+                creds = flow.run_local_server(
+                    host="localhost",
+                    port=0,
+                    prompt="select_account consent",
+                    open_browser=True,
+                    success_message="✅ Google Colab Pro 账号授权成功！您可以直接关闭此标签页并回到 Colab G4 控制台 (http://127.0.0.1:18080)。",
+                )
+                token_json = creds.to_json()
+                keyring.set_password(KEYRING_SERVICE_NAME, KEYRING_USERNAME, token_json)
+                _reset_colab_cli_state()
+
+                if bind_new_drive:
+                    rclone_bin = BASE_DIR / ".venv" / "bin" / "rclone"
+                    if not rclone_bin.exists():
+                        rclone_bin = Path(shutil.which("rclone") or "rclone")
+                    rclone_conf = BASE_DIR / ".gdrive_rclone.conf"
+                    subprocess.run(
+                        [str(rclone_bin), "config", "create", "gdrive", "drive", "scope=drive", "--config", str(rclone_conf)],
+                        check=False,
+                        timeout=120,
+                    )
+                    _LAST_GDRIVE_CACHE["data"] = None
+                    _LAST_GDRIVE_CACHE["timestamp"] = 0.0
+
+                cu_now = _query_cu_usage(force=True)
+                acc_now = _get_accounts_status(force=True, cu_balance=(cu_now or {}).get("paid_balance"))
+                new_email = acc_now.get("active_email") or ""
+                if bind_new_drive and new_email and (BASE_DIR / ".gdrive_rclone.conf").exists():
+                    acc_map = _load_saved_accounts()
+                    if new_email in acc_map:
+                        acc_map[new_email]["rclone_conf"] = (BASE_DIR / ".gdrive_rclone.conf").read_text(encoding="utf-8")
+                        _save_saved_accounts(acc_map)
+                _append_panel_log(f"👤 [新账号绑定] 已成功登录并切换至 Google Colab Pro 账号: {new_email} (余额: {(cu_now or {}).get('paid_balance', '--')} CU)")
+                self._send_json({"ok": True, "email": new_email, "account_info": acc_now, "cu_info": cu_now})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/accounts/bind_drive":
+            try:
+                import shutil
+                rclone_bin = BASE_DIR / ".venv" / "bin" / "rclone"
+                if not rclone_bin.exists():
+                    rclone_bin = Path(shutil.which("rclone") or "rclone")
+                rclone_conf = BASE_DIR / ".gdrive_rclone.conf"
+                subprocess.run(
+                    [str(rclone_bin), "config", "create", "gdrive", "drive", "scope=drive", "--config", str(rclone_conf)],
+                    check=True,
+                    timeout=120,
+                )
+                _LAST_GDRIVE_CACHE["data"] = None
+                _LAST_GDRIVE_CACHE["timestamp"] = 0.0
+                acc_now = _get_accounts_status(force=True)
+                act_em = acc_now.get("active_email") or ""
+                if act_em and rclone_conf.exists():
+                    acc_map = _load_saved_accounts()
+                    if act_em in acc_map:
+                        acc_map[act_em]["rclone_conf"] = rclone_conf.read_text(encoding="utf-8")
+                        _save_saved_accounts(acc_map)
+                _query_local_gdrive_info(force=True)
+                _append_panel_log("☁️ [云盘绑定] 已重新授权绑定 Google Drive 云盘账号")
+                self._send_json({"ok": True, "account_info": _get_accounts_status(force=True)})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/accounts/delete":
+            em = str(payload.get("email") or "").strip()
+            acc_map = _load_saved_accounts()
+            if em in acc_map:
+                del acc_map[em]
+                _save_saved_accounts(acc_map)
+            _ACCOUNT_INFO_CACHE["data"] = None
+            self._send_json({"ok": True, "account_info": _get_accounts_status(force=True)})
+            return
 
         if self.path == "/api/reveal_in_finder":
             LOCAL_MOVIES_DIR.mkdir(parents=True, exist_ok=True)
