@@ -849,11 +849,13 @@ def _refresh_gdrive_cache_worker():
                     continue
                 parts = p.split("/")
                 top = parts[0]
+                if top.endswith("_outputs"):
+                    continue
                 if it.get("IsDir"):
                     if len(parts) == 1:
                         folders_map.setdefault(top, [])
                 else:
-                    if p.lower().endswith((".gguf", ".safetensors")):
+                    if p.lower().endswith((".gguf", ".safetensors", ".pth")):
                         rel = "/".join(parts[1:]) if len(parts) > 1 else p
                         sz_gb = round(float(it.get("Size") or 0.0) / (1024**3), 2)
                         folders_map.setdefault(top, []).append({"name": rel, "size_gb": sz_gb})
@@ -1623,11 +1625,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <div class="card">
-    <h2>
+    <h2 style="margin-bottom:10px;">
       <span>📦 开源模型中心 & Google Drive 模型管理</span>
-      <span style="font-size:11px;background:rgba(59,130,246,0.18);color:#93c5fd;padding:2px 8px;border-radius:999px;">HF 精选 6</span>
+      <div style="display:inline-flex;gap:6px;">
+        <button type="button" id="tabPresetG4" onclick="switchPresetTierTab('g4')" style="padding:3px 10px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;cursor:pointer;">🔥 RTX 6000 (96GB) 专区</button>
+        <button type="button" id="tabPresetT4" onclick="switchPresetTierTab('t4')" style="padding:3px 10px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid var(--border);background:#0f172a;color:#94a3b8;cursor:pointer;">🆓 免费 T4 (16GB) 专区</button>
+      </div>
     </h2>
 
+    <!-- G4 96GB 满血模型专区 -->
     <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:12px;" id="presetModelGrid">
       <div class="folder-tag preset-card" id="preset_qwen_bf16" onclick="selectPresetModel('preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf')" style="margin:0;padding:8px 10px;border-color:#3b82f6;background:rgba(59,130,246,0.14);justify-content:space-between;">
         <div>
@@ -1675,6 +1681,41 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div style="color:var(--muted);font-size:11px;">8步极速生图 · 30.6 GB</div>
         </div>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
+      </div>
+    </div>
+
+    <!-- 免费 T4 16GB 专享模型区 (≤ 13.5 GB，0 CU 满速畅跑) -->
+    <div style="display:none;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:12px;" id="presetModelGridT4">
+      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
+          <div style="color:var(--muted);font-size:11px;">UD-Q3_K_XL · 12.4 GB (16G显存满速)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_t4_qwen38_mtp" onclick="selectPresetModel('preset_t4_qwen38_mtp', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-MTP', 'Huihui-Qwen3.8-27B-abliterated-GSQ-RCO-IQ3_S-mtp.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">⚡ Qwen3.8-27B 无审查 (MTP版)</div>
+          <div style="color:var(--muted);font-size:11px;">IQ3_S + 原生MTP投机 · 11.3 GB</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_t4_qwen14b" onclick="selectPresetModel('preset_t4_qwen14b', 'bartowski/huihui-ai_Qwen3-14B-abliterated-GGUF', 'Qwen3-14B-T4-Q6', 'huihui-ai_Qwen3-14B-abliterated-Q6_K.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">💎 Qwen3-14B 无审查 (Q6_K)</div>
+          <div style="color:var(--muted);font-size:11px;">准无损精度 · 11.3 GB (~50 tok/s)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_t4_qwenvl8b" onclick="selectPresetModel('preset_t4_qwenvl8b', 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF', 'Qwen3-VL-8B-T4-Q8', '*Q8_0.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">👁️ Qwen3-VL-8B 视觉无审查</div>
+          <div style="color:var(--muted);font-size:11px;">满血 Q8_0 + 视觉 · 8.8 GB (~75 tok/s)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
     </div>
 
@@ -2380,6 +2421,14 @@ async function switchColabAccount(targetEmail) {
       return;
     }
     if (d.account_info) renderAccountBadgeAndModal(d.account_info);
+    if (d.cu_info && typeof d.cu_info.paid_balance !== 'undefined') {
+      if (Number(d.cu_info.paid_balance) <= 0) {
+        switchPresetTierTab('t4');
+        selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf');
+      } else {
+        switchPresetTierTab('g4');
+      }
+    }
     if (st) {
       st.style.color = '#10b981';
       st.innerText = `✅ 已成功切换至 ${targetEmail}！正在刷新该账号的算力余额 (CU)...`;
@@ -2836,7 +2885,79 @@ function copyText(id) {
   alert('已复制: ' + txt);
 }
 
-const savedDriveFolders = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3']);
+const savedDriveFolders = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'ReCaVSR']);
+
+function switchPresetTierTab(tier) {
+  const gG4 = document.getElementById('presetModelGrid');
+  const gT4 = document.getElementById('presetModelGridT4');
+  const bG4 = document.getElementById('tabPresetG4');
+  const bT4 = document.getElementById('tabPresetT4');
+  if (tier === 't4') {
+    if (gG4) gG4.style.display = 'none';
+    if (gT4) gT4.style.display = 'grid';
+    if (bT4) {
+      bT4.style.borderColor = '#10b981';
+      bT4.style.background = 'rgba(16,185,129,0.22)';
+      bT4.style.color = '#34d399';
+    }
+    if (bG4) {
+      bG4.style.borderColor = 'var(--border)';
+      bG4.style.background = '#0f172a';
+      bG4.style.color = '#94a3b8';
+    }
+  } else {
+    if (gG4) gG4.style.display = 'grid';
+    if (gT4) gT4.style.display = 'none';
+    if (bG4) {
+      bG4.style.borderColor = '#3b82f6';
+      bG4.style.background = 'rgba(59,130,246,0.22)';
+      bG4.style.color = '#93c5fd';
+    }
+    if (bT4) {
+      bT4.style.borderColor = 'var(--border)';
+      bT4.style.background = '#0f172a';
+      bT4.style.color = '#94a3b8';
+    }
+  }
+}
+
+function renderGroupedDriveFolders(folders) {
+  const fBox = document.getElementById('driveFoldersList');
+  if (!fBox) return;
+  const curSelFolder = (document.getElementById('inpFolder') || {}).value || '';
+  savedDriveFolders.clear();
+  const g4List = [];
+  const t4List = [];
+  (folders || []).forEach(item => {
+    savedDriveFolders.add(item.folder);
+    const gb = typeof item.total_gb === 'number' ? item.total_gb : 0;
+    if (gb > 15.5) g4List.push(item);
+    else t4List.push(item);
+  });
+  const renderTag = item => {
+    const hasSt = item.files.some(f => f.name.toLowerCase().includes('.safetensors'));
+    const mainFile = hasSt ? '*.safetensors' : ((item.files.find(f => !f.name.toLowerCase().includes('mmproj')) || item.files[0] || {}).name || '');
+    const totGb = typeof item.total_gb === 'number' ? ` · ${item.total_gb} GB` : '';
+    const filesDesc = item.files.slice(0, 12).map(f => `${f.name} (${f.size_gb}G)`).join(', ') || '空文件夹';
+    const isAct = item.folder === curSelFolder;
+    const bCol = isAct ? '#3b82f6' : 'var(--border)';
+    const bgCol = isAct ? 'rgba(59,130,246,0.16)' : '#0f172a';
+    const chkDisp = isAct ? 'inline' : 'none';
+    return `<div class="folder-tag" data-folder="${item.folder}" onclick="selectDriveFolder('${item.folder}', '${mainFile}')" title="${filesDesc}" style="border-color:${bCol};background:${bgCol};">
+      📁 <b>${item.folder}</b> <span style="color:var(--green)">(${item.files.length}个${totGb})</span>
+      <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:${chkDisp};margin-left:4px;">✔</span>
+    </div>`;
+  };
+  let html = '';
+  if (g4List.length > 0) {
+    html += `<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:3px;">🔥 RTX PRO 6000 (96GB) 云盘已存模型：</div><div>${g4List.map(renderTag).join('')}</div></div>`;
+  }
+  if (t4List.length > 0) {
+    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:3px;">🆓 免费 T4 (16GB) 可用云盘模型 (≤15.5GB)：</div><div>${t4List.map(renderTag).join('')}</div></div>`;
+  }
+  fBox.innerHTML = html || '当前 MyDrive/models/ 下暂无模型文件夹';
+  syncDriveFolderHighlight(curSelFolder);
+}
 
 function syncDriveFolderHighlight(folderName) {
   document.querySelectorAll('#driveFoldersList .folder-tag').forEach(el => {
@@ -2853,6 +2974,11 @@ function syncDriveFolderHighlight(folderName) {
     'Qwen3.8-27B-GGUF': 'Qwen3.8-27B-Q4',
     'Qwen-Image-2.1': 'Qwen-Image-2.1',
     'Z-Image-Turbo': 'Z-Image-Turbo',
+    'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4版)',
+    'Qwen3.8-27B-T4-MTP': 'Qwen3.8-27B(MTP)',
+    'Qwen3-14B-T4-Q6': 'Qwen3-14B(Q6)',
+    'Qwen3-VL-8B-T4-Q8': 'Qwen3-VL-8B(Q8)',
+    'ReCaVSR': 'ReCaVSR(超分)',
   };
   const shortLabel = shortMap[folderName] || folderName || '当前模型';
   const inDrive = savedDriveFolders.has(folderName);
@@ -2909,6 +3035,10 @@ function selectDriveFolder(folderName, firstFile) {
     'Qwen3.8-27B-GGUF': 'unsloth/Qwen3.8-27B-GGUF',
     'Qwen-Image-2.1': 'Qwen/Qwen-Image-2.1',
     'Z-Image-Turbo': 'Tongyi-MAI/Z-Image-Turbo',
+    'Qwen3.8-27B-T4-Q3': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
+    'Qwen3.8-27B-T4-MTP': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
+    'Qwen3-14B-T4-Q6': 'bartowski/huihui-ai_Qwen3-14B-abliterated-GGUF',
+    'Qwen3-VL-8B-T4-Q8': 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF',
   };
   const cardMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'preset_qwen_bf16',
@@ -2918,10 +3048,18 @@ function selectDriveFolder(folderName, firstFile) {
     'Qwen3.8-27B-GGUF': 'preset_qwen_q4',
     'Qwen-Image-2.1': 'preset_qwen_img',
     'Z-Image-Turbo': 'preset_z_img',
+    'Qwen3.8-27B-T4-Q3': 'preset_t4_qwen38_q3',
+    'Qwen3.8-27B-T4-MTP': 'preset_t4_qwen38_mtp',
+    'Qwen3-14B-T4-Q6': 'preset_t4_qwen14b',
+    'Qwen3-VL-8B-T4-Q8': 'preset_t4_qwenvl8b',
   };
   const patternMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf',
     'MiniMax-H3': 'FL2VA/*.safetensors',
+    'Qwen3.8-27B-T4-Q3': 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf',
+    'Qwen3.8-27B-T4-MTP': 'Huihui-Qwen3.8-27B-abliterated-GSQ-RCO-IQ3_S-mtp.gguf',
+    'Qwen3-14B-T4-Q6': 'huihui-ai_Qwen3-14B-abliterated-Q6_K.gguf',
+    'Qwen3-VL-8B-T4-Q8': '*Q8_0.gguf',
   };
   if (repoMap[folderName]) {
     document.getElementById('inpRepo').value = repoMap[folderName];
@@ -2930,6 +3068,8 @@ function selectDriveFolder(folderName, firstFile) {
     document.getElementById('inpPattern').value = patternMap[folderName];
   }
   if (cardMap[folderName]) {
+    if (cardMap[folderName].startsWith('preset_t4_')) switchPresetTierTab('t4');
+    else switchPresetTierTab('g4');
     document.querySelectorAll('.preset-card').forEach(el => {
       const active = el.id === cardMap[folderName];
       el.style.borderColor = active ? '#3b82f6' : 'var(--border)';
@@ -3100,28 +3240,11 @@ async function refreshStatus(force = false) {
         lBadge.innerText = '⚪ 推理引擎未运行';
       }
 
-      const fBox = document.getElementById('driveFoldersList');
-      const curSelFolder = (document.getElementById('inpFolder') || {}).value || '';
       if (m.drive_folders && m.drive_folders.length > 0) {
-        savedDriveFolders.clear();
-        m.drive_folders.forEach(item => savedDriveFolders.add(item.folder));
-        fBox.innerHTML = m.drive_folders.map(item => {
-          const hasSt = item.files.some(f => f.name.toLowerCase().endswith ? f.name.toLowerCase().endsWith('.safetensors') : f.name.toLowerCase().includes('.safetensors'));
-          const mainFile = hasSt ? '*.safetensors' : ((item.files.find(f => !f.name.toLowerCase().includes('mmproj')) || item.files[0] || {}).name || '');
-          const totGb = typeof item.total_gb === 'number' ? ` · ${item.total_gb} GB` : '';
-          const filesDesc = item.files.slice(0, 12).map(f => `${f.name} (${f.size_gb}G)`).join(', ') || '空文件夹';
-          const isAct = item.folder === curSelFolder;
-          const bCol = isAct ? '#3b82f6' : 'var(--border)';
-          const bgCol = isAct ? 'rgba(59,130,246,0.16)' : '#0f172a';
-          const chkDisp = isAct ? 'inline' : 'none';
-          return `<div class="folder-tag" data-folder="${item.folder}" onclick="selectDriveFolder('${item.folder}', '${mainFile}')" title="${filesDesc}" style="border-color:${bCol};background:${bgCol};">
-            📁 <b>${item.folder}</b> <span style="color:var(--green)">(${item.files.length} 个文件${totGb})</span>
-            <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:${chkDisp};margin-left:4px;">✔</span>
-          </div>`;
-        }).join('');
-        syncDriveFolderHighlight(curSelFolder);
+        renderGroupedDriveFolders(m.drive_folders);
       } else {
-        fBox.innerText = m.drive_mounted ? '当前 MyDrive/models/ 下暂无子文件夹' : '挂载 Google Drive 后显示云盘模型文件夹';
+        const fBox = document.getElementById('driveFoldersList');
+        if (fBox) fBox.innerText = m.drive_mounted ? '当前 MyDrive/models/ 下暂无子文件夹' : '挂载 Google Drive 后显示云盘模型文件夹';
       }
     } else if (!isInstanceOnline) {
       document.getElementById('gpuVal').innerText = '已关机';
@@ -3148,25 +3271,7 @@ async function refreshStatus(force = false) {
       }
       document.getElementById('syncBadge').innerText = isInstanceOnline ? '✅ 已挂载 (永久免弹窗)' : '✅ 永久免弹窗已绑定 (实例关机)';
       if (gd.drive_folders && gd.drive_folders.length > 0) {
-        const fBox = document.getElementById('driveFoldersList');
-        const curSelFolder = (document.getElementById('inpFolder') || {}).value || '';
-        savedDriveFolders.clear();
-        gd.drive_folders.forEach(item => savedDriveFolders.add(item.folder));
-        fBox.innerHTML = gd.drive_folders.map(item => {
-          const hasSt = item.files.some(f => f.name.toLowerCase().endsWith('.safetensors'));
-          const mainFile = hasSt ? '*.safetensors' : ((item.files.find(f => !f.name.toLowerCase().includes('mmproj')) || item.files[0] || {}).name || '');
-          const totGb = typeof item.total_gb === 'number' ? ` · ${item.total_gb} GB` : '';
-          const filesDesc = item.files.slice(0, 12).map(f => `${f.name} (${f.size_gb}G)`).join(', ') || '空文件夹';
-          const isAct = item.folder === curSelFolder;
-          const bCol = isAct ? '#3b82f6' : 'var(--border)';
-          const bgCol = isAct ? 'rgba(59,130,246,0.16)' : '#0f172a';
-          const chkDisp = isAct ? 'inline' : 'none';
-          return `<div class="folder-tag" data-folder="${item.folder}" onclick="selectDriveFolder('${item.folder}', '${mainFile}')" title="${filesDesc}" style="border-color:${bCol};background:${bgCol};">
-            📁 <b>${item.folder}</b> <span style="color:var(--green)">(${item.files.length} 个文件${totGb})</span>
-            <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:${chkDisp};margin-left:4px;">✔</span>
-          </div>`;
-        }).join('');
-        syncDriveFolderHighlight(curSelFolder);
+        renderGroupedDriveFolders(gd.drive_folders);
       }
     } else if (!isInstanceOnline) {
       document.getElementById('driveVal').innerText = '已关机';
