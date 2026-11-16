@@ -53,6 +53,8 @@ def _format_long_elapsed(sec: float) -> str:
 def _infer_elapsed_sec(fname: str, mtime: float, meta_map: Dict[str, float]) -> float:
     if fname in meta_map and meta_map[fname] > 0:
         return float(meta_map[fname])
+    if "_ReCaVSR_" in fname:
+        return 0.0
     # 从文件名 minimax_h3_t2va_YYYYMMDD_HHMMSS_seed... 解析 UTC 启动时间戳并与文件落盘 mtime 对比
     m = re.search(r"_(\d{8})_(\d{6})_", fname)
     if m:
@@ -158,6 +160,11 @@ _LAST_LOGGED_UPSCALE_ERR: List[str] = [""]
 _VIDEO_STEP_TIMING: Dict[str, float] = {
     "first_step_ts": 0.0,
     "first_step_num": 0.0,
+}
+_UPSCALE_TIMING: Dict[str, Any] = {
+    "start_ts": 0.0,
+    "compute_start_ts": 0.0,
+    "preset": "2k",
 }
 
 
@@ -359,6 +366,7 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
             "done_mb": 0.0,
             "tot_mb": 0.0,
             "pct": 0,
+            "start_ts": time.time(),
         })
         cfg = _load_endpoint_cfg()
         url = f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(safe_name)}"
@@ -3609,8 +3617,10 @@ async function upscaleVideoByName(fname, presetOverride) {
     dState.innerText = '✨ ReCaVSR 正在超分重绘中...';
     dState.style.color = '#a78bfa';
   }
+  const curFrames = parseInt((document.getElementById('videoFrames') || {}).value || '362', 10) || 362;
+  const estPerFrame = presetVal === '4k' ? 0.22 : (presetVal === '1080p' ? 0.085 : 0.115);
   liveVideoElapsedSec = 1;
-  liveVideoEtaSec = presetVal === '4k' ? 45 : 22;
+  liveVideoEtaSec = Math.max(8, Math.round(curFrames * estPerFrame + 6));
   liveVideoPct = 10;
   liveVideoBaseMsg = startMsg;
   renderLiveVideoTimingText();
@@ -3963,13 +3973,15 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                             dl_pct = int(_VIDEO_DL_STATE.get("pct") or 0)
                             done_m = float(_VIDEO_DL_STATE.get("done_mb") or 0.0)
                             tot_m = float(_VIDEO_DL_STATE.get("tot_mb") or 12.0)
+                            dl_el = max(0.5, time.time() - float(_VIDEO_DL_STATE.get("start_ts") or time.time()))
+                            spd_mbs = (done_m / dl_el) if done_m >= 0.25 else 1.5
                             d["running"] = True
                             d["downloading_local"] = True
                             d["pct"] = max(95, min(99, 95 + int(dl_pct * 0.04)))
                             d["message"] = f"⬇️ 云端合成已完成！正在回传保存至本机 ~/Movies/EasyColab/ ({done_m:.1f}/{tot_m:.1f} MB, {dl_pct}%)"
                             timing_info = _compute_video_timing_from_logs(int(d["pct"]))
                             d["elapsed_sec"] = timing_info["elapsed_sec"]
-                            d["eta_sec"] = max(2, int(round((tot_m - done_m) * 2.5)))
+                            d["eta_sec"] = max(1, int(round(max(0.0, tot_m - done_m) / max(0.15, spd_mbs))))
                         elif vids:
                             latest_fn = os.path.basename(str(vids[-1]))
                             d["latest_video"] = latest_fn
@@ -4001,13 +4013,37 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                         if d.get("message"):
                             _append_panel_log(f"[视频超分] {d.get('message')}")
                         pct_now = int(d.get("pct") or 10)
-                        el_now = max(1, int(round(float(d.get("elapsed_s") or 1.0))))
+                        el_cloud = float(d.get("elapsed_s") or 0.0)
+                        now_ts = time.time()
+                        if _UPSCALE_TIMING["start_ts"] <= 0.0 or (el_cloud > 0 and abs((now_ts - _UPSCALE_TIMING["start_ts"]) - el_cloud) > 30):
+                            _UPSCALE_TIMING["start_ts"] = now_ts - max(1.0, el_cloud)
+                        if pct_now > 10 and _UPSCALE_TIMING["compute_start_ts"] <= 0.0:
+                            _UPSCALE_TIMING["compute_start_ts"] = now_ts
+                        el_now = max(1, int(round(max(el_cloud, now_ts - _UPSCALE_TIMING["start_ts"]))))
                         d["elapsed_sec"] = el_now
-                        if pct_now > 12 and el_now > 3:
-                            d["eta_sec"] = max(2, int(round(el_now * (100 - min(99, pct_now)) / max(1, pct_now))))
+                        tot_frames = max(30, int(d.get("total_steps") or 362))
+                        target_res = str(d.get("target_res") or "")
+                        is_4k = ("3328" in target_res) or (_UPSCALE_TIMING.get("preset") == "4k")
+                        is_1080p = ("1108" in target_res or "1080" in target_res) or (_UPSCALE_TIMING.get("preset") == "1080p")
+                        sec_per_frame = 0.215 if is_4k else (0.082 if is_1080p else 0.112)
+                        est_gpu_total = max(8.0, tot_frames * sec_per_frame)
+                        if pct_now <= 12:
+                            rem_gpu = est_gpu_total
+                        elif pct_now >= 93:
+                            rem_gpu = 2.0
                         else:
-                            d["eta_sec"] = max(3, int(round((100 - min(99, pct_now)) * 0.35)))
+                            # pct_now 12%..92% 对应 80% 的线性块进度 (Stage 1 扩散 + Stage 2 FlashDecoder)
+                            work_frac = max(0.02, min(0.99, (pct_now - 12.0) / 80.0))
+                            comp_t0 = _UPSCALE_TIMING["compute_start_ts"] or _UPSCALE_TIMING["start_ts"]
+                            comp_el = max(1.0, now_ts - comp_t0)
+                            measured_total = comp_el / work_frac
+                            w = min(1.0, max(0.0, (pct_now - 14.0) / 20.0))
+                            blended_total = w * measured_total + (1.0 - w) * est_gpu_total
+                            rem_gpu = max(1.0, blended_total * (1.0 - work_frac))
+                        d["eta_sec"] = max(2, int(round(rem_gpu + 4.0)))
                     elif d.get("error"):
+                        _UPSCALE_TIMING["start_ts"] = 0.0
+                        _UPSCALE_TIMING["compute_start_ts"] = 0.0
                         err_msg = str(d.get("error") or "").strip()
                         if err_msg and _LAST_LOGGED_UPSCALE_ERR[0] != err_msg:
                             _LAST_LOGGED_UPSCALE_ERR[0] = err_msg
@@ -4027,13 +4063,21 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                                 dl_pct = int(_VIDEO_DL_STATE.get("pct") or 0)
                                 done_m = float(_VIDEO_DL_STATE.get("done_mb") or 0.0)
                                 tot_m = float(_VIDEO_DL_STATE.get("tot_mb") or 18.0)
+                                dl_start = float(_VIDEO_DL_STATE.get("start_ts") or time.time())
+                                dl_el = max(0.5, time.time() - dl_start)
+                                spd_mbs = (done_m / dl_el) if done_m >= 0.25 else 1.5
                                 d["running"] = True
                                 d["downloading_local"] = True
                                 d["pct"] = max(95, min(99, 95 + int(dl_pct * 0.04)))
-                                d["message"] = f"⬇️ 云端 ReCaVSR 超分已完成！正在回传保存至本机 ~/Movies/EasyColab/ ({done_m:.1f}/{tot_m:.1f} MB, {dl_pct}%)"
-                                d["elapsed_sec"] = max(1, int(round(el_s)))
-                                d["eta_sec"] = max(2, int(round((tot_m - done_m) * 2.0)))
+                                d["message"] = f"⬇️ 云端 ReCaVSR 超分已完成 (云端重绘耗时 {el_s:.1f}s)！正在回传保存至本机 ~/Movies/EasyColab/ ({done_m:.1f}/{tot_m:.1f} MB, {dl_pct}%)"
+                                if _UPSCALE_TIMING["start_ts"] > 0:
+                                    d["elapsed_sec"] = max(int(round(el_s + dl_el)), int(round(time.time() - _UPSCALE_TIMING["start_ts"])))
+                                else:
+                                    d["elapsed_sec"] = max(1, int(round(el_s + dl_el)))
+                                d["eta_sec"] = max(1, int(round(max(0.0, tot_m - done_m) / max(0.15, spd_mbs))))
                             else:
+                                _UPSCALE_TIMING["start_ts"] = 0.0
+                                _UPSCALE_TIMING["compute_start_ts"] = 0.0
                                 d["latest_video"] = fn
                                 d["pct"] = 100
                                 if d.get("message") and not str(d.get("message")).startswith("就绪") and fn not in _LOGGED_COMPLETED_VIDEOS:
@@ -4353,6 +4397,9 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             if not fname:
                 self._send_json({"ok": False, "error": "请先选择要超分的视频文件"})
                 return
+            _UPSCALE_TIMING["start_ts"] = time.time()
+            _UPSCALE_TIMING["compute_start_ts"] = 0.0
+            _UPSCALE_TIMING["preset"] = preset
             _append_panel_log(
                 f"✨ [提交 ReCaVSR 超分任务] 原视频 {fname} → 目标规格 {preset.upper()} (Wan2.2-5B 单步流式重绘 + 原生立体声无损合成)"
             )
