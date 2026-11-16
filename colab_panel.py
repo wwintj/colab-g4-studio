@@ -1625,11 +1625,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <div class="card">
-    <h2 style="margin-bottom:10px;">
-      <span>📦 开源模型中心 & Google Drive 模型管理</span>
-      <div style="display:inline-flex;gap:6px;">
-        <button type="button" id="tabPresetG4" onclick="switchPresetTierTab('g4')" style="padding:3px 10px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;cursor:pointer;">🔥 RTX 6000 (96GB) 专区</button>
-        <button type="button" id="tabPresetT4" onclick="switchPresetTierTab('t4')" style="padding:3px 10px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid var(--border);background:#0f172a;color:#94a3b8;cursor:pointer;">🆓 免费 T4 (16GB) 专区</button>
+    <h2 style="margin-bottom:10px;white-space:nowrap;">
+      <span>📦 模型管理</span>
+      <div style="display:inline-flex;gap:6px;flex-shrink:0;">
+        <button type="button" id="tabPresetG4" onclick="switchPresetTierTab('g4')" style="padding:4px 12px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;cursor:pointer;white-space:nowrap;">🔥 RTX 6000 (96GB)</button>
+        <button type="button" id="tabPresetT4" onclick="switchPresetTierTab('t4')" style="padding:4px 12px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid var(--border);background:#0f172a;color:#94a3b8;cursor:pointer;white-space:nowrap;">⚡ T4 (16GB)</button>
       </div>
     </h2>
 
@@ -2950,10 +2950,10 @@ function renderGroupedDriveFolders(folders) {
   };
   let html = '';
   if (g4List.length > 0) {
-    html += `<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:3px;">🔥 RTX PRO 6000 (96GB) 云盘已存模型：</div><div>${g4List.map(renderTag).join('')}</div></div>`;
+    html += `<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:3px;">🔥 RTX 6000 (96GB) 云盘模型：</div><div>${g4List.map(renderTag).join('')}</div></div>`;
   }
   if (t4List.length > 0) {
-    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:3px;">🆓 免费 T4 (16GB) 可用云盘模型 (≤15.5GB)：</div><div>${t4List.map(renderTag).join('')}</div></div>`;
+    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:3px;">⚡ T4 (16GB) 云盘模型：</div><div>${t4List.map(renderTag).join('')}</div></div>`;
   }
   fBox.innerHTML = html || '当前 MyDrive/models/ 下暂无模型文件夹';
   syncDriveFolderHighlight(curSelFolder);
