@@ -2158,7 +2158,13 @@ function renderAccountBadgeAndModal(accInfo) {
     const isAct = Boolean(it.is_active);
     const borderCol = isAct ? '#10b981' : 'var(--border)';
     const bgCol = isAct ? 'rgba(16,185,129,0.12)' : '#0f172a';
-    const cuTxt = (it.cu_balance !== null && typeof it.cu_balance !== 'undefined') ? `${Number(it.cu_balance).toFixed(2)} CU` : '-- CU';
+    const cuNum = (it.cu_balance !== null && typeof it.cu_balance !== 'undefined') ? Number(it.cu_balance) : null;
+    const hasG4 = cuNum !== null && cuNum > 0;
+    const cuBadge = cuNum === null
+      ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(148,163,184,0.18);color:#cbd5e1;font-weight:700;">-- CU</span>`
+      : (hasG4
+          ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(16,185,129,0.2);color:#34d399;font-weight:700;">⚡ ${cuNum.toFixed(2)} CU · 支持 G4</span>`
+          : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(245,158,11,0.18);color:#fcd34d;font-weight:700;" title="Google One AI Pro (2TB) 不含 Colab 算力单元；Colab 余额为 0 CU 时仅开放免费 T4，无法分配 G4">⚠️ 0.00 CU · 仅免费 T4</span>`);
     const actBtn = isAct
       ? `<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.22);color:#34d399;font-size:11.5px;font-weight:700;">✅ 当前使用</span>`
       : `<button type="button" class="btn-primary" style="padding:4px 10px;font-size:11.5px;" onclick="switchColabAccount('${escapeHtml(it.email)}')">⚡ 切换</button>`;
@@ -2166,7 +2172,7 @@ function renderAccountBadgeAndModal(accInfo) {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid ${borderCol};background:${bgCol};">
         <div style="display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;">
           <span style="font-size:13px;font-weight:700;color:#f8fafc;">${escapeHtml(it.email)}</span>
-          <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.2);color:#93c5fd;font-weight:700;">⚡ ${cuTxt}</span>
+          ${cuBadge}
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           ${actBtn}

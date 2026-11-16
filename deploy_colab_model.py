@@ -3188,7 +3188,15 @@ def run_local_wizard():
 
     if f"[{session_name}]" not in sess_out and session_name not in sess_out:
         print(f"\n-> 正在申请分配 Google Colab {args.gpu} 实例 '{session_name}'...")
-        subprocess.run([colab_bin, "new", "-s", session_name, "--gpu", args.gpu], check=True)
+        res_new = subprocess.run([colab_bin, "new", "-s", session_name, "--gpu", args.gpu], check=False)
+        if res_new.returncode != 0:
+            print(
+                f"\n❌ [分配失败] 当前 Google 账号无法分配 {args.gpu} (RTX PRO 6000 96GB) 实例！\n"
+                f"   原因：Google Colab 官方接口返回该账号当前 Colab 算力余额为 0.00 CU（仅开放免费 T4，禁止分配 G4/A100/H100）。\n"
+                f"   💡 注意：「Google One AI Pro (Gemini Advanced 2TB)」会员不包含 Colab 付费算力单元 (CU)；需要单独开通「Colab Pro / Pro+」或「Google One AI Ultra」才有 G4 算力额度。\n"
+                f"   👉 请点击控制台右上角「👤 账号」按钮，切换回有 CU 余额的账号（如 ww7turkey@gmail.com · 687.72 CU）后再点击开机！"
+            )
+            sys.exit(1)
     else:
         print(f"\n-> 复用当前运行中的 Colab G4 实例 '{session_name}'。")
 
