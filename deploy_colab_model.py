@@ -1994,6 +1994,426 @@ def _start_minimax_t4_gguf_server_on_30000(target_dir: str):
     raise TimeoutError("等待 MiniMax-H3 (T4 量化版) 服务就绪超时")
 
 
+LONGCAT_AVATAR_SERVER_CODE = r'''#!/usr/bin/env python3
+import base64
+import glob
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+MODEL_DIR = os.environ.get("LONGCAT_MODEL_DIR", "/content/local_models/LongCat-Video-Avatar-1.6")
+OUTPUT_DIR = "/content/outputs"
+LONGCAT_CODE_DIR = "/content/LongCat-Video"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+ENGINE_READY = True
+ENGINE_ERROR = ""
+GPU_LOCK = threading.Lock()
+
+JOB_STATE = {
+    "running": False,
+    "pct": 0,
+    "step": 0,
+    "total_steps": 8,
+    "message": "就绪：LongCat-Video-Avatar-1.6 数字人音频驱动引擎已待命...",
+    "elapsed_s": 0.0,
+    "latest_video": "",
+    "error": "",
+}
+
+
+def _list_history_videos():
+    files = sorted(glob.glob(os.path.join(OUTPUT_DIR, "*.mp4")), key=os.path.getmtime, reverse=True)
+    return [os.path.basename(p) for p in files[:12]]
+
+
+def _run_avatar_job(payload: dict):
+    global JOB_STATE
+    t0 = time.time()
+    try:
+        prompt = str(payload.get("prompt") or "").strip() or (
+            "A person stands under cinematic lighting, speaking naturally and expressively with clear facial movements."
+        )
+        res_str = str(payload.get("resolution") or "832x480").strip()
+        resolution = "720p" if "720" in res_str or "1280" in res_str else "480p"
+        num_segments = max(1, min(10, int(payload.get("num_segments") or 1)))
+        mix_steps = max(0, min(8, int(payload.get("mix_steps") if payload.get("mix_steps") is not None else 4)))
+        mix_alpha = float(payload.get("mix_alpha") if payload.get("mix_alpha") is not None else 1.0)
+        base_seed = int(payload.get("seed") if payload.get("seed") is not None else -1)
+        rand_seed = bool(payload.get("randomize_seed")) or (base_seed < 0)
+        cur_seed = random.randint(1, 2**31 - 1) if rand_seed else base_seed
+
+        has_int8 = os.path.isdir(os.path.join(MODEL_DIR, "base_model_int8")) and not os.path.isdir(os.path.join(MODEL_DIR, "base_model"))
+        use_int8 = bool(payload.get("use_int8")) or has_int8 or ("INT8" in MODEL_DIR.upper())
+
+        audio_b64 = str(payload.get("audio_b64") or "").strip()
+        audio_ext = str(payload.get("audio_ext") or ".mp3").strip()
+        if not audio_ext.startswith("."):
+            audio_ext = "." + audio_ext
+        if audio_b64:
+            raw_a = audio_b64.split(",", 1)[-1]
+            audio_path = f"/tmp/longcat_input_audio{audio_ext}"
+            with open(audio_path, "wb") as af:
+                af.write(base64.b64decode(raw_a))
+        else:
+            audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
+
+        first_b64 = str(payload.get("first_frame_b64") or "").strip()
+        use_builtin_img = bool(payload.get("use_builtin_sample")) and not first_b64
+        if first_b64:
+            raw_i = first_b64.split(",", 1)[-1]
+            img_path = "/tmp/longcat_input_ref.png"
+            with open(img_path, "wb") as imf:
+                imf.write(base64.b64decode(raw_i))
+            stage_1 = "ai2v"
+        elif use_builtin_img and os.path.isfile(os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.png")):
+            img_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.png")
+            stage_1 = "ai2v"
+        else:
+            img_path = ""
+            stage_1 = "at2v"
+
+        job_json_path = "/tmp/longcat_avatar_input.json"
+        job_data = {
+            "prompt": prompt,
+            "cond_audio": {"person1": audio_path},
+        }
+        if img_path:
+            job_data["cond_image"] = img_path
+        with open(job_json_path, "w", encoding="utf-8") as jf:
+            json.dump(job_data, jf, ensure_ascii=False, indent=2)
+
+        JOB_STATE.update({
+            "running": True,
+            "pct": 6,
+            "step": 0,
+            "total_steps": 8 * num_segments,
+            "seed": cur_seed,
+            "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段)...",
+            "error": "",
+        })
+
+        with GPU_LOCK:
+            tmp_out_dir = f"/tmp/longcat_out_{int(time.time())}"
+            os.makedirs(tmp_out_dir, exist_ok=True)
+            cmd = [
+                "torchrun",
+                "--nproc_per_node=1",
+                "--master_port", str(random.randint(29500, 29990)),
+                os.path.join(LONGCAT_CODE_DIR, "run_demo_avatar_single_audio_to_video.py"),
+                "--context_parallel_size=1",
+                f"--checkpoint_dir={MODEL_DIR}",
+                f"--stage_1={stage_1}",
+                f"--input_json={job_json_path}",
+                f"--output_dir={tmp_out_dir}",
+                f"--resolution={resolution}",
+                f"--num_segments={num_segments}",
+                "--use_distill",
+                "--lora_path", "loraB/lora.safetensors",
+                "--model_type", "avatar-v1.6",
+                f"--mix_steps={mix_steps}",
+                f"--mix_alpha={mix_alpha}",
+            ]
+            if use_int8:
+                cmd.append("--use_int8")
+
+            proc = subprocess.Popen(
+                cmd,
+                cwd=LONGCAT_CODE_DIR,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                bufsize=0,
+            )
+            buf = ""
+            tail_lines = []
+            ansi_re = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+            assert proc.stdout is not None
+            while True:
+                chunk = proc.stdout.read(256)
+                if not chunk:
+                    break
+                text = ansi_re.sub("", chunk.decode("utf-8", errors="replace"))
+                for ch in text:
+                    if ch in ("\r", "\n"):
+                        ln = buf.strip()
+                        buf = ""
+                        if not ln:
+                            continue
+                        tail_lines.append(ln)
+                        if len(tail_lines) > 40:
+                            tail_lines = tail_lines[-40:]
+                        if os.path.exists("/content/.cancel_minimax"):
+                            try:
+                                os.unlink("/content/.cancel_minimax")
+                            except Exception:
+                                pass
+                            proc.kill()
+                            raise RuntimeError("🛑 已手动停止数字人视频生成任务")
+                        if "loading" in ln.lower() and "lora" in ln.lower():
+                            JOB_STATE["pct"] = 18
+                            JOB_STATE["message"] = "🎭 [LongCat-Avatar-1.6] 正在融合 DMD + OPSD 双蒸馏 LoRA 适配器..."
+                        elif "generating segment" in ln.lower():
+                            JOB_STATE["pct"] = 25
+                            JOB_STATE["message"] = f"🎬 [LongCat-Avatar-1.6] {ln} (8步口型与动作扩散采样中)..."
+                        else:
+                            m = re.search(r"(\d+)%\|.*\|\s*(\d+)/(\d+)", ln)
+                            if m:
+                                pct = int(m.group(1))
+                                cur_s = int(m.group(2))
+                                tot_s = max(1, int(m.group(3)))
+                                JOB_STATE["step"] = cur_s
+                                JOB_STATE["total_steps"] = tot_s
+                                ov_pct = min(96, max(20, 22 + int(pct * 0.72)))
+                                JOB_STATE["pct"] = ov_pct
+                                JOB_STATE["message"] = f"🎭 [LongCat-Avatar-1.6] 正在扩散生成数字人视频: 第 {cur_s}/{tot_s} 步 (总进度 {ov_pct}%)"
+                    else:
+                        buf += ch
+            proc.wait()
+            mp4_list = sorted(glob.glob(os.path.join(tmp_out_dir, "*.mp4")), key=os.path.getmtime, reverse=True)
+            if proc.returncode != 0 or not mp4_list:
+                err_tail = "\n".join(tail_lines[-16:])
+                raise RuntimeError(f"LongCat-Video-Avatar 退出码 {proc.returncode}:\n{err_tail}")
+
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            fname = f"longcat_avatar_{stage_1}_{ts}_seed{cur_seed}.mp4"
+            out_path = os.path.join(OUTPUT_DIR, fname)
+            shutil.move(mp4_list[0], out_path)
+            shutil.rmtree(tmp_out_dir, ignore_errors=True)
+
+            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+            if os.path.exists(rc_conf) and shutil.which("rclone"):
+                subprocess.Popen(
+                    ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+        dt = round(time.time() - t0, 1)
+        JOB_STATE.update({
+            "running": False,
+            "pct": 100,
+            "seed": cur_seed,
+            "elapsed_s": dt,
+            "latest_video": fname,
+            "completed_videos": [fname],
+            "message": f"✅ [LongCat-Avatar-1.6] 数字人视频生成完成！总耗时 {dt}s · {stage_1.upper()} · {num_segments}段 (Seed: {cur_seed})",
+        })
+    except Exception as e:
+        JOB_STATE.update({
+            "running": False,
+            "error": str(e),
+            "message": f"❌ 生成出错: {e}",
+        })
+
+
+class _LongCatAvatarHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _send_json(self, data: dict, status: int = 200):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.startswith("/health"):
+            self._send_json({"status": "ok", "engine": "longcat-avatar-1.6"})
+            return
+        if self.path.startswith("/v1/models") or self.path.startswith("/models"):
+            self._send_json({
+                "object": "list",
+                "data": [{"id": "meituan-longcat/LongCat-Video-Avatar-1.6", "object": "model", "owned_by": "meituan-longcat"}],
+            })
+            return
+        if self.path.startswith("/v1/video/status"):
+            st = dict(JOB_STATE)
+            st["engine_ready"] = ENGINE_READY
+            st["history"] = _list_history_videos()
+            self._send_json(st)
+            return
+        if self.path.startswith("/v1/video/upscale_status"):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:30002/v1/video/upscale_status", timeout=5) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")))
+            except Exception as e:
+                self._send_json({"running": False, "error": str(e)}, status=503)
+            return
+        if self.path.startswith("/v1/video/file/"):
+            fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
+            fpath = os.path.join(OUTPUT_DIR, fname)
+            if not os.path.isfile(fpath):
+                self._send_json({"error": "File not found"}, status=404)
+                return
+            fsize = os.path.getsize(fpath)
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(fsize))
+            self.send_header("Content-Disposition", f'inline; filename="{fname}"')
+            self.end_headers()
+            with open(fpath, "rb") as rf:
+                while True:
+                    buf = rf.read(65536)
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+            return
+        self._send_json({"status": "ok", "engine": "longcat-avatar-1.6"})
+
+    def do_POST(self):
+        cl = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(cl).decode("utf-8") if cl > 0 else "{}"
+        try:
+            payload = json.loads(raw) if raw else {}
+        except Exception:
+            payload = {}
+
+        if self.path.startswith("/v1/video/upscale"):
+            try:
+                req2 = urllib.request.Request(
+                    "http://127.0.0.1:30002/v1/video/upscale",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2, timeout=15) as r2:
+                    self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=503)
+            return
+
+        if self.path.startswith("/v1/video/cancel"):
+            open("/content/.cancel_minimax", "w").write("1")
+            self._send_json({"ok": True, "message": "🛑 正在停止数字人视频生成任务..."})
+            return
+
+        if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
+            if os.path.exists("/content/.cancel_minimax"):
+                try:
+                    os.unlink("/content/.cancel_minimax")
+                except Exception:
+                    pass
+            if JOB_STATE["running"]:
+                self._send_json({"ok": False, "error": "当前已有数字人视频正在生成中，请等待完成"}, status=409)
+                return
+            threading.Thread(target=_run_avatar_job, args=(payload,), daemon=True).start()
+            self._send_json({"ok": True, "message": "已开始生成 LongCat-Video-Avatar-1.6 数字人视频"})
+            return
+
+        if "chat/completions" in self.path:
+            reply_txt = (
+                "🎭 当前运行的是【美团 LongCat-Video-Avatar-1.6 数字人音频驱动视频引擎】！\n"
+                "请在下方工作台切换至「🎭 数字人音频驱动 (LongCat-Avatar)」，上传语音/歌曲音频与人物照片（或直接点「🎙️ 使用内置示例」），然后点击「🎬 开始生成音视频」即可！"
+            )
+            self._send_json({
+                "id": "chatcmpl-minimax",
+                "object": "chat.completion",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": reply_txt}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 42, "total_tokens": 52},
+                "timings": {"predicted_per_second": 100.0},
+            })
+            return
+
+        self._send_json({"ok": True})
+
+
+if __name__ == "__main__":
+    srv = ThreadingHTTPServer(("0.0.0.0", 30000), _LongCatAvatarHandler)
+    srv.serve_forever()
+'''
+
+
+def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.0):
+    """在远端实例上启动 LongCat-Video-Avatar-1.6 HTTP 推理网关 (端口 30000)"""
+    if not shutil.which("cloudflared"):
+        log("正在安装 cloudflared 隧道客户端...")
+        subprocess.run(
+            "curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 "
+            "-o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared",
+            shell=True,
+            check=True,
+        )
+
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|/content/app\\.py' || true", shell=True)
+    time.sleep(1)
+
+    lc_link = os.path.join(os.path.dirname(target_dir), "LongCat-Video")
+    if not os.path.exists(lc_link):
+        try:
+            os.symlink(target_dir, lc_link)
+        except Exception:
+            pass
+    if not os.path.isdir("/content/LongCat-Video/.git"):
+        log("正在拉取美团 LongCat-Video-Avatar-1.6 推理框架...")
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/meituan-longcat/LongCat-Video.git", "/content/LongCat-Video"], check=False)
+
+    missing_pkgs = []
+    for pkg, mod in [
+        ("librosa", "librosa"),
+        ("soundfile", "soundfile"),
+        ("soxr", "soxr"),
+        ("pyloudnorm", "pyloudnorm"),
+        ("audio-separator", "audio_separator"),
+        ("onnxruntime-gpu", "onnxruntime"),
+        ("ftfy", "ftfy"),
+        ("einops", "einops"),
+    ]:
+        try:
+            __import__(mod)
+        except ImportError:
+            missing_pkgs.append(pkg)
+    if missing_pkgs:
+        log(f"正在安装 LongCat-Video-Avatar 音频与人声分离依赖 ({', '.join(missing_pkgs)})...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_pkgs, check=False)
+
+    server_py = "/content/longcat_avatar_server.py"
+    with open(server_py, "w", encoding="utf-8") as wf:
+        wf.write(LONGCAT_AVATAR_SERVER_CODE)
+
+    env = os.environ.copy()
+    env["LONGCAT_MODEL_DIR"] = target_dir
+    with open("/content/minimax_server.log", "w") as lf:
+        subprocess.Popen(
+            [sys.executable, "-u", server_py],
+            env=env,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for _ in range(25):
+        try:
+            with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
+                if resp.status == 200:
+                    log(f"[显存装载] {os.path.basename(target_dir)}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
+                    log("✅ LongCat-Video-Avatar-1.6 数字人音频驱动视频服务已启动 (端口 30000)！")
+                    _ensure_recavsr_service_on_30002()
+                    return
+        except Exception:
+            pass
+        time.sleep(1)
+
+
 RECAVSR_SERVER_CODE = r'''#!/usr/bin/env python3
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -2962,23 +3382,7 @@ def run_remote_vm_main():
         if HF_REPO.lower() == "unsloth/minimax-h3-gguf" or MODEL_FOLDER == "MiniMax-H3-T4-GGUF":
             _start_minimax_t4_gguf_server_on_30000(target_dir)
         elif "longcat-video-avatar" in HF_REPO.lower() or MODEL_FOLDER.startswith("LongCat-Video-Avatar"):
-            lc_link = os.path.join(os.path.dirname(target_dir), "LongCat-Video")
-            if not os.path.exists(lc_link):
-                try:
-                    os.symlink(target_dir, lc_link)
-                except Exception:
-                    pass
-            if not os.path.isdir("/content/LongCat-Video/.git"):
-                log("正在拉取美团 LongCat-Video-Avatar-1.6 推理框架...")
-                subprocess.run(["git", "clone", "--depth", "1", "https://github.com/meituan-longcat/LongCat-Video.git", "/content/LongCat-Video"], check=False)
-            _ensure_recavsr_service_on_30002()
-            for _ in range(30):
-                txt = subprocess.getoutput("cat /content/recavsr_tunnel.log 2>/dev/null")
-                if "trycloudflare.com" in txt:
-                    shutil.copyfile("/content/recavsr_tunnel.log", "/content/cf_tunnel.log")
-                    break
-                time.sleep(1)
-            log(f"[显存装载] {MODEL_FOLDER}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
+            _start_longcat_avatar_server_on_30000(target_dir, total_gb=total_gb)
         else:
             _start_minimax_h3_server_on_30000(target_dir)
         _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)

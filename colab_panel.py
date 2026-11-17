@@ -1869,12 +1869,48 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <div class="card" id="minimaxVideoBox" style="margin-bottom:16px;border:1px solid rgba(59,130,246,0.35);background:linear-gradient(180deg, rgba(30,41,59,0.98) 0%, rgba(15,23,42,0.98) 100%);">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <span style="font-size:16px;font-weight:800;color:#f8fafc;">🎬 MiniMax-H3 (33B · 原生BF16 · 无审查) 多模态有声视频创作工作台</span>
-      <span style="font-size:11.5px;background:rgba(16,185,129,0.16);color:#34d399;padding:3px 10px;border-radius:999px;font-weight:600;">32kHz 原生立体声音轨 + 破限 32B 视觉编码器</span>
+      <span id="videoStudioTitle" style="font-size:16px;font-weight:800;color:#f8fafc;">🎬 MiniMax-H3 & LongCat-Avatar 多模态有声视频创作工作台</span>
+      <span id="videoStudioBadge" style="font-size:11.5px;background:rgba(16,185,129,0.16);color:#34d399;padding:3px 10px;border-radius:999px;font-weight:600;">32kHz 原生立体声音轨 + 破限 32B 视觉编码器</span>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <button type="button" id="tabBtnT2va" class="btn-primary" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('t2va')">✨ 文生音视频 (T2VA)</button>
       <button type="button" id="tabBtnFl2va" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fl2va')">🖼️ 首尾帧生音视频 (FL2VA)</button>
+      <button type="button" id="tabBtnAvatar" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('avatar')">🎭 数字人音频驱动 (LongCat-Avatar)</button>
+    </div>
+  </div>
+
+  <!-- LongCat-Video-Avatar-1.6 数字人音频驱动图形化操作区 (切换至 avatar 模式自动显示) -->
+  <div id="avatarControlRow" style="display:none;grid-template-columns:1.1fr 1fr;gap:12px;padding:14px;margin-bottom:16px;background:#0f172a;border:1.5px dashed #10b981;border-radius:12px;">
+    <div style="display:flex;flex-direction:column;justify-content:space-between;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <label style="font-size:12.5px;font-weight:700;color:#34d399;margin:0;">🎤 1. 驱动人声 / 唱歌音频 (.mp3 / .wav)</label>
+          <button type="button" onclick="useBuiltinAvatarSample()" style="padding:2px 9px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid rgba(16,185,129,0.5);background:rgba(16,185,129,0.16);color:#6ee7b7;cursor:pointer;">🎙️ 使用内置示例人声+人像 (免上传直接测)</button>
+        </div>
+        <input type="file" id="inpAvatarAudio" accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*" onchange="handleAvatarAudioSelect(this)" style="font-size:12px;color:var(--muted);width:100%;">
+        <audio id="avatarAudioPreview" controls style="display:none;margin-top:8px;width:100%;height:34px;"></audio>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
+        <span id="avatarAudioStatus" style="color:#34d399;font-weight:600;">✅ 默认已启用内置示例音频 (man.mp3)，也可直接上传您的录音</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <span style="color:var(--muted);">生成段数:</span>
+          <select id="avatarSegmentsSelect" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:12px;font-weight:700;">
+            <option value="1" selected>1段 (~4秒 · 8步极速)</option>
+            <option value="2">2段 (~7秒)</option>
+            <option value="3">3段 (~10秒)</option>
+            <option value="5">5段 (~17秒)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <label style="font-size:12.5px;font-weight:700;color:#93c5fd;margin:0;">🧑 2. 人物参考照片 (上传为图+音 AI2V；不传为文+音 AT2V)</label>
+        <button type="button" onclick="clearRefFrame('first')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;">✕ 清除照片 (切为纯文+音)</button>
+      </div>
+      <input type="file" id="inpAvatarImage" accept="image/*" onchange="handleFrameFileSelect(this, 'avatarImagePreview')" style="font-size:12px;color:var(--muted);width:100%;">
+      <img id="avatarImagePreview" style="display:none;margin-top:8px;width:100%;max-height:130px;object-fit:contain;border-radius:6px;background:#020617;">
+      <div id="avatarImageHint" style="font-size:11.5px;color:#94a3b8;margin-top:8px;">💡 上传一张人物正面/半身照，LongCat-Avatar-1.6 会驱动照片中的人物精准对口型说话/唱歌；若不上传，则直接根据下方提示词生成说话人物。</div>
     </div>
   </div>
 
@@ -3158,6 +3194,11 @@ function selectPresetModel(cardId, repo, folder, pattern) {
     const chk = el.querySelector('.preset-check');
     if (chk) chk.style.display = active ? 'inline' : 'none';
   });
+  if (folder.startsWith('LongCat-Video-Avatar')) {
+    switchMiniMaxMode('avatar');
+  } else if (folder.startsWith('MiniMax-H3') && currentMiniMaxMode === 'avatar') {
+    switchMiniMaxMode('t2va');
+  }
   syncDriveFolderHighlight(folder);
 }
 
@@ -3229,6 +3270,11 @@ function selectDriveFolder(folderName, firstFile) {
       if (chk) chk.style.display = active ? 'inline' : 'none';
     });
   }
+  if (folderName.startsWith('LongCat-Video-Avatar')) {
+    switchMiniMaxMode('avatar');
+  } else if (folderName.startsWith('MiniMax-H3') && currentMiniMaxMode === 'avatar') {
+    switchMiniMaxMode('t2va');
+  }
   syncDriveFolderHighlight(folderName);
 }
 
@@ -3243,6 +3289,14 @@ async function refreshStatus(force = false) {
     document.getElementById('apiKey').innerText = d.endpoint_cfg.api_key || 'sk-colab-ed28e54eb298d0c1';
     document.getElementById('modelId').innerText = d.endpoint_cfg.model_id || 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF';
     document.getElementById('tunnelUrl').innerText = d.endpoint_cfg.tunnel_url ? (d.endpoint_cfg.tunnel_url + '/v1') : '--';
+    if (!window._autoModeInit && d.endpoint_cfg && d.endpoint_cfg.model_folder) {
+      window._autoModeInit = true;
+      const mf = String(d.endpoint_cfg.model_folder);
+      if (mf.startsWith('LongCat-Video-Avatar')) {
+        switchMiniMaxMode('avatar');
+        selectDriveFolder(mf);
+      }
+    }
     renderCustomPresets(d.custom_models || []);
     if (d.account_info) {
       renderAccountBadgeAndModal(d.account_info);
@@ -3822,20 +3876,87 @@ function selectBatchCount(count) {
 let currentMiniMaxMode = 't2va';
 let firstFrameB64 = '';
 let lastFrameB64 = '';
+let avatarAudioB64 = '';
+let avatarAudioExt = '.mp3';
+let avatarUseBuiltinSample = true;
 
 function switchMiniMaxMode(mode) {
   currentMiniMaxMode = mode;
   const isFl = mode === 'fl2va';
-  document.getElementById('fl2vaImageRow').style.display = isFl ? 'grid' : 'none';
-  document.getElementById('tabBtnT2va').className = isFl ? 'btn-outline' : 'btn-primary';
-  document.getElementById('tabBtnFl2va').className = isFl ? 'btn-primary' : 'btn-outline';
+  const isAv = mode === 'avatar';
+  const flRow = document.getElementById('fl2vaImageRow');
+  const avRow = document.getElementById('avatarControlRow');
+  if (flRow) flRow.style.display = isFl ? 'grid' : 'none';
+  if (avRow) avRow.style.display = isAv ? 'grid' : 'none';
+  const bT2 = document.getElementById('tabBtnT2va');
+  const bFl = document.getElementById('tabBtnFl2va');
+  const bAv = document.getElementById('tabBtnAvatar');
+  if (bT2) bT2.className = (!isFl && !isAv) ? 'btn-primary' : 'btn-outline';
+  if (bFl) bFl.className = isFl ? 'btn-primary' : 'btn-outline';
+  if (bAv) bAv.className = isAv ? 'btn-primary' : 'btn-outline';
+  const titleEl = document.getElementById('videoStudioTitle');
+  const badgeEl = document.getElementById('videoStudioBadge');
+  const pEl = document.getElementById('videoPrompt');
+  if (isAv) {
+    if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
+    if (badgeEl) badgeEl.innerText = 'Whisper-v3 唇形同步 + DMD/OPSD 8步双LoRA蒸馏 + Kim_Vocal_2 人声分离';
+    if (pEl && pEl.value.includes('Makoto Shinkai anime style')) {
+      pEl.value = 'A western man stands on stage under dramatic lighting, holding a microphone close to their mouth. Wearing a vibrant red jacket with gold embroidery, the singer is speaking while smoke swirls around them, creating a dynamic and atmospheric scene.';
+    }
+  } else {
+    if (titleEl) titleEl.innerText = '🎬 MiniMax-H3 多模态有声视频创作工作台';
+    if (badgeEl) badgeEl.innerText = '32kHz 原生立体声音轨 + 32B 视觉编码器';
+  }
+}
+
+function handleAvatarAudioSelect(inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  const audEl = document.getElementById('avatarAudioPreview');
+  const stEl = document.getElementById('avatarAudioStatus');
+  if (!file) {
+    avatarAudioB64 = '';
+    if (audEl) audEl.style.display = 'none';
+    if (stEl) stEl.innerText = '✅ 默认已启用内置示例音频 (man.mp3)';
+    return;
+  }
+  const mExt = file.name.match(/\.[a-zA-Z0-9]+$/);
+  avatarAudioExt = mExt ? mExt[0].toLowerCase() : '.mp3';
+  avatarUseBuiltinSample = false;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    avatarAudioB64 = ev.target.result;
+    if (audEl) {
+      audEl.src = avatarAudioB64;
+      audEl.style.display = 'block';
+    }
+    if (stEl) stEl.innerText = `🎵 已载入驱动音频: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function useBuiltinAvatarSample() {
+  avatarAudioB64 = '';
+  avatarUseBuiltinSample = true;
+  firstFrameB64 = '';
+  const audInp = document.getElementById('inpAvatarAudio');
+  const audEl = document.getElementById('avatarAudioPreview');
+  const imgInp = document.getElementById('inpAvatarImage');
+  const imgEl = document.getElementById('avatarImagePreview');
+  const stEl = document.getElementById('avatarAudioStatus');
+  const hintEl = document.getElementById('avatarImageHint');
+  if (audInp) audInp.value = '';
+  if (audEl) audEl.style.display = 'none';
+  if (imgInp) imgInp.value = '';
+  if (imgEl) imgEl.style.display = 'none';
+  if (stEl) stEl.innerText = '✅ 已载入官方内置示例人声 (man.mp3) + 示例舞台歌手人像 (man.png)！直接点击下方「🎬 开始生成音视频」即可测试';
+  if (hintEl) hintEl.innerText = '✅ 当前将使用官方内置示例舞台歌手照片 (man.png · AI2V 模式)；您也可以随时上传自己的照片替换。';
 }
 
 function handleFrameFileSelect(inputEl, previewId) {
   const file = inputEl.files && inputEl.files[0];
   const imgEl = document.getElementById(previewId);
   if (!file) {
-    if (previewId === 'firstFramePreview') firstFrameB64 = '';
+    if (previewId === 'firstFramePreview' || previewId === 'avatarImagePreview') firstFrameB64 = '';
     if (previewId === 'lastFramePreview') lastFrameB64 = '';
     if (imgEl) imgEl.style.display = 'none';
     return;
@@ -3843,7 +3964,10 @@ function handleFrameFileSelect(inputEl, previewId) {
   const reader = new FileReader();
   reader.onload = function(ev) {
     const dataUrl = ev.target.result;
-    if (previewId === 'firstFramePreview') firstFrameB64 = dataUrl;
+    if (previewId === 'firstFramePreview' || previewId === 'avatarImagePreview') {
+      firstFrameB64 = dataUrl;
+      avatarUseBuiltinSample = false;
+    }
     if (previewId === 'lastFramePreview') lastFrameB64 = dataUrl;
     if (imgEl) {
       imgEl.src = dataUrl;
@@ -3856,10 +3980,17 @@ function handleFrameFileSelect(inputEl, previewId) {
 function clearRefFrame(which) {
   if (which === 'first') {
     firstFrameB64 = '';
+    avatarUseBuiltinSample = false;
     const inp = document.getElementById('inpFirstFrame');
     const img = document.getElementById('firstFramePreview');
+    const avInp = document.getElementById('inpAvatarImage');
+    const avImg = document.getElementById('avatarImagePreview');
+    const hintEl = document.getElementById('avatarImageHint');
     if (inp) inp.value = '';
     if (img) { img.src = ''; img.style.display = 'none'; }
+    if (avInp) avInp.value = '';
+    if (avImg) { avImg.src = ''; avImg.style.display = 'none'; }
+    if (hintEl) hintEl.innerText = '✨ 已切换为纯「文+音生数字人 (AT2V)」模式（不传照片，直接根据提示词和音频生成说话人物）。';
   } else {
     lastFrameB64 = '';
     const inp = document.getElementById('inpLastFrame');
@@ -4290,6 +4421,13 @@ async function startVideoGenerate() {
   if (currentMiniMaxMode === 'fl2va' && firstFrameB64) {
     payload.first_frame_b64 = firstFrameB64;
     if (lastFrameB64) payload.last_frame_b64 = lastFrameB64;
+  } else if (currentMiniMaxMode === 'avatar') {
+    payload.mode = 'avatar';
+    payload.audio_b64 = avatarAudioB64;
+    payload.audio_ext = avatarAudioExt;
+    payload.use_builtin_sample = avatarUseBuiltinSample;
+    payload.num_segments = parseInt((document.getElementById('avatarSegmentsSelect') || {}).value || '1', 10) || 1;
+    if (firstFrameB64) payload.first_frame_b64 = firstFrameB64;
   }
   const st = document.getElementById('videoGenStatus');
   const pWrap = document.getElementById('videoProgressWrap');
@@ -5522,12 +5660,25 @@ p.wait()
                 _PENDING_VIDEO_JOB["payload"] = payload
                 _PENDING_VIDEO_JOB["error"] = ""
                 _PENDING_VIDEO_JOB["started_at"] = time.time()
-                target_label = "MiniMax-H3 (T4 量化版)" if is_t4_account else "MiniMax-H3"
+                want_avatar = (payload.get("mode") == "avatar") or str(cfg.get("model_folder") or "").startswith("LongCat-Video-Avatar")
+                if want_avatar:
+                    target_label = "LongCat-Avatar-1.6 (INT8版)" if is_t4_account else "LongCat-Video-Avatar-1.6"
+                else:
+                    target_label = "MiniMax-H3 (T4 量化版)" if is_t4_account else "MiniMax-H3"
                 _append_panel_log(f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即生成有声视频...")
                 with _DEPLOY_LOCK:
                     already_deploying = bool(_DEPLOY_STATE.get("running"))
                 if not already_deploying:
-                    if is_t4_account:
+                    if want_avatar:
+                        _start_deploy_background(
+                            repo="meituan-longcat/LongCat-Video-Avatar-1.6",
+                            folder="LongCat-Video-Avatar-1.6-INT8" if is_t4_account else "LongCat-Video-Avatar-1.6",
+                            pattern="base_model_int8/*.safetensors" if is_t4_account else "base_model/*.safetensors",
+                            ctx=262144,
+                            gpu="T4" if is_t4_account else "G4",
+                            download_only=False,
+                        )
+                    elif is_t4_account:
                         _start_deploy_background(
                             repo="unsloth/MiniMax-H3-GGUF",
                             folder="MiniMax-H3-T4-GGUF",
