@@ -2408,7 +2408,7 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             if JOB_STATE["running"]:
-                self._send_json({"ok": False, "error": "当前已有数字人视频正在生成中，请等待完成"}, status=409)
+                self._send_json({"ok": True, "already_running": True, "message": JOB_STATE.get("message") or "当前已有数字人视频正在生成中，已自动接管实时进度"})
                 return
             threading.Thread(target=_run_avatar_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成 LongCat-Video-Avatar-1.6 数字人视频"})

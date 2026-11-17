@@ -4797,6 +4797,14 @@ async function startVideoGenerate() {
     });
     const d = await r.json();
     if (!d.ok) {
+      if (String(d.error || '').includes('正在生成中')) {
+        st.innerText = '⏳ ' + d.error + '（已自动为您恢复实时进度监控）';
+        st.style.color = '#f59e0b';
+        if (videoPollTimer) clearInterval(videoPollTimer);
+        pollVideoStatus();
+        videoPollTimer = setInterval(pollVideoStatus, 2000);
+        return;
+      }
       st.innerText = '❌ ' + (d.error || '启动失败（请确认模型服务已就绪）');
       st.style.color = '#ef4444';
       setVideoBtnRunningState(false);
@@ -5134,6 +5142,14 @@ async function pollUpscaleStatus() {
         dState.style.color = '#10b981';
       }
       await loadLocalVideoHistory(true);
+      try {
+        const rv = await fetch('/api/video_status');
+        const dv = await rv.json();
+        if (dv && dv.running && !videoPollTimer) {
+          pollVideoStatus();
+          videoPollTimer = setInterval(pollVideoStatus, 2000);
+        }
+      } catch (e) {}
     }
   } catch (e) {}
 }
@@ -5141,6 +5157,14 @@ async function pollUpscaleStatus() {
 refreshStatus(false);
 loadLocalVideoHistory(true);
 (async () => {
+  try {
+    const rv = await fetch('/api/video_status');
+    const dv = await rv.json();
+    if (dv && dv.running && !videoPollTimer) {
+      pollVideoStatus();
+      videoPollTimer = setInterval(pollVideoStatus, 2000);
+    }
+  } catch (e) {}
   try {
     const r = await fetch('/api/video_upscale_status');
     const d = await r.json();
