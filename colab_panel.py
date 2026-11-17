@@ -1983,14 +1983,47 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <input type="file" id="inpAvatarAudio" accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*" onchange="handleAvatarAudioSelect(this)" style="font-size:12px;color:var(--muted);width:100%;">
         <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-            <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 免上传音频：直接输入要说的台词 (自动转高拟真语音驱动口型)</span>
-            <div style="display:flex;align-items:center;gap:5px;">
-              <select id="avatarTtsVoiceSelect" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;">
-                <option value="zh-CN-XiaoyiNeural" selected>🎀 晓伊 (俏皮甜美·撒娇女声)</option>
-                <option value="zh-CN-XiaoxiaoNeural">🌸 晓晓 (温柔知性·自然女声)</option>
-                <option value="zh-CN-XiaoshuangNeural">✨ 晓双 (灵动清脆·少女音)</option>
-                <option value="zh-CN-YunxiNeural">🎙️ 云希 (阳光磁性·青年男声)</option>
-                <option value="zh-CN-YunjianNeural">🦁 云健 (沉稳大气·成熟男声)</option>
+            <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 免上传音频：直接输入台词 (27款男女音色 + 撒娇/御姐/低音炮调节)</span>
+            <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+              <select id="avatarTtsVoiceSelect" onchange="onAvatarVoiceOrStyleChange()" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;max-width:215px;">
+                <optgroup label="👩 精选女声 (15款 · 大陆/台湾/粤语/方言/多语)">
+                  <option value="zh-CN-XiaoyiNeural" selected>🎀 晓伊 (俏皮甜美·活泼少女音)</option>
+                  <option value="zh-CN-XiaoyiNeural|pitch=+6Hz|rate=-5%">🍬 晓伊·撒娇版 (软糯夹子音·甜度拉满)</option>
+                  <option value="zh-CN-XiaoxiaoNeural">🌸 晓晓 (温柔知性·自然女友音)</option>
+                  <option value="zh-CN-XiaoxiaoNeural|pitch=-6Hz|rate=-6%">🍷 晓晓·御姐版 (低沉磁性·成熟姐姐音)</option>
+                  <option value="zh-TW-HsiaoChenNeural">🧋 晓臻 (台湾甜美软糯·超嗲台妹腔)</option>
+                  <option value="zh-TW-HsiaoYuNeural">🍃 晓雨 (台湾温柔知性·治愈台湾腔)</option>
+                  <option value="zh-HK-HiuMaanNeural">🇭🇰 晓曼 (香港粤语·甜美港风女声)</option>
+                  <option value="zh-HK-HiuGaaiNeural">🇭🇰 晓佳 (香港粤语·知性都市女声)</option>
+                  <option value="zh-CN-liaoning-XiaobeiNeural">🥟 晓北 (东北大妞·幽默爽朗东北话)</option>
+                  <option value="zh-CN-shaanxi-XiaoniNeural">🍜 晓妮 (陕西妹子·俏皮关中陕北话)</option>
+                  <option value="en-US-AvaMultilingualNeural">💎 Ava (轻熟温柔女声·支持中英双语)</option>
+                  <option value="en-US-EmmaMultilingualNeural">✨ Emma (明快清亮女声·支持中英双语)</option>
+                  <option value="fr-FR-VivienneMultilingualNeural">🌹 Vivienne (法式微醺女声·可说中文)</option>
+                  <option value="ja-JP-NanamiNeural">🇯🇵 七海 Nanami (日本动漫萌妹·日语)</option>
+                  <option value="ko-KR-SunHiNeural">🇰🇷 善熙 SunHi (韩国温柔韩剧女声·韩语)</option>
+                </optgroup>
+                <optgroup label="👨 精选男声 (12款 · 少年/低音炮/霸总/暖男/粤语)">
+                  <option value="zh-CN-YunxiNeural">🎙️ 云希 (阳光少年·清朗磁性男声)</option>
+                  <option value="zh-CN-YunxiNeural|pitch=-8Hz|rate=-5%">🥂 云希·低音炮 (深情耳畔低语·磁性男声)</option>
+                  <option value="zh-CN-YunjianNeural">🦁 云健 (霸总沉稳·浑厚爆发力男声)</option>
+                  <option value="zh-CN-YunyangNeural">👔 云扬 (儒雅温润·成熟磁性男声)</option>
+                  <option value="zh-CN-YunxiaNeural">👦 云夏 (元气正太·清脆少年音)</option>
+                  <option value="zh-TW-YunJheNeural">🧋 云哲 (台湾温柔暖男·偶像剧台湾腔)</option>
+                  <option value="zh-HK-WanLungNeural">🇭🇰 云龙 (香港粤语·港片磁性男声)</option>
+                  <option value="en-US-AndrewMultilingualNeural">🥃 Andrew (欧美深沉磁性男声·可说中文)</option>
+                  <option value="en-US-BrianMultilingualNeural">🎸 Brian (随性自然青年男声·可说中文)</option>
+                  <option value="fr-FR-RemyMultilingualNeural">🍷 Remy (法式绅士低音男声·可说中文)</option>
+                  <option value="ko-KR-HyunsuMultilingualNeural">🇰🇷 贤洙 Hyunsu (韩国欧巴低音·支持中韩)</option>
+                  <option value="ja-JP-KeitaNeural">🇯🇵 圭太 Keita (日本爽朗青年男声·日语)</option>
+                </optgroup>
+              </select>
+              <select id="avatarTtsStyleSelect" onchange="onAvatarVoiceOrStyleChange()" title="微调任意音色的音调高低与语速快慢" style="padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:600;">
+                <option value="" selected>🎛️ 默认语感</option>
+                <option value="pitch=+6Hz|rate=-5%">🍬 升调撒娇 (+6Hz)</option>
+                <option value="pitch=-6Hz|rate=-6%">🍷 降调御姐/低音 (-6Hz)</option>
+                <option value="pitch=+0Hz|rate=-12%">🌙 深情慢速 (-12%)</option>
+                <option value="pitch=+0Hz|rate=+12%">⚡ 轻快语速 (+12%)</option>
               </select>
               <button type="button" id="btnPreviewTts" onclick="previewAvatarTts()" style="padding:2px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #3b82f6;background:rgba(59,130,246,0.2);color:#93c5fd;cursor:pointer;white-space:nowrap;">🔊 合成并试听</button>
             </div>
@@ -4166,6 +4199,23 @@ function switchMiniMaxMode(mode) {
   }
 }
 
+function getCombinedAvatarTtsSpec() {
+  const vRaw = ((document.getElementById('avatarTtsVoiceSelect') || {}).value || 'zh-CN-XiaoyiNeural').trim();
+  const sRaw = ((document.getElementById('avatarTtsStyleSelect') || {}).value || '').trim();
+  if (sRaw && !vRaw.includes('|')) {
+    return `${vRaw}|${sRaw}`;
+  }
+  return vRaw;
+}
+
+function onAvatarVoiceOrStyleChange() {
+  avatarAudioB64 = '';
+  const stEl = document.getElementById('avatarAudioStatus');
+  if (stEl) {
+    stEl.innerText = '🎙️ 已切换配音音色/语感！可点「🔊 合成并试听」试听新音色，或直接点下方开始生成';
+  }
+}
+
 function onAvatarTtsInput(el) {
   const txt = (el ? el.value : '').trim();
   const stEl = document.getElementById('avatarAudioStatus');
@@ -4209,7 +4259,7 @@ async function previewAvatarTts() {
   const stEl = document.getElementById('avatarAudioStatus');
   autoSplitAvatarPromptAndTts(document.getElementById('videoPrompt'));
   const text = (ttsEl ? ttsEl.value : '').trim();
-  const voice = (voiceEl ? voiceEl.value : 'zh-CN-XiaoyiNeural') || 'zh-CN-XiaoyiNeural';
+  const voice = getCombinedAvatarTtsSpec();
   if (!text) {
     alert('请先在黄色「💬 台词配音框」内粘贴或输入要说的台词文字');
     if (ttsEl) ttsEl.focus();
@@ -4773,7 +4823,7 @@ async function startVideoGenerate() {
     payload.audio_b64 = avatarAudioB64;
     payload.audio_ext = avatarAudioExt;
     payload.tts_text = ((document.getElementById('inpAvatarTtsText') || {}).value || '').trim();
-    payload.tts_voice = ((document.getElementById('avatarTtsVoiceSelect') || {}).value || 'zh-CN-XiaoyiNeural').trim();
+    payload.tts_voice = getCombinedAvatarTtsSpec();
     payload.use_builtin_sample = avatarUseBuiltinSample;
     payload.num_segments = parseInt((document.getElementById('avatarSegmentsSelect') || {}).value ?? '0', 10);
     if (isNaN(payload.num_segments)) payload.num_segments = 0;
@@ -5555,14 +5605,22 @@ p.wait()
                 import math
                 import tempfile
                 tts_text = str(payload.get("text") or "").strip()
-                tts_voice = str(payload.get("voice") or "zh-CN-XiaoyiNeural").strip()
+                tts_voice_raw = str(payload.get("voice") or "zh-CN-XiaoyiNeural").strip()
                 if not tts_text:
                     self._send_json({"ok": False, "error": "台词内容不能为空"})
                     return
+                v_parts = [p.strip() for p in tts_voice_raw.split("|") if p.strip()]
+                tts_voice = v_parts[0] if v_parts else "zh-CN-XiaoyiNeural"
+                extra_flags = []
+                for vp in v_parts[1:]:
+                    if vp.startswith("pitch="):
+                        extra_flags.append(f"--{vp}")
+                    elif vp.startswith("rate="):
+                        extra_flags.append(f"--{vp}")
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
                     tmp_mp3 = tf.name
                 subprocess.run(
-                    [str(PYTHON_BIN), "-m", "edge_tts", "--voice", tts_voice, "--text", tts_text, "--write-media", tmp_mp3],
+                    [str(PYTHON_BIN), "-m", "edge_tts", "--voice", tts_voice, *extra_flags, "--text", tts_text, "--write-media", tmp_mp3],
                     check=True,
                     timeout=30,
                 )

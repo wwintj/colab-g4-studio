@@ -2081,7 +2081,15 @@ def _run_avatar_job(payload: dict):
             with open(audio_path, "wb") as af:
                 af.write(base64.b64decode(raw_a))
         elif tts_text:
-            voice_name = tts_voice or ("zh-CN-YunxiNeural" if any(w in visual_prompt for w in ("男", "先生", "帅哥", "大叔", "boy", "man")) else "zh-CN-XiaoyiNeural")
+            raw_v = tts_voice or ("zh-CN-YunxiNeural" if any(w in visual_prompt for w in ("男", "先生", "帅哥", "大叔", "boy", "man")) else "zh-CN-XiaoyiNeural")
+            v_parts = [p.strip() for p in raw_v.split("|") if p.strip()]
+            voice_name = v_parts[0] if v_parts else "zh-CN-XiaoyiNeural"
+            extra_flags = []
+            for vp in v_parts[1:]:
+                if vp.startswith("pitch="):
+                    extra_flags.append(f"--{vp}")
+                elif vp.startswith("rate="):
+                    extra_flags.append(f"--{vp}")
             audio_path = "/tmp/longcat_tts_audio.mp3"
             JOB_STATE.update({
                 "running": True,
@@ -2089,7 +2097,7 @@ def _run_avatar_job(payload: dict):
                 "message": f"🎙️ 正在使用 {voice_name} 合成驱动语音: 「{tts_text[:28]}...」",
                 "error": "",
             })
-            tts_cmd = [sys.executable, "-m", "edge_tts", "--voice", voice_name, "--text", tts_text, "--write-media", audio_path]
+            tts_cmd = [sys.executable, "-m", "edge_tts", "--voice", voice_name, *extra_flags, "--text", tts_text, "--write-media", audio_path]
             r_tts = subprocess.run(tts_cmd, capture_output=True, text=True)
             if r_tts.returncode != 0 or not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
                 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "edge-tts"], check=False)
@@ -2097,7 +2105,7 @@ def _run_avatar_job(payload: dict):
             if not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
                 audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
             else:
-                tts_note = f" (已合成配音: {voice_name})"
+                tts_note = f" (已合成配音: {raw_v})"
         else:
             audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
 
