@@ -1956,18 +1956,34 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- LongCat-Video-Avatar-1.6 数字人音频驱动图形化操作区 (切换至 avatar 模式自动显示) -->
-  <div id="avatarControlRow" style="display:none;grid-template-columns:1.1fr 1fr;gap:12px;padding:14px;margin-bottom:16px;background:#0f172a;border:1.5px dashed #10b981;border-radius:12px;">
+  <div id="avatarControlRow" style="display:none;grid-template-columns:1.18fr 1fr;gap:12px;padding:14px;margin-bottom:16px;background:#0f172a;border:1.5px dashed #10b981;border-radius:12px;">
     <div style="display:flex;flex-direction:column;justify-content:space-between;">
       <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-          <label style="font-size:12.5px;font-weight:700;color:#34d399;margin:0;">🎤 1. 驱动人声 / 唱歌音频 (.mp3 / .wav)</label>
-          <button type="button" onclick="useBuiltinAvatarSample()" style="padding:2px 9px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid rgba(16,185,129,0.5);background:rgba(16,185,129,0.16);color:#6ee7b7;cursor:pointer;">🎙️ 使用内置示例人声+人像 (免上传直接测)</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+          <label style="font-size:12.5px;font-weight:700;color:#34d399;margin:0;">🎤 1. 驱动音源：上传录音 (.mp3/.wav) 或 直接输入台词配音</label>
+          <button type="button" onclick="useBuiltinAvatarSample()" style="padding:2px 9px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid rgba(16,185,129,0.5);background:rgba(16,185,129,0.16);color:#6ee7b7;cursor:pointer;">🎙️ 使用内置示例人声+人像</button>
         </div>
         <input type="file" id="inpAvatarAudio" accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*" onchange="handleAvatarAudioSelect(this)" style="font-size:12px;color:var(--muted);width:100%;">
+        <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+            <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 免上传音频：直接输入要说的台词 (自动转高拟真语音驱动口型)</span>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <select id="avatarTtsVoiceSelect" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;">
+                <option value="zh-CN-XiaoyiNeural" selected>🎀 晓伊 (俏皮甜美·撒娇女声)</option>
+                <option value="zh-CN-XiaoxiaoNeural">🌸 晓晓 (温柔知性·自然女声)</option>
+                <option value="zh-CN-XiaoshuangNeural">✨ 晓双 (灵动清脆·少女音)</option>
+                <option value="zh-CN-YunxiNeural">🎙️ 云希 (阳光磁性·青年男声)</option>
+                <option value="zh-CN-YunjianNeural">🦁 云健 (沉稳大气·成熟男声)</option>
+              </select>
+              <button type="button" id="btnPreviewTts" onclick="previewAvatarTts()" style="padding:2px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #3b82f6;background:rgba(59,130,246,0.2);color:#93c5fd;cursor:pointer;white-space:nowrap;">🔊 合成并试听</button>
+            </div>
+          </div>
+          <textarea id="inpAvatarTtsText" rows="2" oninput="onAvatarTtsInput(this)" placeholder="在此粘贴人物要说的话（例如：胜哥，刚才刷朋友圈看到你导航导错了...）" style="width:100%;min-height:52px;padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:12.5px;line-height:1.45;resize:vertical;"></textarea>
+        </div>
         <audio id="avatarAudioPreview" controls style="display:none;margin-top:8px;width:100%;height:34px;"></audio>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
-        <span id="avatarAudioStatus" style="color:#34d399;font-weight:600;">✅ 默认已启用内置示例音频 (man.mp3)，也可直接上传您的录音</span>
+        <span id="avatarAudioStatus" style="color:#34d399;font-weight:600;">✅ 可上传音频，或在上方黄色框直接粘贴台词自动配音</span>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           <span style="color:var(--muted);">生成时长/段数:</span>
           <select id="avatarSegmentsSelect" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:12px;font-weight:700;">
@@ -1992,7 +2008,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button type="button" onclick="clearRefFrame('first')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;">✕ 清除照片 (切为纯文+音)</button>
       </div>
       <input type="file" id="inpAvatarImage" accept="image/*" onchange="handleFrameFileSelect(this, 'avatarImagePreview')" style="font-size:12px;color:var(--muted);width:100%;">
-      <img id="avatarImagePreview" style="display:none;margin-top:8px;width:100%;max-height:130px;object-fit:contain;border-radius:6px;background:#020617;">
+      <img id="avatarImagePreview" style="display:none;margin-top:8px;width:100%;max-height:165px;object-fit:contain;border-radius:6px;background:#020617;">
       <div id="avatarImageHint" style="font-size:11.5px;color:#94a3b8;margin-top:8px;">💡 上传一张人物正面/半身照，LongCat-Avatar-1.6 会驱动照片中的人物精准对口型说话/唱歌；若不上传，则直接根据下方提示词生成说话人物。</div>
     </div>
   </div>
@@ -2036,7 +2052,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoPrompt" rows="4" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;">Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.</textarea>
+      <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this)" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;">Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.</textarea>
     </div>
 
     <!-- 框 2 (单独一行)：环境音效与台词对白（可选） -->
@@ -4070,10 +4086,10 @@ function switchMiniMaxMode(mode) {
   if (isAv) {
     if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
     if (badgeEl) badgeEl.innerText = 'Whisper-v3 唇形同步 + DMD/OPSD 8步双LoRA蒸馏 + Kim_Vocal_2 人声分离';
-    if (pSecTitle) pSecTitle.innerText = '3. 人物动作与画面提示词（可选修改 · 已填好默认词，可直接点下方按钮生成）';
+    if (pSecTitle) pSecTitle.innerText = '3. 纯画面与人物神态描述 Prompt（仅写镜头/表情/眼神/光影，不要把台词写在这里）';
     if (fourBtns) fourBtns.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
-    if (box1Lbl) box1Lbl.innerText = '画面与人物神态描述 Prompt（若已上传照片，此处仅描述说话神态/动作/光影即可）';
+    if (box1Lbl) box1Lbl.innerText = '画面与人物神态描述（要说的话请填在上方第 1 步黄色「💬 台词配音框」内；若一起粘贴会自动为您分离）';
     if (box2Wrap) box2Wrap.style.display = 'none';
     if (box3Wrap) box3Wrap.style.display = 'none';
     if (box4Wrap) box4Wrap.style.display = 'none';
@@ -4086,11 +4102,12 @@ function switchMiniMaxMode(mode) {
       btnGen.innerText = '🎬 开始生成数字人视频';
     }
     if (pEl) {
-      pEl.rows = 2;
-      pEl.style.minHeight = '66px';
+      pEl.rows = 3;
+      pEl.style.minHeight = '76px';
       if (pEl.value.includes('Makoto Shinkai anime style')) {
-        pEl.value = 'A western man stands on stage under dramatic lighting, holding a microphone close to their mouth. Wearing a vibrant red jacket with gold embroidery, the singer is speaking while smoke swirls around them, creating a dynamic and atmospheric scene.';
+        pEl.value = '固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、轻轻点头和呼吸起伏，嘴型与语音高度同步，面部柔和暖光，五官清晰稳定，过渡丝滑真实。';
       }
+      autoSplitAvatarPromptAndTts(pEl);
     }
   } else {
     if (titleEl) titleEl.innerText = '🎬 MiniMax-H3 多模态有声视频创作工作台';
@@ -4116,6 +4133,93 @@ function switchMiniMaxMode(mode) {
       if (pEl.value.includes('A western man stands on stage under dramatic lighting')) {
         pEl.value = 'Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.';
       }
+    }
+  }
+}
+
+function onAvatarTtsInput(el) {
+  const txt = (el ? el.value : '').trim();
+  const stEl = document.getElementById('avatarAudioStatus');
+  if (txt) {
+    avatarAudioB64 = '';
+    avatarUseBuiltinSample = false;
+    const audInp = document.getElementById('inpAvatarAudio');
+    if (audInp) audInp.value = '';
+    if (stEl) {
+      stEl.innerText = `💬 已输入配音台词 (${txt.length} 字) · 可点「🔊 合成并试听」先听声音，或直接点下方开始生成`;
+    }
+  }
+}
+
+function autoSplitAvatarPromptAndTts(promptEl) {
+  if (currentMiniMaxMode !== 'avatar') return;
+  const pEl = promptEl || document.getElementById('videoPrompt');
+  const ttsEl = document.getElementById('inpAvatarTtsText');
+  const stEl = document.getElementById('avatarAudioStatus');
+  if (!pEl || !ttsEl) return;
+  const raw = pEl.value || '';
+  const m = raw.match(/^(?:([\s\S]*?)\n+)?\s*(?:台词如下|说话内容如下|对白如下|台词内容|开口说话|说话内容|台词|对白)\s*[:：]\s*([\s\S]+)$/);
+  if (m && m[2] && m[2].trim()) {
+    const visPart = (m[1] || '').trim() || '固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、轻轻点头和呼吸起伏，嘴型与语音高度同步，面部柔和暖光，五官清晰稳定，过渡丝滑真实。';
+    const spokenPart = m[2].trim();
+    pEl.value = visPart;
+    ttsEl.value = spokenPart;
+    avatarAudioB64 = '';
+    avatarUseBuiltinSample = false;
+    if (stEl) {
+      stEl.innerText = `✨ 已自动将「台词 (${spokenPart.length}字)」分离至上方黄色配音框！画面描述已保留在第 3 框`;
+    }
+  }
+}
+
+async function previewAvatarTts() {
+  const ttsEl = document.getElementById('inpAvatarTtsText');
+  const voiceEl = document.getElementById('avatarTtsVoiceSelect');
+  const btn = document.getElementById('btnPreviewTts');
+  const audEl = document.getElementById('avatarAudioPreview');
+  const stEl = document.getElementById('avatarAudioStatus');
+  autoSplitAvatarPromptAndTts(document.getElementById('videoPrompt'));
+  const text = (ttsEl ? ttsEl.value : '').trim();
+  const voice = (voiceEl ? voiceEl.value : 'zh-CN-XiaoyiNeural') || 'zh-CN-XiaoyiNeural';
+  if (!text) {
+    alert('请先在黄色「💬 台词配音框」内粘贴或输入要说的台词文字');
+    if (ttsEl) ttsEl.focus();
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⏳ 合成中...';
+  }
+  if (stEl) stEl.innerText = `⏳ 正在使用 ${voice} 合成高拟真语音...`;
+  try {
+    const r = await fetch('/api/tts_preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, voice}),
+    });
+    const d = await r.json();
+    if (!d.ok || !d.audio_b64) {
+      if (stEl) stEl.innerText = '❌ 语音合成失败: ' + (d.error || '未知错误');
+      return;
+    }
+    avatarAudioB64 = d.audio_b64;
+    avatarAudioExt = '.mp3';
+    avatarUseBuiltinSample = false;
+    if (audEl) {
+      audEl.src = d.audio_b64;
+      audEl.style.display = 'block';
+      audEl.play().catch(() => {});
+    }
+    const durInfo = d.duration_sec ? ` · 时长 ${d.duration_sec} 秒 (自动匹配 ${d.auto_segments || 1} 段)` : '';
+    if (stEl) {
+      stEl.innerText = `🎵 台词语音已就绪${durInfo}！可直接点下方「🎬 开始生成数字人视频」`;
+    }
+  } catch (e) {
+    if (stEl) stEl.innerText = '❌ 语音合成请求异常: ' + e;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = '🔊 合成并试听';
     }
   }
 }
@@ -4605,6 +4709,9 @@ async function startVideoGenerate() {
     await stopActiveVideoTask('video');
     return;
   }
+  if (currentMiniMaxMode === 'avatar') {
+    autoSplitAvatarPromptAndTts(document.getElementById('videoPrompt'));
+  }
   const prompt = document.getElementById('videoPrompt').value.trim();
   if (!prompt) {
     alert('请输入有声视频画面提示词');
@@ -4636,6 +4743,8 @@ async function startVideoGenerate() {
     payload.mode = 'avatar';
     payload.audio_b64 = avatarAudioB64;
     payload.audio_ext = avatarAudioExt;
+    payload.tts_text = ((document.getElementById('inpAvatarTtsText') || {}).value || '').trim();
+    payload.tts_voice = ((document.getElementById('avatarTtsVoiceSelect') || {}).value || 'zh-CN-XiaoyiNeural').trim();
     payload.use_builtin_sample = avatarUseBuiltinSample;
     payload.num_segments = parseInt((document.getElementById('avatarSegmentsSelect') || {}).value ?? '0', 10);
     if (isNaN(payload.num_segments)) payload.num_segments = 0;
@@ -5383,6 +5492,50 @@ for line in p.stdout:
 p.wait()
 '''
                 self._send_json({"ok": True, "code": cell_code})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/tts_preview":
+            try:
+                import base64
+                import math
+                import tempfile
+                tts_text = str(payload.get("text") or "").strip()
+                tts_voice = str(payload.get("voice") or "zh-CN-XiaoyiNeural").strip()
+                if not tts_text:
+                    self._send_json({"ok": False, "error": "台词内容不能为空"})
+                    return
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
+                    tmp_mp3 = tf.name
+                subprocess.run(
+                    [str(PYTHON_BIN), "-m", "edge_tts", "--voice", tts_voice, "--text", tts_text, "--write-media", tmp_mp3],
+                    check=True,
+                    timeout=30,
+                )
+                mp3_bytes = Path(tmp_mp3).read_bytes()
+                dur_sec = round(len(mp3_bytes) / 6000.0, 1)
+                try:
+                    dur_out = subprocess.check_output(
+                        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", tmp_mp3],
+                        text=True,
+                        timeout=5,
+                    ).strip()
+                    dur_sec = round(float(dur_out), 1)
+                except Exception:
+                    pass
+                try:
+                    os.unlink(tmp_mp3)
+                except Exception:
+                    pass
+                auto_segs = 1 if dur_sec <= 3.85 else max(1, min(200, 1 + int(math.ceil((dur_sec - 3.72) / 3.20))))
+                b64_str = "data:audio/mp3;base64," + base64.b64encode(mp3_bytes).decode("ascii")
+                self._send_json({
+                    "ok": True,
+                    "audio_b64": b64_str,
+                    "duration_sec": dur_sec,
+                    "auto_segments": auto_segs,
+                })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
             return

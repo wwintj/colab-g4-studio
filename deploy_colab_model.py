@@ -2061,30 +2061,35 @@ def _run_avatar_job(payload: dict):
         audio_ext = str(payload.get("audio_ext") or ".mp3").strip()
         if not audio_ext.startswith("."):
             audio_ext = "." + audio_ext
+        tts_text = str(payload.get("tts_text") or "").strip()
+        tts_voice = str(payload.get("tts_voice") or "zh-CN-XiaoyiNeural").strip()
         visual_prompt = prompt
+
+        # 若用户把「台词如下：...」连同画面描述一起粘进了第 3 框，自动将画面描述与台词精准分离
+        m_split = re.match(r"^(?:([\s\S]*?)\n+)?\s*(?:台词如下|说话内容如下|对白如下|台词内容|开口说话|说话内容|台词|对白)\s*[:：]\s*([\s\S]+)$", visual_prompt)
+        if m_split and m_split.group(2) and m_split.group(2).strip():
+            visual_prompt = (m_split.group(1) or "").strip() or (
+                "固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、轻轻点头和呼吸起伏，嘴型与语音高度同步，面部柔和暖光，五官清晰稳定，过渡丝滑真实。"
+            )
+            if not tts_text:
+                tts_text = m_split.group(2).strip()
+
         tts_note = ""
         if audio_b64:
             raw_a = audio_b64.split(",", 1)[-1]
             audio_path = f"/tmp/longcat_input_audio{audio_ext}"
             with open(audio_path, "wb") as af:
                 af.write(base64.b64decode(raw_a))
-        elif re.search(r"[\u4e00-\u9fff]", prompt) or any(k in prompt for k in ("说话:", "说话：", "说:", "说：", "台词:", "台词：")):
-            # 用户未上传音频，但在提示词框中直接输入了中文台词（如“让图片里的人开口说话:我叫小林子...”）-> 自动调用 edge-tts 生成自然人声驱动口型
-            spoken_text = prompt
-            vis_prefix = ""
-            m_sp = re.split(r"(?:开口说话|说话|台词|说)\s*[:：]", prompt, maxsplit=1)
-            if len(m_sp) == 2 and m_sp[1].strip():
-                vis_prefix = m_sp[0].strip()
-                spoken_text = m_sp[1].strip()
-            voice_name = "zh-CN-YunxiNeural" if any(w in vis_prefix for w in ("男", "先生", "帅哥", "大叔", "boy", "man")) else "zh-CN-XiaoxiaoNeural"
+        elif tts_text:
+            voice_name = tts_voice or ("zh-CN-YunxiNeural" if any(w in visual_prompt for w in ("男", "先生", "帅哥", "大叔", "boy", "man")) else "zh-CN-XiaoyiNeural")
             audio_path = "/tmp/longcat_tts_audio.mp3"
             JOB_STATE.update({
                 "running": True,
                 "pct": 4,
-                "message": f"🎙️ 检测到台词文本，正在自动使用 {voice_name} 合成驱动语音: 「{spoken_text[:28]}...」",
+                "message": f"🎙️ 正在使用 {voice_name} 合成驱动语音: 「{tts_text[:28]}...」",
                 "error": "",
             })
-            tts_cmd = [sys.executable, "-m", "edge_tts", "--voice", voice_name, "--text", spoken_text, "--write-media", audio_path]
+            tts_cmd = [sys.executable, "-m", "edge_tts", "--voice", voice_name, "--text", tts_text, "--write-media", audio_path]
             r_tts = subprocess.run(tts_cmd, capture_output=True, text=True)
             if r_tts.returncode != 0 or not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
                 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "edge-tts"], check=False)
@@ -2092,10 +2097,7 @@ def _run_avatar_job(payload: dict):
             if not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
                 audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
             else:
-                tts_note = f" (已自动合成中文配音: {voice_name})"
-            visual_prompt = (
-                "A person speaking naturally and expressively to the camera with vivid facial expressions, natural lip sync and subtle head movements, realistic cinematic lighting."
-            )
+                tts_note = f" (已合成配音: {voice_name})"
         else:
             audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
 
