@@ -4393,10 +4393,22 @@ def run_local_wizard():
     def _allocate_colab_session(sess_id: str) -> None:
         target_gpu = args.gpu
         try:
+            from urllib.parse import urljoin
+            from colab_cli.client import TUN_ENDPOINT
             from colab_cli.common import state
-            u_info = state.client.get_consumption_user_info()
-            if float(getattr(u_info, "paid_compute_units_balance", 0.0) or 0.0) <= 0.0 and target_gpu.upper() != "T4":
-                print(f"\n💡 检测到当前账号 Colab 付费算力余额为 0.00 CU，已自动切换为申请【T4 (16GB 显存 · 0.00 CU/h 不扣费)】实例...", flush=True)
+            ccu_url = urljoin(state.client.colab_domain, f"{TUN_ENDPOINT}/ccu-info")
+            resp_c = state.client.session.request(
+                "GET",
+                ccu_url,
+                headers={"Accept": "application/json", "X-Colab-Client-Agent": "colab-cli"},
+                params={"authuser": "0"},
+                timeout=8,
+            )
+            raw_c = json.loads(state.client._strip_xssi_prefix(resp_c.text) or "{}")
+            bal_c = float(raw_c.get("currentBalance") or 0.0)
+            el_gpus = [str(g).upper() for g in (raw_c.get("eligibleGpus") or [])]
+            if bal_c <= 0.0 and ("G4" not in el_gpus) and target_gpu.upper() != "T4":
+                print(f"\n💡 检测到当前账号 Colab 算力余额为 0.00 CU 且未解锁 G4，已自动切换为申请【T4 (16GB 显存 · 0.00 CU/h 不扣费)】实例...", flush=True)
                 target_gpu = "T4"
         except Exception:
             pass

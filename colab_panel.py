@@ -753,7 +753,7 @@ def _reset_colab_cli_state():
     _ACCOUNT_INFO_CACHE["timestamp"] = 0.0
 
 
-def _get_accounts_status(force: bool = False, cu_balance: Any = None) -> Dict[str, Any]:
+def _get_accounts_status(force: bool = False, cu_balance: Any = None, eligible_gpus: Any = None) -> Dict[str, Any]:
     now = time.time()
     if not force and _ACCOUNT_INFO_CACHE["data"] and (now - _ACCOUNT_INFO_CACHE["timestamp"] < 45):
         cached = dict(_ACCOUNT_INFO_CACHE["data"])
@@ -761,6 +761,9 @@ def _get_accounts_status(force: bool = False, cu_balance: Any = None) -> Dict[st
             for it in cached.get("accounts", []):
                 if it.get("email") == cached["active_email"]:
                     it["cu_balance"] = cu_balance
+                    if eligible_gpus is not None:
+                        it["eligible_gpus"] = eligible_gpus
+                        it["g4_eligible"] = (float(cu_balance or 0.0) > 0.0) or ("G4" in eligible_gpus)
         return cached
 
     acc_map = _load_saved_accounts()
@@ -786,13 +789,17 @@ def _get_accounts_status(force: bool = False, cu_balance: Any = None) -> Dict[st
                     rclone_txt = prev.get("rclone_conf", "")
                     if not rclone_txt and rclone_p.exists() and len(acc_map) == 0:
                         rclone_txt = rclone_p.read_text(encoding="utf-8")
+                    eff_bal = cu_balance if cu_balance is not None else prev.get("cu_balance")
+                    eff_gpus = eligible_gpus if eligible_gpus is not None else (prev.get("eligible_gpus") or [])
                     acc_map[active_email] = {
                         "email": active_email,
                         "name": active_name,
                         "picture": active_pic,
                         "token_json": token_json,
                         "rclone_conf": rclone_txt,
-                        "cu_balance": cu_balance if cu_balance is not None else prev.get("cu_balance"),
+                        "cu_balance": eff_bal,
+                        "eligible_gpus": eff_gpus,
+                        " updated_at": time.strftime("%Y-%m-%d %H:%M"),
                         "updated_at": time.strftime("%Y-%m-%d %H:%M"),
                     }
                     _save_saved_accounts(acc_map)
@@ -801,11 +808,16 @@ def _get_accounts_status(force: bool = False, cu_balance: Any = None) -> Dict[st
 
     public_list = []
     for em, info in acc_map.items():
+        bal_v = info.get("cu_balance")
+        el_g = [str(g).upper() for g in (info.get("eligible_gpus") or [])]
+        g4_ok = (bal_v is not None and float(bal_v or 0.0) > 0.0) or ("G4" in el_g)
         public_list.append({
             "email": em,
             "name": info.get("name") or em,
             "picture": info.get("picture") or "",
-            "cu_balance": info.get("cu_balance"),
+            "cu_balance": bal_v,
+            "eligible_gpus": el_g,
+            "g4_eligible": g4_ok,
             "has_drive_conf": bool(info.get("rclone_conf")),
             "updated_at": info.get("updated_at") or "",
             "is_active": (em == active_email),
@@ -819,6 +831,67 @@ def _get_accounts_status(force: bool = False, cu_balance: Any = None) -> Dict[st
     _ACCOUNT_INFO_CACHE["data"] = res
     _ACCOUNT_INFO_CACHE["timestamp"] = now
     return res
+
+
+def _refresh_all_saved_accounts_cu() -> Dict[str, Any]:
+    """并发向 Google Colab 服务端强制刷新所有已绑定账号的实时 CU 余额与 G4 可用权限"""
+    from concurrent.futures import ThreadPoolExecutor
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    import requests
+
+    acc_map = _load_saved_accounts()
+
+    def _probe_one(em_and_info):
+        em, info = em_and_info
+        tok_str = info.get("token_json") or ""
+        if not tok_str:
+            return em, None, []
+        try:
+            tok_obj = json.loads(tok_str)
+            creds = Credentials.from_authorized_user_info(tok_obj)
+            if creds.refresh_token:
+                creds.refresh(Request())
+                info["token_json"] = creds.to_json()
+            r = requests.get(
+                "https://colab.research.google.com/tun/m/ccu-info?authuser=0",
+                headers={
+                    "Authorization": f"Bearer {creds.token}",
+                    "Accept": "application/json",
+                    "X-Colab-Client-Agent": "colab-cli",
+                },
+                timeout=8,
+            )
+            if r.status_code == 200:
+                txt = r.text.split("\n", 1)[-1] if r.text.startswith(")]}") else r.text
+                obj = json.loads(txt)
+                bal = round(float(obj.get("currentBalance") or 0.0), 2)
+                el_gpus = [str(g).upper() for g in (obj.get("eligibleGpus") or [])]
+                return em, bal, el_gpus
+        except Exception:
+            pass
+        return em, info.get("cu_balance"), info.get("eligible_gpus") or []
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(_probe_one, list(acc_map.items())))
+
+    for em, bal, el_gpus in results:
+        if em in acc_map:
+            acc_map[em]["cu_balance"] = bal
+            acc_map[em]["eligible_gpus"] = el_gpus
+            acc_map[em]["updated_at"] = time.strftime("%Y-%m-%d %H:%M")
+
+    _save_saved_accounts(acc_map)
+    _LAST_CU_CACHE["data"] = None
+    _LAST_CU_CACHE["timestamp"] = 0.0
+    _ACCOUNT_INFO_CACHE["data"] = None
+    _ACCOUNT_INFO_CACHE["timestamp"] = 0.0
+    cu_now = _query_cu_usage(force=True)
+    return _get_accounts_status(
+        force=True,
+        cu_balance=(cu_now or {}).get("paid_balance"),
+        eligible_gpus=(cu_now or {}).get("eligible_gpus"),
+    )
 
 
 
@@ -1127,9 +1200,11 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
     auto_switched_note = ""
     if not download_only:
         try:
-            cu_check = _query_cu_usage(force=False)
+            cu_check = _query_cu_usage(force=True)
             bal_val = cu_check.get("paid_balance")
-            if bal_val is not None and float(bal_val) <= 0.0:
+            el_gpus = [str(g).upper() for g in (cu_check.get("eligible_gpus") or [])]
+            has_g4_entitlement = (bal_val is not None and float(bal_val) > 0.0) or ("G4" in el_gpus)
+            if not has_g4_entitlement and bal_val is not None and float(bal_val) <= 0.0:
                 gpu = "T4"
                 if folder in ("MiniMax-H3", "MiniMax-H3-Turbo"):
                     old_folder = folder
@@ -2275,7 +2350,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <div style="width:100%;max-width:560px;max-height:90vh;overflow-y:auto;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:18px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.6);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <div style="font-size:16px;font-weight:800;color:#f8fafc;">👤 Google Colab 账号管理与切换</div>
-      <button class="btn-outline" style="padding:3px 9px;font-size:13px;" onclick="closeAccountModal()">✕</button>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button type="button" class="btn-outline" id="btnRefreshAllAccCu" style="padding:3px 9px;font-size:11.5px;border-color:#3b82f6;color:#93c5fd;" onclick="refreshAllAccountsQuota(false)" title="向 Google Colab 服务端强制刷新所有已绑定账号的实时 CU 算力余额与 G4 权限">🔄 刷新全部账号额度</button>
+        <button class="btn-outline" style="padding:3px 9px;font-size:13px;" onclick="closeAccountModal()">✕</button>
+      </div>
     </div>
 
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;margin-bottom:12px;border-radius:8px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);font-size:12px;color:#d1fae5;">
@@ -2360,12 +2438,13 @@ function renderAccountBadgeAndModal(accInfo) {
     const borderCol = isAct ? '#10b981' : 'var(--border)';
     const bgCol = isAct ? 'rgba(16,185,129,0.12)' : '#0f172a';
     const cuNum = (it.cu_balance !== null && typeof it.cu_balance !== 'undefined') ? Number(it.cu_balance) : null;
-    const hasG4 = cuNum !== null && cuNum > 0;
-    const cuBadge = cuNum === null
+    const hasG4 = (cuNum !== null && cuNum > 0) || Boolean(it.g4_eligible);
+    const g4Label = (cuNum !== null && cuNum > 0) ? `⚡ ${cuNum.toFixed(2)} CU · RTX 6000` : `⚡ Ultra · RTX 6000`;
+    const cuBadge = cuNum === null && !hasG4
       ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(148,163,184,0.18);color:#cbd5e1;font-weight:700;">-- CU</span>`
       : (hasG4
-          ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(16,185,129,0.2);color:#34d399;font-weight:700;">⚡ ${cuNum.toFixed(2)} CU · RTX 6000</span>`
-          : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.18);color:#93c5fd;font-weight:700;" title="T4 (16GB)，单号每日可用约 3~5 小时">⚡ T4 (16GB · ≈3~5h/天)</span>`);
+          ? `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(16,185,129,0.2);color:#34d399;font-weight:700;">${g4Label}</span>`
+          : `<span style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.18);color:#93c5fd;font-weight:700;" title="Google Colab 服务端当前返回该账号 0.00 CU · eligibleGpus=['T4']">⚡ T4 (16GB · ≈3~5h/天)</span>`);
     const actBtn = isAct
       ? `<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.22);color:#34d399;font-size:11.5px;font-weight:700;">✅ 当前使用</span>`
       : `<button type="button" class="btn-primary" style="padding:4px 10px;font-size:11.5px;" onclick="switchColabAccount('${escapeHtml(it.email)}')">⚡ 切换</button>`;
@@ -2409,6 +2488,56 @@ function openAccountModal() {
   if (st) st.style.display = 'none';
   renderAccountModalList();
   refreshModalOAuthLinks();
+  refreshAllAccountsQuota(true);
+}
+
+async function refreshAllAccountsQuota(silent = false) {
+  const btn = document.getElementById('btnRefreshAllAccCu');
+  const st = document.getElementById('accountActionStatus');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⏳ 正在向 Google 刷新...';
+  }
+  if (!silent && st) {
+    st.style.display = 'block';
+    st.style.color = '#60a5fa';
+    st.innerText = '⏳ 正在实时刷新全部已绑定账号的 Google Colab 算力余额 (CU) 与 G4 硬件权限...';
+  }
+  try {
+    const r = await fetch('/api/accounts/refresh_all', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+    });
+    const d = await r.json();
+    if (d.ok && d.account_info) {
+      renderAccountBadgeAndModal(d.account_info);
+      const actAcc = (d.account_info.accounts || []).find(a => a.is_active);
+      if (actAcc && actAcc.g4_eligible) {
+        switchPresetTierTab('g4');
+      }
+      if (!silent && st) {
+        if (actAcc && !actAcc.g4_eligible) {
+          st.style.color = '#f59e0b';
+          st.innerText = `⚠️ 已向 Google Colab 实时刷新：当前账号 (${actAcc.email}) 在 Colab 后端接口 (/tun/m/ccu-info) 返回余额仍为 0.00 CU、可用 GPU 为 ["T4"]。若您刚升级 Google AI Ultra，请先在已登录该账号的浏览器打开一次 https://colab.research.google.com/ 激活同步 Colab 算力钱包（若网页端已能选 G4，也可直接展开下方「网页版 Colab 隧道直连」10秒接管）！`;
+        } else {
+          st.style.color = '#10b981';
+          st.innerText = '✅ 已成功同步全部账号的最新算力配额与 G4 权限！';
+        }
+      }
+      await refreshStatus(true);
+    }
+  } catch (e) {
+    if (!silent && st) {
+      st.style.color = '#ef4444';
+      st.innerText = '❌ 刷新失败: ' + e;
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = '🔄 刷新全部账号额度';
+    }
+  }
 }
 
 async function copyColabWebBootstrapCode() {
@@ -3328,18 +3457,24 @@ async function refreshStatus(force = false) {
       liveBurnRate = br;
       if (d.cu_info.paid_balance !== null && typeof d.cu_info.paid_balance !== 'undefined') {
         const bal = Number(d.cu_info.paid_balance);
+        const elGpus = Array.isArray(d.cu_info.eligible_gpus) ? d.cu_info.eligible_gpus : [];
+        const hasG4Entitlement = bal > 0 || elGpus.includes('G4');
         basePaidBalance = bal;
         baseBalanceSyncTs = Date.now();
         isFreeT4Available = d.cu_info.t4_available !== false;
-        if (bal > 0) {
-          balEl.innerText = `${bal.toFixed(2)} CU`;
+        if (hasG4Entitlement) {
+          balEl.innerText = bal > 0 ? `${bal.toFixed(2)} CU` : 'Ultra (G4)';
           balEl.style.color = '#f8fafc';
           if (hrsEl) {
-            const refRate = br > 0 ? br : 10.05;
-            const hrs = bal / refRate;
-            hrsEl.innerText = br > 0
-              ? `当前速率可跑 ≈ ${hrs.toFixed(1)} 小时`
-              : `按 RTX PRO 6000 (10.05/h) ≈ ${hrs.toFixed(1)} 小时`;
+            if (bal > 0) {
+              const refRate = br > 0 ? br : 10.05;
+              const hrs = bal / refRate;
+              hrsEl.innerText = br > 0
+                ? `当前速率可跑 ≈ ${hrs.toFixed(1)} 小时`
+                : `按 RTX PRO 6000 (10.05/h) ≈ ${hrs.toFixed(1)} 小时`;
+            } else {
+              hrsEl.innerText = '🔥 已解锁 RTX PRO 6000 (G4 · 96GB)';
+            }
           }
         } else if (isFreeT4Available) {
           balEl.innerText = 'T4 (16GB)';
@@ -4919,7 +5054,11 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     except Exception:
                         metrics = _LAST_METRICS_CACHE["data"]
             idle_sec = int(max(0.0, time.time() - float(cfg.get("last_activity_ts", time.time()) or time.time())))
-            acc_info = _get_accounts_status(force=force, cu_balance=(cu_info or {}).get("paid_balance"))
+            acc_info = _get_accounts_status(
+                force=force,
+                cu_balance=(cu_info or {}).get("paid_balance"),
+                eligible_gpus=(cu_info or {}).get("eligible_gpus"),
+            )
             self._send_json({
                 "sessions": sessions,
                 "endpoint_cfg": cfg,
@@ -5236,6 +5375,14 @@ for line in p.stdout:
 p.wait()
 '''
                 self._send_json({"ok": True, "code": cell_code})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/accounts/refresh_all":
+            try:
+                acc_info = _refresh_all_saved_accounts_cu()
+                self._send_json({"ok": True, "account_info": acc_info})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
             return
