@@ -1969,12 +1969,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:12px;">
         <span id="avatarAudioStatus" style="color:#34d399;font-weight:600;">✅ 默认已启用内置示例音频 (man.mp3)，也可直接上传您的录音</span>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <span style="color:var(--muted);">生成段数:</span>
+          <span style="color:var(--muted);">生成时长/段数:</span>
           <select id="avatarSegmentsSelect" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:12px;font-weight:700;">
-            <option value="1" selected>1段 (~4秒 · 8步极速)</option>
+            <option value="0" selected>🔄 自动匹配音频全长 (推荐)</option>
+            <option value="1">1段 (~3.7秒 · 8步极速)</option>
             <option value="2">2段 (~7秒)</option>
             <option value="3">3段 (~10秒)</option>
             <option value="5">5段 (~17秒)</option>
+            <option value="10">10段 (~33秒)</option>
+            <option value="19">19段 (~1分钟)</option>
+            <option value="38">38段 (~2分钟)</option>
+            <option value="56">56段 (~3分钟)</option>
+            <option value="94">94段 (~5分钟)</option>
+            <option value="188">188段 (~10分钟 · 超长极限)</option>
           </select>
         </div>
       </div>
@@ -4630,7 +4637,8 @@ async function startVideoGenerate() {
     payload.audio_b64 = avatarAudioB64;
     payload.audio_ext = avatarAudioExt;
     payload.use_builtin_sample = avatarUseBuiltinSample;
-    payload.num_segments = parseInt((document.getElementById('avatarSegmentsSelect') || {}).value || '1', 10) || 1;
+    payload.num_segments = parseInt((document.getElementById('avatarSegmentsSelect') || {}).value ?? '0', 10);
+    if (isNaN(payload.num_segments)) payload.num_segments = 0;
     if (firstFrameB64) payload.first_frame_b64 = firstFrameB64;
   }
   const st = document.getElementById('videoGenStatus');

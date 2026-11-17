@@ -2047,7 +2047,7 @@ def _run_avatar_job(payload: dict):
         )
         res_str = str(payload.get("resolution") or "832x480").strip()
         resolution = "720p" if "720" in res_str or "1280" in res_str else "480p"
-        num_segments = max(1, min(10, int(payload.get("num_segments") or 1)))
+        raw_req_segments = int(payload.get("num_segments") if payload.get("num_segments") is not None else 0)
         mix_steps = max(0, min(8, int(payload.get("mix_steps") if payload.get("mix_steps") is not None else 4)))
         mix_alpha = float(payload.get("mix_alpha") if payload.get("mix_alpha") is not None else 1.0)
         base_seed = int(payload.get("seed") if payload.get("seed") is not None else -1)
@@ -2098,6 +2098,25 @@ def _run_avatar_job(payload: dict):
             )
         else:
             audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
+
+        # 若用户选择「0 (自动匹配音频全长)」，通过 ffprobe 测量音频真实秒数并换算为对应段数 (首段 3.72s + 后续每段 3.20s，最高支持 200 段 >10 分钟)
+        if raw_req_segments <= 0:
+            try:
+                dur_out = subprocess.check_output(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+                    text=True,
+                    timeout=10,
+                ).strip()
+                aud_dur = float(dur_out)
+                if aud_dur <= 3.85:
+                    num_segments = 1
+                else:
+                    import math as _m
+                    num_segments = max(1, min(200, 1 + int(_m.ceil((aud_dur - 3.72) / 3.20))))
+            except Exception:
+                num_segments = 1
+        else:
+            num_segments = max(1, min(200, raw_req_segments))
 
         first_b64 = str(payload.get("first_frame_b64") or "").strip()
         use_builtin_img = bool(payload.get("use_builtin_sample")) and not first_b64
@@ -2194,6 +2213,7 @@ def _run_avatar_job(payload: dict):
             )
             buf = ""
             tail_lines = []
+            cur_seg_idx = 1
             ansi_re = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
             assert proc.stdout is not None
             while True:
@@ -2221,19 +2241,29 @@ def _run_avatar_job(payload: dict):
                             JOB_STATE["pct"] = 18
                             JOB_STATE["message"] = "🎭 [LongCat-Avatar-1.6] 正在融合 DMD + OPSD 双蒸馏 LoRA 适配器..."
                         elif "generating segment" in ln.lower():
-                            JOB_STATE["pct"] = 25
-                            JOB_STATE["message"] = f"🎬 [LongCat-Avatar-1.6] {ln} (8步口型与动作扩散采样中)..."
+                            m_seg = re.search(r"segment\s+(\d+)/(\d+)", ln, re.IGNORECASE)
+                            if m_seg:
+                                cur_seg_idx = max(1, int(m_seg.group(1)))
+                            seg_base_pct = 20 + int(((cur_seg_idx - 1) / float(max(1, num_segments))) * 75)
+                            JOB_STATE["pct"] = min(95, max(20, seg_base_pct))
+                            JOB_STATE["message"] = f"🎬 [LongCat-Avatar-1.6] 正在生成第 {cur_seg_idx}/{num_segments} 段 (8步口型与动作扩散采样中)..."
                         else:
                             m = re.search(r"(\d+)%\|.*\|\s*(\d+)/(\d+)", ln)
                             if m:
                                 pct = int(m.group(1))
                                 cur_s = int(m.group(2))
                                 tot_s = max(1, int(m.group(3)))
-                                JOB_STATE["step"] = cur_s
-                                JOB_STATE["total_steps"] = tot_s
-                                ov_pct = min(96, max(20, 22 + int(pct * 0.72)))
-                                JOB_STATE["pct"] = ov_pct
-                                JOB_STATE["message"] = f"🎭 [LongCat-Avatar-1.6] 正在扩散生成数字人视频: 第 {cur_s}/{tot_s} 步 (总进度 {ov_pct}%)"
+                                if tot_s <= 16:
+                                    # 8步扩散采样进度 (跨多段平滑累加)
+                                    glob_step = (cur_seg_idx - 1) * tot_s + cur_s
+                                    glob_tot = num_segments * tot_s
+                                    JOB_STATE["step"] = glob_step
+                                    JOB_STATE["total_steps"] = glob_tot
+                                    seg_frac = ((cur_seg_idx - 1) + (pct / 100.0)) / float(max(1, num_segments))
+                                    ov_pct = min(96, max(20, 22 + int(seg_frac * 74)))
+                                    JOB_STATE["pct"] = ov_pct
+                                    seg_tag = f"第 {cur_seg_idx}/{num_segments} 段 · " if num_segments > 1 else ""
+                                    JOB_STATE["message"] = f"🎭 [LongCat-Avatar-1.6] 正在扩散生成数字人视频: {seg_tag}第 {cur_s}/{tot_s} 步 (总进度 {ov_pct}%)"
                     else:
                         buf += ch
             proc.wait()
