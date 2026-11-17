@@ -3648,7 +3648,14 @@ async function pollLogs() {
       if (d.exit_code === 0 && !d.running) {
         pLabel.innerText = '✅ 模型已装载至显存并全部就绪 (100%)';
         pSpeed.innerText = '已就绪';
+        pBar.style.background = '';
         pBar.className = 'progress-fill green';
+        pBar.style.width = '100%';
+      } else if (!d.running && d.exit_code !== null && d.exit_code !== 0) {
+        pLabel.innerText = `❌ 部署连接中断 (退出码 ${d.exit_code}) · 点击「🚀 从云盘加载并启动」或「▶️ 一键开机」即可自动重连继续`;
+        pSpeed.innerText = '连接中断';
+        pBar.className = 'progress-fill';
+        pBar.style.background = '#ef4444';
         pBar.style.width = '100%';
       } else if (latestDeployMatch) {
         const stage = latestDeployMatch[1];
@@ -3659,6 +3666,7 @@ async function pollLogs() {
         const icon = stage === '显存装载' ? '🎮' : '⏳';
         pLabel.innerText = `${icon} [${stage}] ${fname}: ${pct}%`;
         pSpeed.innerText = `${gbStr} · 速度 ${spdStr}`;
+        pBar.style.background = '';
         pBar.className = stage === '显存装载' ? 'progress-fill green' : 'progress-fill';
         pBar.style.width = `${Math.min(100, pct)}%`;
         if (stage === '显存装载') {
@@ -3674,6 +3682,7 @@ async function pollLogs() {
       } else if (d.running) {
         pLabel.innerText = '⏳ 正在初始化环境 / 解析仓库分片...';
         pSpeed.innerText = '请稍候';
+        pBar.style.background = '';
       }
     }
     const st = document.getElementById('deployStateText');

@@ -3768,26 +3768,31 @@ def find_colab_bin() -> str:
     raise RuntimeError("未找到 colab CLI，请先运行: .venv/bin/pip install google-colab-cli")
 
 
-def mount_google_drive_native(session_name: str):
+def mount_google_drive_native(session_name: str) -> bool:
     """
     通过 colab_cli 原生协议将完整 Google Drive 根目录挂载至 /content/drive/MyDrive。
     - 自动卸载之前可能残留的 rclone 子目录挂载
     - 若需要浏览器授权，自动弹出网页并轮询检测授权完成（无需回终端按回车）
+    - 若缓存会话已过期或 WebSocket 断开，返回 False 以便上层自动重建实例
     """
     from colab_cli.auth import get_credentials
     from colab_cli.common import state
     from colab_cli.runtime import ColabRuntime
     from colab_cli.utils import get_status_code, open_url_in_browser
 
-    s = state.get_session(session_name)
-    runtime = ColabRuntime(
-        s.url,
-        s.token,
-        session_name=s.name,
-        history=state.history,
-        kernel_id=s.kernel_id,
-        session_id=s.session_id,
-    )
+    try:
+        s = state.get_session(session_name)
+        runtime = ColabRuntime(
+            s.url,
+            s.token,
+            session_name=s.name,
+            history=state.history,
+            kernel_id=s.kernel_id,
+            session_id=s.session_id,
+        )
+    except Exception as e:
+        print(f"⚠️ 无法连接缓存会话 '{session_name}' ({e})，准备重新分配实例...", flush=True)
+        return False
 
     def auto_polling_drivefs_hook(deserialize_msg, wsclient):
         content = deserialize_msg.get("content", {})
@@ -3899,8 +3904,15 @@ print('DRIVE_ROOT_READY:/content/drive/MyDrive/models')
             if "text" in out:
                 sys.stdout.write(out["text"])
                 sys.stdout.flush()
+        return True
+    except Exception as e:
+        print(f"⚠️ 实例 '{session_name}' WebSocket 连接已断开 ({e})，正在自动清理失效会话并重新分配...", flush=True)
+        return False
     finally:
-        runtime.stop()
+        try:
+            runtime.stop()
+        except Exception:
+            pass
 
 
 def show_remote_status(session_name: str):
@@ -4291,35 +4303,43 @@ def run_local_wizard():
     hf_tok = os.environ.get("HF_TOKEN") or saved_cfg.get("hf_token") or ""
     save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": True})
 
-    if f"[{session_name}]" not in sess_out and session_name not in sess_out:
+    def _allocate_colab_session(sess_id: str) -> None:
         target_gpu = args.gpu
         try:
             from colab_cli.common import state
             u_info = state.client.get_consumption_user_info()
             if float(getattr(u_info, "paid_compute_units_balance", 0.0) or 0.0) <= 0.0 and target_gpu.upper() != "T4":
-                print(f"\n💡 检测到当前账号 Colab 付费算力余额为 0.00 CU，已自动切换为申请【免费 T4 (16GB 显存 · 0.00 CU/h 不扣费)】实例...")
+                print(f"\n💡 检测到当前账号 Colab 付费算力余额为 0.00 CU，已自动切换为申请【T4 (16GB 显存 · 0.00 CU/h 不扣费)】实例...", flush=True)
                 target_gpu = "T4"
         except Exception:
             pass
-        print(f"\n-> 正在申请分配 Google Colab {target_gpu} 实例 '{session_name}'...")
-        res_new = subprocess.run([colab_bin, "new", "-s", session_name, "--gpu", target_gpu], check=False)
+        print(f"\n-> 正在申请分配 Google Colab {target_gpu} 实例 '{sess_id}'...", flush=True)
+        res_new = subprocess.run([colab_bin, "new", "-s", sess_id, "--gpu", target_gpu], check=False)
         if res_new.returncode != 0 and target_gpu.upper() != "T4":
-            print(f"\n⚠️ 当前账号无 {target_gpu} 权限 (0.00 CU)，正在自动降级申请【免费 T4 (16GB 显存 · 0.00 CU/h)】实例...")
-            res_new = subprocess.run([colab_bin, "new", "-s", session_name, "--gpu", "T4"], check=False)
+            print(f"\n⚠️ 当前账号无 {target_gpu} 权限 (0.00 CU)，正在自动降级申请【T4 (16GB 显存 · 0.00 CU/h)】实例...", flush=True)
+            res_new = subprocess.run([colab_bin, "new", "-s", sess_id, "--gpu", "T4"], check=False)
         if res_new.returncode != 0:
             print(
-                f"\n❌ [分配失败] 当前 Google 账号无法分配 GPU 实例（可能免费 T4 配额暂时受限或需在网页端首次激活）。\n"
-                f"   👉 若需使用 RTX PRO 6000 (G4 · 96GB 显存)，请点击控制台右上角「👤 账号」按钮切换至有 CU 余额的账号（如 687.72 CU 账号）！"
+                f"\n❌ [分配失败] 当前 Google 账号无法分配 GPU 实例（可能 T4 配额暂时受限或需在网页端首次激活）。\n"
+                f"   👉 若需使用 RTX PRO 6000 (G4 · 96GB 显存)，请点击控制台右上角「👤 账号」按钮切换至有 CU 余额的账号（如 687.72 CU 账号）！",
+                flush=True,
             )
+            save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": False})
             sys.exit(1)
+
+    if f"[{session_name}]" not in sess_out and session_name not in sess_out:
+        _allocate_colab_session(session_name)
     else:
-        print(f"\n-> 复用当前运行中的 Colab 实例 '{session_name}'。")
+        print(f"\n-> 复用当前运行中的 Colab 实例 '{session_name}'。", flush=True)
 
     if mount_drive:
-        print(f"\n-> 正在将完整 Google Drive 挂载到实例 '{session_name}' (/content/drive/MyDrive)...")
-        mount_google_drive_native(session_name)
+        print(f"\n-> 正在将完整 Google Drive 挂载到实例 '{session_name}' (/content/drive/MyDrive)...", flush=True)
+        if not mount_google_drive_native(session_name):
+            subprocess.run([colab_bin, "stop", "-s", session_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _allocate_colab_session(session_name)
+            mount_google_drive_native(session_name)
 
-    print(f"\n-> 正在远端 Colab 实例上准备 `/content/drive/MyDrive/models/{model_folder}`...")
+    print(f"\n-> 正在远端 Colab 实例上准备 `/content/drive/MyDrive/models/{model_folder}`...", flush=True)
     cmd = [
         colab_bin, "exec", "-s", session_name,
         "--timeout", "3600",
@@ -4336,20 +4356,54 @@ def run_local_wizard():
 
     captured_tunnel_url = ""
     captured_api_key = api_key
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        sys.stdout.write(line)
-        sys.stdout.flush()
-        m_tun = re.search(r"TUNNEL_BASE_URL=(https://[a-zA-Z0-9-]+\.trycloudflare\.com)/v1", line)
-        if m_tun:
-            captured_tunnel_url = m_tun.group(1)
-        m_k = re.search(r"API_KEY=(\S+)", line)
-        if m_k:
-            captured_api_key = m_k.group(1)
-    proc.wait()
-    if proc.returncode != 0:
-        sys.exit(proc.returncode)
+    last_rc = 0
+    for exec_attempt in range(1, 4):
+        saw_conn_lost = False
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            if "Connection was lost." in line:
+                saw_conn_lost = True
+                if line.strip().startswith("RuntimeError: Connection was lost."):
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    break
+            m_tun = re.search(r"TUNNEL_BASE_URL=(https://[a-zA-Z0-9-]+\.trycloudflare\.com)/v1", line)
+            if m_tun:
+                captured_tunnel_url = m_tun.group(1)
+            m_k = re.search(r"API_KEY=(\S+)", line)
+            if m_k:
+                captured_api_key = m_k.group(1)
+        try:
+            proc.wait(timeout=3)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        last_rc = (proc.returncode if proc.returncode is not None else 1) or (1 if saw_conn_lost and not captured_tunnel_url else 0)
+        if last_rc == 0 or captured_tunnel_url:
+            last_rc = 0
+            break
+        if saw_conn_lost and exec_attempt < 3:
+            print(f"\n🔄 [网络自愈 {exec_attempt}/2] 检测到 Colab WebSocket 瞬断 (Connection was lost)，正在自动重连并从断点继续...", flush=True)
+            time.sleep(2.0)
+            cur_sess = subprocess.getoutput(f'"{colab_bin}" sessions')
+            if (f"[{session_name}]" not in cur_sess and session_name not in cur_sess) or exec_attempt >= 2:
+                subprocess.run([colab_bin, "stop", "-s", session_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                _allocate_colab_session(session_name)
+                if mount_drive:
+                    mount_google_drive_native(session_name)
+            continue
+        break
+
+    if last_rc != 0:
+        save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": False})
+        sys.exit(last_rc)
 
     if captured_tunnel_url:
         save_local_endpoint_config({
