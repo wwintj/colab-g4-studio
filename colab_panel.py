@@ -910,7 +910,8 @@ def _query_local_gdrive_info(force: bool = False) -> Dict[str, Any]:
 
 def _list_active_sessions() -> List[Dict[str, str]]:
     try:
-        from colab_cli.common import SessionState, state
+        from colab_cli.common import state
+        from colab_cli.state import SessionState
         state._sessions = None
         local_map, assignments = state.sync_sessions()
         name_by_ep = {s.endpoint: s.name for s in local_map.values()}
@@ -5007,7 +5008,11 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/video_status"):
             if _PENDING_VIDEO_JOB.get("active"):
                 pct_val = 4
-                stage_msg = "🔄 正在自动从 Google Drive 云盘切换并装载 MiniMax-H3 至显存，加载完成后将立即自动生成视频..."
+                p_job = _PENDING_VIDEO_JOB.get("payload") or {}
+                c_tmp = _load_endpoint_cfg()
+                is_av_job = (p_job.get("mode") == "avatar") or str(c_tmp.get("model_folder") or "").startswith("LongCat-Video-Avatar")
+                target_eng = "LongCat-Video-Avatar-1.6" if is_av_job else "MiniMax-H3"
+                stage_msg = f"🔄 正在自动从 Google Drive 云盘切换并装载 {target_eng}，加载完成后将立即自动生成视频..."
                 with _DEPLOY_LOCK:
                     logs_snap = list(_DEPLOY_STATE.get("logs") or [])
                 for line in reversed(logs_snap):
@@ -5019,7 +5024,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                             pct_val = max(8, min(15, 8 + int(st_pct * 0.07)))
                         else:
                             pct_val = max(3, min(8, 3 + int(st_pct * 0.05)))
-                        stage_msg = f"🔄 正在自动切换加载 MiniMax-H3 ({st_type}: {st_pct}%)，显存就绪后将立即自动生成视频..."
+                        stage_msg = f"🔄 正在自动切换加载 {target_eng} ({st_type}: {st_pct}%)，就绪后将立即自动生成视频..."
                         break
                 self._send_json({
                     "running": True,

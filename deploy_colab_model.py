@@ -2061,11 +2061,41 @@ def _run_avatar_job(payload: dict):
         audio_ext = str(payload.get("audio_ext") or ".mp3").strip()
         if not audio_ext.startswith("."):
             audio_ext = "." + audio_ext
+        visual_prompt = prompt
+        tts_note = ""
         if audio_b64:
             raw_a = audio_b64.split(",", 1)[-1]
             audio_path = f"/tmp/longcat_input_audio{audio_ext}"
             with open(audio_path, "wb") as af:
                 af.write(base64.b64decode(raw_a))
+        elif re.search(r"[\u4e00-\u9fff]", prompt) or any(k in prompt for k in ("说话:", "说话：", "说:", "说：", "台词:", "台词：")):
+            # 用户未上传音频，但在提示词框中直接输入了中文台词（如“让图片里的人开口说话:我叫小林子...”）-> 自动调用 edge-tts 生成自然人声驱动口型
+            spoken_text = prompt
+            vis_prefix = ""
+            m_sp = re.split(r"(?:开口说话|说话|台词|说)\s*[:：]", prompt, maxsplit=1)
+            if len(m_sp) == 2 and m_sp[1].strip():
+                vis_prefix = m_sp[0].strip()
+                spoken_text = m_sp[1].strip()
+            voice_name = "zh-CN-YunxiNeural" if any(w in vis_prefix for w in ("男", "先生", "帅哥", "大叔", "boy", "man")) else "zh-CN-XiaoxiaoNeural"
+            audio_path = "/tmp/longcat_tts_audio.mp3"
+            JOB_STATE.update({
+                "running": True,
+                "pct": 4,
+                "message": f"🎙️ 检测到台词文本，正在自动使用 {voice_name} 合成驱动语音: 「{spoken_text[:28]}...」",
+                "error": "",
+            })
+            tts_cmd = [sys.executable, "-m", "edge_tts", "--voice", voice_name, "--text", spoken_text, "--write-media", audio_path]
+            r_tts = subprocess.run(tts_cmd, capture_output=True, text=True)
+            if r_tts.returncode != 0 or not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "edge-tts"], check=False)
+                subprocess.run(tts_cmd, check=False)
+            if not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
+                audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
+            else:
+                tts_note = f" (已自动合成中文配音: {voice_name})"
+            visual_prompt = (
+                "A person speaking naturally and expressively to the camera with vivid facial expressions, natural lip sync and subtle head movements, realistic cinematic lighting."
+            )
         else:
             audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
 
@@ -2086,7 +2116,7 @@ def _run_avatar_job(payload: dict):
 
         job_json_path = "/tmp/longcat_avatar_input.json"
         job_data = {
-            "prompt": prompt,
+            "prompt": visual_prompt,
             "cond_audio": {"person1": audio_path},
         }
         if img_path:
@@ -2100,7 +2130,7 @@ def _run_avatar_job(payload: dict):
             "step": 0,
             "total_steps": 8 * num_segments,
             "seed": cur_seed,
-            "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段)...",
+            "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
             "error": "",
         })
 
@@ -2108,9 +2138,8 @@ def _run_avatar_job(payload: dict):
             tmp_out_dir = f"/tmp/longcat_out_{int(time.time())}"
             os.makedirs(tmp_out_dir, exist_ok=True)
             cmd = [
-                "torchrun",
-                "--nproc_per_node=1",
-                "--master_port", str(random.randint(29500, 29990)),
+                sys.executable,
+                "-u",
                 os.path.join(LONGCAT_CODE_DIR, "run_demo_avatar_single_audio_to_video.py"),
                 "--context_parallel_size=1",
                 f"--checkpoint_dir={MODEL_DIR}",
@@ -2128,9 +2157,19 @@ def _run_avatar_job(payload: dict):
             if use_int8:
                 cmd.append("--use_int8")
 
+            run_env = os.environ.copy()
+            run_env.update({
+                "RANK": "0",
+                "WORLD_SIZE": "1",
+                "LOCAL_RANK": "0",
+                "MASTER_ADDR": "127.0.0.1",
+                "MASTER_PORT": str(random.randint(29500, 29990)),
+                "PYTHONPATH": LONGCAT_CODE_DIR + (":" + run_env["PYTHONPATH"] if run_env.get("PYTHONPATH") else ""),
+            })
             proc = subprocess.Popen(
                 cmd,
                 cwd=LONGCAT_CODE_DIR,
+                env=run_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
@@ -2367,11 +2406,17 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
 
     missing_pkgs = []
     for pkg, mod in [
+        ("loguru", "loguru"),
+        ("av", "av"),
+        ("imageio", "imageio"),
+        ("imageio-ffmpeg", "imageio_ffmpeg"),
+        ("edge-tts", "edge_tts"),
         ("librosa", "librosa"),
         ("soundfile", "soundfile"),
         ("soxr", "soxr"),
         ("pyloudnorm", "pyloudnorm"),
         ("audio-separator", "audio_separator"),
+        ("onnx", "onnx"),
         ("onnxruntime-gpu", "onnxruntime"),
         ("ftfy", "ftfy"),
         ("einops", "einops"),
@@ -2381,8 +2426,43 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
         except ImportError:
             missing_pkgs.append(pkg)
     if missing_pkgs:
-        log(f"正在安装 LongCat-Video-Avatar 音频与人声分离依赖 ({', '.join(missing_pkgs)})...")
+        log(f"正在安装 LongCat-Video-Avatar 运行与语音依赖 ({', '.join(missing_pkgs)})...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_pkgs, check=False)
+
+    # 若当前环境未预装编译版 flash_attn，自动注入基于 PyTorch 2.6 原生 CUDA SDPA 的零编译兼容层
+    try:
+        __import__("flash_attn")
+    except ImportError:
+        flash_shim_path = "/content/LongCat-Video/flash_attn.py"
+        os.makedirs("/content/LongCat-Video", exist_ok=True)
+        with open(flash_shim_path, "w", encoding="utf-8") as sf:
+            sf.write(
+                "import torch\n"
+                "import torch.nn.functional as F\n\n"
+                "def flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=None, causal=False, **kwargs):\n"
+                "    out = F.scaled_dot_product_attention(\n"
+                "        q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),\n"
+                "        dropout_p=dropout_p, is_causal=causal, scale=softmax_scale,\n"
+                "    )\n"
+                "    return out.transpose(1, 2).contiguous()\n\n"
+                "def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q=None, max_seqlen_k=None, dropout_p=0.0, softmax_scale=None, causal=False, **kwargs):\n"
+                "    q_bounds = cu_seqlens_q.tolist()\n"
+                "    k_bounds = cu_seqlens_k.tolist()\n"
+                "    if len(q_bounds) == 2 and len(k_bounds) == 2:\n"
+                "        out = F.scaled_dot_product_attention(\n"
+                "            q.unsqueeze(0).transpose(1, 2), k.unsqueeze(0).transpose(1, 2), v.unsqueeze(0).transpose(1, 2),\n"
+                "            dropout_p=dropout_p, is_causal=causal, scale=softmax_scale,\n"
+                "        )\n"
+                "        return out.transpose(1, 2).squeeze(0).contiguous()\n"
+                "    outs = []\n"
+                "    for i in range(len(q_bounds) - 1):\n"
+                "        qi = q[q_bounds[i]:q_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
+                "        ki = k[k_bounds[i]:k_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
+                "        vi = v[k_bounds[i]:k_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
+                "        oi = F.scaled_dot_product_attention(qi, ki, vi, dropout_p=dropout_p, is_causal=causal, scale=softmax_scale)\n"
+                "        outs.append(oi.transpose(1, 2).squeeze(0))\n"
+                "    return torch.cat(outs, dim=0).contiguous()\n"
+            )
 
     server_py = "/content/longcat_avatar_server.py"
     with open(server_py, "w", encoding="utf-8") as wf:
@@ -2408,7 +2488,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
                 if resp.status == 200:
                     log(f"[显存装载] {os.path.basename(target_dir)}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
                     log("✅ LongCat-Video-Avatar-1.6 数字人音频驱动视频服务已启动 (端口 30000)！")
-                    _ensure_recavsr_service_on_30002()
+                    __import__("threading").Thread(target=_ensure_recavsr_service_on_30002, daemon=True).start()
                     return
         except Exception:
             pass
