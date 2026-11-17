@@ -2202,9 +2202,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- ==================== 第 3 行 (单独一行 100% 宽度，1:1 复刻原版 EasyColab 预览图)：▶️ 生成结果预览 (左大屏) + 🕒 本地历史 (右列表) ==================== -->
-  <div style="display:grid;grid-template-columns: 3.1fr 1fr;gap:16px;align-items:stretch;">
+  <div style="display:grid;grid-template-columns: minmax(0, 2.8fr) minmax(265px, 1fr);gap:16px;align-items:stretch;width:100%;box-sizing:border-box;">
     <!-- 左卡片：▶️ 生成结果预览 (超大屏 16:9 画面) -->
-    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;">
+    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;">
       <!-- 顶部标题栏：左「▶️ 生成结果预览」，右「⏱ 生成耗时 8分31.9秒」蓝色胶囊 -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:800;color:#f8fafc;">
@@ -2255,7 +2255,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
 
     <!-- 右卡片：🕒 本地历史 (~/Movies/EasyColab) -->
-    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;">
+    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;min-width:0;overflow:hidden;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="color:#3b82f6;font-size:15px;">🕒</span>
