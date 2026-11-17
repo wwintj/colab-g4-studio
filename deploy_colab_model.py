@@ -292,6 +292,7 @@ def fast_parallel_hf_download(
     batch_done_bytes: int = 0,
     batch_total_bytes: int = 0,
     batch_label: str = "",
+    stage_tag: str = "HF 下载",
 ) -> str:
     """8~16 路 HTTP Range 并发极速下载 (Colab G4/A100 上可达 400~700 MB/s)，支持跨分片全局总进度显示"""
     dest_path = os.path.join(dest_dir, filename)
@@ -350,10 +351,10 @@ def fast_parallel_hf_download(
                             ov_tot = max(batch_total_bytes, ov_done)
                             ov_pct = min(100, ov_done * 100 // max(1, ov_tot))
                             lbl = (batch_label or os.path.basename(filename)).replace(":", "·")
-                            log(f"  [HF 下载] {lbl}: {ov_pct}% ({ov_done/(1024**3):.2f}/{ov_tot/(1024**3):.2f} GB, {spd:.1f} MB/s)")
+                            log(f"  [{stage_tag}] {lbl}: {ov_pct}% ({ov_done/(1024**3):.2f}/{ov_tot/(1024**3):.2f} GB, {spd:.1f} MB/s)")
                         else:
                             pct = downloaded * 100 // total_size
-                            log(f"  [HF 下载] {os.path.basename(filename)}: {pct}% ({downloaded/(1024**3):.2f}/{total_size/(1024**3):.2f} GB, {spd:.1f} MB/s)")
+                            log(f"  [{stage_tag}] {os.path.basename(filename)}: {pct}% ({downloaded/(1024**3):.2f}/{total_size/(1024**3):.2f} GB, {spd:.1f} MB/s)")
 
     with ThreadPoolExecutor(max_workers=num_conn) as pool:
         futs = [pool.submit(_chunk_worker, r) for r in ranges]
@@ -377,14 +378,14 @@ def _check_rclone_drive_has_model(remote_folder: str) -> int:
     remote_src = f"gdrive:models/{remote_folder}"
     try:
         ls_out = subprocess.check_output(
-            ["rclone", "lsf", remote_src, "--config", rc_conf, "-R", "--files-only"],
+            ["rclone", "lsf", remote_src, "--config", rc_conf, "-R", "--files-only", "--fast-list"],
             stderr=subprocess.DEVNULL,
-            timeout=20,
+            timeout=45,
             text=True,
         )
         remote_files = [
             ln.strip() for ln in ls_out.splitlines()
-            if ln.strip().lower().endswith((".gguf", ".safetensors"))
+            if ln.strip().lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))
         ]
         return len(remote_files)
     except Exception:
@@ -406,7 +407,7 @@ def _pull_from_rclone_drive_if_exists(remote_folder: str, local_dir: str) -> boo
         )
         remote_files = [
             ln.strip() for ln in ls_out.splitlines()
-            if ln.strip().lower().endswith((".gguf", ".safetensors"))
+            if ln.strip().lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))
         ]
     except Exception:
         return False
@@ -3344,6 +3345,7 @@ def run_remote_vm_main():
         total_gb = batch_total_bytes / (1024 ** 3)
         log(f"共解析到 {len(resolved_plan)} 个模型文件 (总计约 {total_gb:.2f} GB)，目标目录: {target_dir}")
         cum_done_bytes = 0
+        st_stage_tag = "云盘极速预热" if gdrive_saved_count > 0 else "HF 下载"
         for idx, (rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, sz) in enumerate(resolved_plan, start=1):
             existing_p = os.path.join(target_dir, rel_fn)
             lbl_str = f"{MODEL_FOLDER} 总进度 ({idx}/{len(resolved_plan)} · {os.path.basename(rel_fn)})"
@@ -3351,7 +3353,7 @@ def run_remote_vm_main():
                 actual_sz = os.path.getsize(existing_p) if os.path.exists(existing_p) else sz
                 cum_done_bytes += actual_sz
                 ov_pct = min(100, cum_done_bytes * 100 // max(1, batch_total_bytes)) if batch_total_bytes > 0 else 100
-                log(f"  [HF 下载] {lbl_str}: {ov_pct}% ({cum_done_bytes/(1024**3):.2f}/{total_gb:.2f} GB, 本地缓存复用)")
+                log(f"  [{st_stage_tag}] {lbl_str}: {ov_pct}% ({cum_done_bytes/(1024**3):.2f}/{total_gb:.2f} GB, 本地缓存复用)")
                 continue
             tag_prefix = "🔓 [破限编码器] " if dl_repo == uncensored_te_repo else ""
             log(f"{tag_prefix}正在 16 线程极速预热 [{idx}/{len(resolved_plan)}] {rel_fn} ({sz/(1024**3):.2f} GB)...")
@@ -3365,6 +3367,7 @@ def run_remote_vm_main():
                     batch_done_bytes=cum_done_bytes,
                     batch_total_bytes=batch_total_bytes,
                     batch_label=lbl_str,
+                    stage_tag=st_stage_tag,
                 )
                 cum_done_bytes += (os.path.getsize(dl_p) if os.path.exists(dl_p) else sz)
             except Exception:
@@ -3372,7 +3375,10 @@ def run_remote_vm_main():
                     _pull_from_rclone_drive_if_exists(MODEL_FOLDER, target_dir)
                     break
                 raise
-        expected_core_count = max(1, len(resolved_plan))
+        expected_core_count = max(
+            1,
+            sum(1 for x in resolved_plan if x[0].lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))),
+        )
         if has_rclone and not fuse_mounted and gdrive_saved_count < expected_core_count:
             _sync_local_to_rclone_drive(target_dir, background=not DOWNLOAD_ONLY)
         log(f"✅ 模型 {HF_REPO} 全部 {len(resolved_plan)} 个文件已就绪！")
@@ -3510,6 +3516,7 @@ def run_remote_vm_main():
                         batch_done_bytes=gguf_done_bytes,
                         batch_total_bytes=gguf_tot_bytes,
                         batch_label=lbl_str,
+                        stage_tag="云盘极速预热" if gdrive_gguf_count > 0 else "HF 下载",
                     )
                     gguf_done_bytes += (os.path.getsize(dl_path) if os.path.exists(dl_path) else sz)
                     local_ggufs.append(dl_path)
