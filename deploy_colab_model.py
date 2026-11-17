@@ -1997,8 +1997,11 @@ def _start_minimax_t4_gguf_server_on_30000(target_dir: str):
 
 LONGCAT_AVATAR_SERVER_CODE = r'''#!/usr/bin/env python3
 import base64
+import base64
+import gc
 import glob
 import json
+import math
 import os
 import random
 import re
@@ -2011,15 +2014,33 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 MODEL_DIR = os.environ.get("LONGCAT_MODEL_DIR", "/content/local_models/LongCat-Video-Avatar-1.6")
 OUTPUT_DIR = "/content/outputs"
 LONGCAT_CODE_DIR = "/content/LongCat-Video"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+if LONGCAT_CODE_DIR not in sys.path:
+    sys.path.insert(0, LONGCAT_CODE_DIR)
 
 ENGINE_READY = True
 ENGINE_ERROR = ""
 GPU_LOCK = threading.Lock()
+ENGINE_INIT_LOCK = threading.Lock()
+
+_AVATAR_ENGINE = {
+    "pipe": None,
+    "vocal_separator": None,
+    "use_int8": None,
+    "model_type": "avatar-v1.5",
+}
+
+_STEP_TRACKER = {
+    "active": False,
+    "cur_seg_idx": 1,
+    "num_segments": 1,
+    "cur_seg_step": 0,
+}
 
 JOB_STATE = {
     "running": False,
@@ -2038,18 +2059,339 @@ def _list_history_videos():
     return [os.path.basename(p) for p in files[:12]]
 
 
+def _apply_fast_attention_and_ffmpeg_patches():
+    """
+    1. 消除 MultiHeadCrossAttention 中每块 2 次的 cu_seqlens.tolist() GPU->CPU 同步阻塞 (每步消除 96 次同步停顿)
+    2. 消除自注意力与音频交叉注意力中的 4 次 3D 视频张量 rearrange + .transpose().contiguous() 显存拷贝 (直接原位调用 CUDA SDPA)
+    3. 确保 save_video_ffmpeg 具备 -af apad 与 BrokenPipeError 保护
+    """
+    import torch
+    import torch.nn.functional as F
+    from einops import rearrange
+
+    tu_p = os.path.join(LONGCAT_CODE_DIR, "longcat_video/audio_process/torch_utils.py")
+    if os.path.isfile(tu_p):
+        try:
+            tu_txt = open(tu_p, "r", encoding="utf-8").read()
+            if 'process.stdin.write(memoryview(video[start:start + 16]).cast("B"))' in tu_txt and "except BrokenPipeError:" not in tu_txt:
+                tu_txt = tu_txt.replace(
+                    '"-c:a", "aac", "-shortest", output_path,',
+                    '"-af", "apad", "-c:a", "aac", "-shortest", output_path,',
+                ).replace(
+                    '        for start in range(0, frame_count, 16):\n            process.stdin.write(memoryview(video[start:start + 16]).cast("B"))\n        process.stdin.close()',
+                    '        for start in range(0, frame_count, 16):\n            try:\n                process.stdin.write(memoryview(video[start:start + 16]).cast("B"))\n            except BrokenPipeError:\n                break\n        try:\n            process.stdin.close()\n        except BrokenPipeError:\n            pass',
+                )
+                open(tu_p, "w", encoding="utf-8").write(tu_txt)
+        except Exception:
+            pass
+
+    import longcat_video.modules.attention as base_attn_mod
+    import longcat_video.modules.avatar.attention as avatar_attn_mod
+
+    def _fast_self_attn(self, q, k, v, shape):
+        if getattr(self, "enable_bsa", False) and shape is not None and shape[0] > 1:
+            from longcat_video.block_sparse_attention.bsa_interface import flash_attn_bsa_3d
+            _, H, W = shape
+            H, W = H // self.cp_split_hw[0], W // self.cp_split_hw[1]
+            Tq = q.shape[2] // (H * W)
+            Tk = k.shape[2] // (H * W)
+            return flash_attn_bsa_3d(q, k, v, (Tq, H, W), (Tk, H, W), **self.bsa_params)
+        return F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False, scale=self.scale)
+
+    def _fast_text_cross_attn(self, x, cond, kv_seqlen):
+        B, N, C = x.shape
+        q = self.q_norm(self.q_linear(x).view(1, -1, self.num_heads, self.head_dim))
+        k, v = self.kv_linear(cond).view(1, -1, 2, self.num_heads, self.head_dim).unbind(2)
+        k = self.k_norm(k)
+        if B == 1 or len(kv_seqlen) == 1:
+            out = F.scaled_dot_product_attention(
+                q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),
+                dropout_p=0.0, is_causal=False,
+            ).transpose(1, 2)
+        else:
+            outs = []
+            k_off = 0
+            q0, k0, v0 = q[0], k[0], v[0]
+            for i in range(B):
+                mk = int(kv_seqlen[i])
+                qi = q0[i * N : (i + 1) * N].unsqueeze(0).transpose(1, 2)
+                ki = k0[k_off : k_off + mk].unsqueeze(0).transpose(1, 2)
+                vi = v0[k_off : k_off + mk].unsqueeze(0).transpose(1, 2)
+                k_off += mk
+                oi = F.scaled_dot_product_attention(qi, ki, vi, dropout_p=0.0, is_causal=False)
+                outs.append(oi.transpose(1, 2))
+            out = torch.cat(outs, dim=1)
+        return self.proj(out.reshape(B, N, C))
+
+    orig_audio_cross = avatar_attn_mod.SingleStreamAttention._process_cross_attn
+
+    def _fast_audio_cross_attn(self, x, cond, frames_num=None, x_ref_attn_map=None, human_num=None):
+        if x_ref_attn_map is not None:
+            return orig_audio_cross(self, x, cond, frames_num=frames_num, x_ref_attn_map=x_ref_attn_map, human_num=human_num)
+        N_t = frames_num
+        out_dtype = x.dtype
+        x = rearrange(x, "B (N_t S) C -> (B N_t) S C", N_t=N_t)
+        B, N, C = x.shape
+        q = self.q_norm(self.q_linear(x).view(B, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3))
+        _, N_a, _ = cond.shape
+        encoder_k, encoder_v = self.kv_linear(cond).view(B, N_a, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4).unbind(0)
+        encoder_k = self.k_norm(encoder_k)
+        out = F.scaled_dot_product_attention(q, encoder_k, encoder_v, dropout_p=0.0, is_causal=False, scale=self.scale)
+        out = self.proj_drop(self.proj(out.transpose(1, 2).reshape(B, N, C)))
+        return rearrange(out, "(B N_t) S C -> B (N_t S) C", N_t=N_t).to(out_dtype)
+
+    base_attn_mod.Attention._process_attn = _fast_self_attn
+    base_attn_mod.MultiHeadCrossAttention._process_cross_attn = _fast_text_cross_attn
+    avatar_attn_mod.Attention._process_attn = _fast_self_attn
+    avatar_attn_mod.SingleStreamAttention._process_cross_attn = _fast_audio_cross_attn
+
+
+def _merge_lora_into_dit(dit, lora_path: str, multiplier: float = 0.5, lora_dim: int = 128, alpha: float = 64.0) -> int:
+    """在 GPU 上直接将 LoRA 权重静态融合进 DiT Linear / QuantizedLinear 矩阵，彻底消除推理期动态 LoRA 包装器开销并解锁 KV Cache"""
+    import torch
+    from safetensors.torch import load_file
+
+    if not os.path.isfile(lora_path) or multiplier == 0.0:
+        return 0
+    sd = load_file(lora_path, device="cpu")
+    eff_scale = float(multiplier) * (float(alpha) / float(lora_dim))
+    lora_names = [k[:-len(".lora_down.weight")] for k in sd.keys() if k.endswith(".lora_down.weight")]
+    merged = 0
+    dev = next(dit.parameters()).device
+    with torch.no_grad():
+        for lname in lora_names:
+            mod_name = lname.replace("lora___lorahyphen___", "").replace("___lorahyphen___", ".")
+            try:
+                mod = dit._get_module_by_name(mod_name)
+            except Exception:
+                continue
+            down_g = sd[f"{lname}.lora_down.weight"].to(device=dev, dtype=torch.float32)
+            up_single_k = f"{lname}.lora_up.weight"
+            if up_single_k in sd:
+                up_g = sd[up_single_k].to(device=dev, dtype=torch.float32)
+                delta = torch.mm(up_g, down_g)
+            else:
+                blk_keys = sorted(
+                    [k for k in sd.keys() if k.startswith(f"{lname}.lora_up.blocks.") and k.endswith(".weight")],
+                    key=lambda x: int(x.split(".blocks.")[1].split(".")[0]),
+                )
+                if not blk_keys:
+                    del down_g
+                    continue
+                down_chunks = torch.chunk(down_g, len(blk_keys), dim=0)
+                delta = torch.cat(
+                    [torch.mm(sd[bk].to(device=dev, dtype=torch.float32), down_chunks[idx]) for idx, bk in enumerate(blk_keys)],
+                    dim=0,
+                )
+            if hasattr(mod, "weight") and isinstance(mod.weight, torch.nn.Parameter):
+                orig_dt = mod.weight.dtype
+                w_fp32 = mod.weight.data.to(device=dev, dtype=torch.float32)
+                w_fp32.add_(delta, alpha=eff_scale)
+                mod.weight.data.copy_(w_fp32.to(orig_dt))
+                merged += 1
+            elif hasattr(mod, "weight_int8") and hasattr(mod, "weight_scale"):
+                w_fp32 = mod.weight_int8.to(device=dev, dtype=torch.float32) * mod.weight_scale.to(device=dev, dtype=torch.float32).unsqueeze(1)
+                w_fp32.add_(delta, alpha=eff_scale)
+                new_scale = w_fp32.abs().amax(dim=1).clamp(min=1e-8) / 127.0
+                new_int8 = (w_fp32 / new_scale.unsqueeze(1)).round().clamp(-128, 127).to(torch.int8)
+                mod.weight_int8.copy_(new_int8.to(mod.weight_int8.device))
+                mod.weight_scale.copy_(new_scale.to(mod.weight_scale.device))
+                merged += 1
+            del delta, down_g
+    del sd
+    torch.cuda.empty_cache()
+    return merged
+
+
+def _ensure_avatar_engine(use_int8: bool = False, update_job_state: bool = True):
+    """将 LongCat-Video-Avatar-1.6 全套管线一次性装载并常驻 GPU 显存，后续生成 0 秒启动"""
+    with ENGINE_INIT_LOCK:
+        if _AVATAR_ENGINE["pipe"] is not None and _AVATAR_ENGINE["use_int8"] == use_int8:
+            return _AVATAR_ENGINE["pipe"], _AVATAR_ENGINE["vocal_separator"]
+
+        import torch
+        from transformers import AutoTokenizer, UMT5EncoderModel
+        from audio_separator.separator import Separator
+        from longcat_video.pipeline_longcat_video_avatar import LongCatVideoAvatarPipeline
+        from longcat_video.modules.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
+        from longcat_video.modules.autoencoder_kl_wan import AutoencoderKLWan
+        from longcat_video.modules.avatar.longcat_video_dit_avatar import LongCatVideoAvatarTransformer3DModel
+        from longcat_video.modules.quantization import load_quantized_dit
+        from longcat_video.audio_process import get_audio_encoder, get_audio_feature_extractor
+
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+        _apply_fast_attention_and_ffmpeg_patches()
+
+        if update_job_state:
+            JOB_STATE.update({
+                "pct": 5,
+                "message": "🚀 [LongCat-Avatar-1.6] 正在将数字人引擎常驻装载至 GPU 显存 (首次预热后永久驻留，后续 0 秒瞬发)...",
+            })
+
+        base_lc_dir = os.path.join(MODEL_DIR, "..", "LongCat-Video")
+        if not os.path.isdir(os.path.join(base_lc_dir, "tokenizer")):
+            base_lc_dir = MODEL_DIR
+
+        tokenizer = AutoTokenizer.from_pretrained(base_lc_dir, subfolder="tokenizer", torch_dtype=torch.bfloat16)
+        text_encoder = UMT5EncoderModel.from_pretrained(base_lc_dir, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+        vae = AutoencoderKLWan.from_pretrained(base_lc_dir, subfolder="vae", torch_dtype=torch.bfloat16)
+        scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(MODEL_DIR, subfolder="scheduler", torch_dtype=torch.bfloat16)
+
+        cp_split_hw = [1, 1]
+        if use_int8 and os.path.isdir(os.path.join(MODEL_DIR, "base_model_int8")):
+            dit = load_quantized_dit(MODEL_DIR, subfolder="base_model_int8", cp_split_hw=cp_split_hw)
+        else:
+            dit = LongCatVideoAvatarTransformer3DModel.from_pretrained(
+                MODEL_DIR, subfolder="base_model", cp_split_hw=cp_split_hw, torch_dtype=torch.bfloat16
+            )
+        dit = dit.to("cuda:0")
+
+        if update_job_state:
+            JOB_STATE.update({
+                "pct": 5,
+                "message": "🎭 [LongCat-Avatar-1.6] 正在 GPU 上静态融合 DMD + OPSD 双蒸馏加速权重...",
+            })
+
+        dmd_lora = os.path.join(MODEL_DIR, "loraA", "lora.safetensors")
+        opsd_lora = os.path.join(MODEL_DIR, "loraB", "lora.safetensors")
+        if os.path.isfile(dmd_lora) and os.path.isfile(opsd_lora):
+            _merge_lora_into_dit(dit, dmd_lora, multiplier=0.35, lora_dim=128, alpha=64.0)
+            _merge_lora_into_dit(dit, opsd_lora, multiplier=0.65, lora_dim=128, alpha=64.0)
+        elif os.path.isfile(opsd_lora):
+            _merge_lora_into_dit(dit, opsd_lora, multiplier=0.8, lora_dim=128, alpha=64.0)
+
+        # 注入扩散步进实时回调钩子与毫秒级中断响应
+        orig_dit_forward = dit.forward
+
+        def _hooked_dit_forward(*args, **kwargs):
+            if os.path.exists("/content/.cancel_minimax"):
+                try:
+                    os.unlink("/content/.cancel_minimax")
+                except Exception:
+                    pass
+                raise RuntimeError("🛑 已手动停止数字人视频生成任务")
+            is_kv_prepass = bool(kwargs.get("return_kv", False)) or (len(args) > 5 and bool(args[5]))
+            out = orig_dit_forward(*args, **kwargs)
+            if _STEP_TRACKER["active"] and not is_kv_prepass:
+                _STEP_TRACKER["cur_seg_step"] = min(8, _STEP_TRACKER["cur_seg_step"] + 1)
+                cur_s = _STEP_TRACKER["cur_seg_step"]
+                cur_seg = _STEP_TRACKER["cur_seg_idx"]
+                num_segs = max(1, _STEP_TRACKER["num_segments"])
+                glob_step = (cur_seg - 1) * 8 + cur_s
+                glob_tot = num_segs * 8
+                ov_pct = min(97, max(6, 6 + int(round((glob_step / float(glob_tot)) * 91))))
+                JOB_STATE["step"] = glob_step
+                JOB_STATE["total_steps"] = glob_tot
+                JOB_STATE["pct"] = ov_pct
+                seg_tag = f"第 {cur_seg}/{num_segs} 段 (本段 {cur_s}/8 步 · 总计 {glob_step}/{glob_tot} 步)" if num_segs > 1 else f"第 {cur_s}/8 步"
+                JOB_STATE["message"] = f"🎭 [LongCat-Avatar-1.6] 正在扩散生成数字人视频: {seg_tag} (总进度 {ov_pct}%)"
+            return out
+
+        dit.forward = _hooked_dit_forward
+
+        audio_ckpt = os.path.join(MODEL_DIR, "whisper-large-v3")
+        audio_encoder = get_audio_encoder(audio_ckpt, "avatar-v1.5").to("cuda:0")
+        audio_feature_extractor = get_audio_feature_extractor(audio_ckpt, "avatar-v1.5")
+
+        vocal_sep_path = os.path.join(MODEL_DIR, "vocal_separator/Kim_Vocal_2.onnx")
+        audio_temp_dir = Path("/tmp/longcat_audio_temp")
+        audio_temp_dir.mkdir(parents=True, exist_ok=True)
+        vocal_separator = Separator(
+            output_dir=audio_temp_dir / "vocals",
+            output_single_stem="vocals",
+            model_file_dir=os.path.dirname(vocal_sep_path),
+        )
+        if vocal_separator.onnx_execution_provider == ["CUDAExecutionProvider"]:
+            vocal_separator.onnx_execution_provider = [
+                ("CUDAExecutionProvider", {"device_id": 0, "cudnn_conv_algo_search": "HEURISTIC"})
+            ]
+        vocal_separator.load_model(os.path.basename(vocal_sep_path))
+
+        pipe = LongCatVideoAvatarPipeline(
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            vae=vae,
+            scheduler=scheduler,
+            dit=dit,
+            audio_encoder=audio_encoder,
+            audio_feature_extractor=audio_feature_extractor,
+            model_type="avatar-v1.5",
+        )
+        pipe.to("cuda:0")
+
+        # 开启 3D VAE 融合 Padding 与零拷贝缓存视图加速
+        for fn_name in (
+            "enable_encoder_fused_padding",
+            "enable_encoder_cache_views",
+            "enable_decoder_fused_padding",
+            "enable_decoder_cache_views",
+        ):
+            if hasattr(pipe.vae, fn_name):
+                try:
+                    getattr(pipe.vae, fn_name)()
+                except Exception:
+                    pass
+
+        # 缓存 UMT5 文本编码结果，避免多段续写时每一段重复运行 11GB UMT5-XXL
+        orig_encode_prompt = pipe.encode_prompt
+        _prompt_cache = {"key": None, "val": None}
+
+        def _cached_encode_prompt(prompt, negative_prompt=None, do_classifier_free_guidance=True, num_videos_per_prompt=1, max_sequence_length=512, device=None, dtype=None):
+            ck = (str(prompt), str(negative_prompt), bool(do_classifier_free_guidance), int(num_videos_per_prompt), int(max_sequence_length), str(dtype))
+            if _prompt_cache["key"] == ck and _prompt_cache["val"] is not None:
+                return _prompt_cache["val"]
+            res = orig_encode_prompt(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+                num_videos_per_prompt=num_videos_per_prompt,
+                max_sequence_length=max_sequence_length,
+                device=device,
+                dtype=dtype,
+            )
+            _prompt_cache["key"] = ck
+            _prompt_cache["val"] = res
+            return res
+
+        pipe.encode_prompt = _cached_encode_prompt
+
+        _AVATAR_ENGINE["pipe"] = pipe
+        _AVATAR_ENGINE["vocal_separator"] = vocal_separator
+        _AVATAR_ENGINE["use_int8"] = use_int8
+        return pipe, vocal_separator
+
+
+def _warmup_engine_bg():
+    try:
+        has_int8 = os.path.isdir(os.path.join(MODEL_DIR, "base_model_int8")) and not os.path.isdir(os.path.join(MODEL_DIR, "base_model"))
+        use_int8 = has_int8 or ("INT8" in MODEL_DIR.upper())
+        with GPU_LOCK:
+            _ensure_avatar_engine(use_int8=use_int8, update_job_state=False)
+            if not JOB_STATE.get("running"):
+                JOB_STATE["message"] = "⚡ 就绪：LongCat-Video-Avatar-1.6 已常驻 GPU 显存 (静态 LoRA + 零拷贝 SDPA + KV Cache 已启用)"
+    except Exception as e:
+        print(f"[Warmup Error] {e}", flush=True)
+
+
 def _run_avatar_job(payload: dict):
     global JOB_STATE
     t0 = time.time()
     try:
+        import numpy as np
+        import PIL.Image
+        import torch
+        from diffusers.utils import load_image
+        from longcat_video.audio_process.torch_utils import save_video_ffmpeg
+        from longcat_video.audio_process.vocal_separator import separate_vocals
+
         prompt = str(payload.get("prompt") or "").strip() or (
             "A person stands under cinematic lighting, speaking naturally and expressively with clear facial movements."
         )
         res_str = str(payload.get("resolution") or "832x480").strip()
         resolution = "720p" if "720" in res_str or "1280" in res_str else "480p"
         raw_req_segments = int(payload.get("num_segments") if payload.get("num_segments") is not None else 0)
-        mix_steps = max(0, min(8, int(payload.get("mix_steps") if payload.get("mix_steps") is not None else 4)))
-        mix_alpha = float(payload.get("mix_alpha") if payload.get("mix_alpha") is not None else 1.0)
         base_seed = int(payload.get("seed") if payload.get("seed") is not None else -1)
         rand_seed = bool(payload.get("randomize_seed")) or (base_seed < 0)
         cur_seed = random.randint(1, 2**31 - 1) if rand_seed else base_seed
@@ -2121,8 +2463,7 @@ def _run_avatar_job(payload: dict):
                 if aud_dur <= 3.85:
                     num_segments = 1
                 else:
-                    import math as _m
-                    num_segments = max(1, min(200, 1 + int(_m.ceil((aud_dur - 3.72) / 3.20))))
+                    num_segments = max(1, min(200, 1 + int(math.ceil((aud_dur - 3.72) / 3.20))))
             except Exception:
                 num_segments = 1
         else:
@@ -2143,151 +2484,210 @@ def _run_avatar_job(payload: dict):
             img_path = ""
             stage_1 = "at2v"
 
-        job_json_path = "/tmp/longcat_avatar_input.json"
-        job_data = {
-            "prompt": visual_prompt,
-            "cond_audio": {"person1": audio_path},
-        }
-        if img_path:
-            job_data["cond_image"] = img_path
-        with open(job_json_path, "w", encoding="utf-8") as jf:
-            json.dump(job_data, jf, ensure_ascii=False, indent=2)
-
         JOB_STATE.update({
             "running": True,
-            "pct": 6,
+            "pct": 5,
             "step": 0,
             "total_steps": 8 * num_segments,
             "seed": cur_seed,
-            "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
+            "message": f"🎭 [LongCat-Avatar-1.6] 正在准备常驻显存引擎并提取语音特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
             "error": "",
         })
 
         with GPU_LOCK:
-            # 确保 save_video_ffmpeg 已打上音频静音补齐 (-af apad) 与 BrokenPipe 保护补丁
-            tu_p = os.path.join(LONGCAT_CODE_DIR, "longcat_video/audio_process/torch_utils.py")
-            if os.path.isfile(tu_p):
+            pipe, vocal_separator = _ensure_avatar_engine(use_int8=use_int8, update_job_state=True)
+
+            save_fps = 25
+            audio_stride = 1
+            num_frames = 93
+            num_cond_frames = 13
+            num_inference_steps = 8
+            text_guidance_scale = 1.0
+            audio_guidance_scale = 1.0
+            height, width = (768, 1280) if resolution == "720p" else (480, 832)
+            negative_prompt = (
+                "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, "
+                "overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, "
+                "poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, "
+                "many people in the background, walking backwards"
+            )
+
+            JOB_STATE.update({
+                "pct": 6,
+                "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
+            })
+
+            generate_duration = num_frames / save_fps + (num_segments - 1) * (num_frames - num_cond_frames) / save_fps
+            audio_process_duration = generate_duration + 1.0
+            speech_array, sr = separate_vocals(vocal_separator, audio_path, duration=audio_process_duration)
+            if speech_array.size == 0:
+                raise RuntimeError("未能从音频中检测到有效人声 (No vocal detected)")
+
+            source_duration = len(speech_array) / sr
+            added_sample_nums = math.ceil((audio_process_duration - source_duration) * sr)
+            if added_sample_nums > 0:
+                speech_array = np.append(speech_array, np.zeros(added_sample_nums, dtype=speech_array.dtype))
+
+            full_audio_emb = pipe.get_audio_embedding(
+                speech_array,
+                fps=save_fps * audio_stride,
+                device="cuda:0",
+                sample_rate=sr,
+                model_type="avatar-v1.5",
+                use_loudness_norm=False,
+            )
+            if torch.isnan(full_audio_emb).any():
+                raise RuntimeError("音频特征提取出现 NaN，请检查输入音频格式")
+
+            indices = torch.arange(5) - 2
+            audio_start_idx = 0
+            audio_end_idx = audio_start_idx + audio_stride * num_frames
+            center_indices = torch.arange(audio_start_idx, audio_end_idx, audio_stride).unsqueeze(1) + indices.unsqueeze(0)
+            center_indices = torch.clamp(center_indices, min=0, max=full_audio_emb.shape[0] - 1)
+            audio_emb = full_audio_emb[center_indices][None, ...].to("cuda:0")
+
+            generator = torch.Generator(device="cuda:0")
+            generator.manual_seed(cur_seed)
+
+            _STEP_TRACKER.update({
+                "active": True,
+                "cur_seg_idx": 1,
+                "num_segments": num_segments,
+                "cur_seg_step": 0,
+            })
+            JOB_STATE.update({
+                "step": 0,
+                "total_steps": num_segments * 8,
+                "pct": 6,
+                "message": f"🎬 [LongCat-Avatar-1.6] 正在生成第 1/{num_segments} 段 · 总计 0/{num_segments * 8} 步 (总进度 6%)",
+            })
+
+            try:
+                if stage_1 == "at2v":
+                    output, latent = pipe.generate_at2v(
+                        prompt=visual_prompt,
+                        negative_prompt=negative_prompt,
+                        height=height,
+                        width=width,
+                        num_frames=num_frames,
+                        num_inference_steps=num_inference_steps,
+                        text_guidance_scale=text_guidance_scale,
+                        audio_guidance_scale=audio_guidance_scale,
+                        generator=generator,
+                        output_type="both",
+                        audio_emb=audio_emb,
+                        use_distill=True,
+                    )
+                else:
+                    image = load_image(img_path)
+                    output, latent = pipe.generate_ai2v(
+                        image=image,
+                        prompt=visual_prompt,
+                        negative_prompt=negative_prompt,
+                        resolution=resolution,
+                        num_frames=num_frames,
+                        num_inference_steps=num_inference_steps,
+                        text_guidance_scale=text_guidance_scale,
+                        audio_guidance_scale=audio_guidance_scale,
+                        output_type="both",
+                        generator=generator,
+                        audio_emb=audio_emb,
+                        use_distill=True,
+                    )
+
+                output = output[0]
+                video_array = (output * 255).astype(np.uint8)
+                del output
+
+                h_out, w_out = video_array.shape[1], video_array.shape[2]
+                current_video = [PIL.Image.fromarray(img) for img in video_array[-num_cond_frames:]]
+                ref_latent = latent[:, :, :1].clone()
+                total_output_frames = len(video_array) + max(0, num_segments - 1) * (num_frames - num_cond_frames)
+                all_generated_frames = np.empty((total_output_frames, h_out, w_out, 3), dtype=np.uint8)
+                generated_frame_count = len(video_array)
+                all_generated_frames[:generated_frame_count] = video_array
+                del video_array
+
+                for segment_idx in range(1, num_segments):
+                    audio_start_idx = audio_start_idx + audio_stride * (num_frames - num_cond_frames)
+                    audio_end_idx = audio_start_idx + audio_stride * num_frames
+                    center_indices = torch.arange(audio_start_idx, audio_end_idx, audio_stride).unsqueeze(1) + indices.unsqueeze(0)
+                    center_indices = torch.clamp(center_indices, min=0, max=full_audio_emb.shape[0] - 1)
+                    audio_emb = full_audio_emb[center_indices][None, ...].to("cuda:0")
+
+                    _STEP_TRACKER.update({
+                        "cur_seg_idx": segment_idx + 1,
+                        "cur_seg_step": 0,
+                    })
+                    glob_done = segment_idx * 8
+                    glob_tot = num_segments * 8
+                    seg_base_pct = min(96, max(6, 6 + int(round((glob_done / float(glob_tot)) * 91))))
+                    JOB_STATE.update({
+                        "step": glob_done,
+                        "total_steps": glob_tot,
+                        "pct": seg_base_pct,
+                        "message": f"🎬 [LongCat-Avatar-1.6] 正在生成第 {segment_idx + 1}/{num_segments} 段 (KV Cache 加速已启用) · 总计 {glob_done}/{glob_tot} 步 (总进度 {seg_base_pct}%)",
+                    })
+
+                    output, latent = pipe.generate_avc(
+                        video=current_video,
+                        video_latent=latent,
+                        prompt=visual_prompt,
+                        negative_prompt=negative_prompt,
+                        height=h_out,
+                        width=w_out,
+                        num_frames=num_frames,
+                        num_cond_frames=num_cond_frames,
+                        num_inference_steps=num_inference_steps,
+                        text_guidance_scale=text_guidance_scale,
+                        audio_guidance_scale=audio_guidance_scale,
+                        generator=generator,
+                        output_type="both",
+                        use_kv_cache=True,
+                        offload_kv_cache=False,
+                        enhance_hf=False,
+                        audio_emb=audio_emb,
+                        ref_latent=ref_latent,
+                        ref_img_index=10,
+                        mask_frame_range=0,
+                        use_distill=True,
+                    )
+                    output = output[0]
+                    new_video_array = (output * 255).astype(np.uint8)
+                    del output
+
+                    appended_frames = new_video_array[num_cond_frames:]
+                    next_frame_count = generated_frame_count + len(appended_frames)
+                    all_generated_frames[generated_frame_count:next_frame_count] = appended_frames
+                    generated_frame_count = next_frame_count
+                    current_video = [PIL.Image.fromarray(img) for img in new_video_array[-num_cond_frames:]]
+                    del new_video_array
+            finally:
+                _STEP_TRACKER["active"] = False
                 try:
-                    tu_txt = open(tu_p, "r", encoding="utf-8").read()
-                    if 'process.stdin.write(memoryview(video[start:start + 16]).cast("B"))' in tu_txt and "except BrokenPipeError:" not in tu_txt:
-                        tu_txt = tu_txt.replace(
-                            '"-c:a", "aac", "-shortest", output_path,',
-                            '"-af", "apad", "-c:a", "aac", "-shortest", output_path,',
-                        ).replace(
-                            '        for start in range(0, frame_count, 16):\n            process.stdin.write(memoryview(video[start:start + 16]).cast("B"))\n        process.stdin.close()',
-                            '        for start in range(0, frame_count, 16):\n            try:\n                process.stdin.write(memoryview(video[start:start + 16]).cast("B"))\n            except BrokenPipeError:\n                break\n        try:\n            process.stdin.close()\n        except BrokenPipeError:\n            pass',
-                        )
-                        open(tu_p, "w", encoding="utf-8").write(tu_txt)
+                    pipe._clear_cache()
                 except Exception:
                     pass
 
+            JOB_STATE.update({
+                "pct": 98,
+                "message": "🎬 [LongCat-Avatar-1.6] 正在合成高保真音画同步 MP4 视频文件 (总进度 98%)...",
+            })
             tmp_out_dir = f"/tmp/longcat_out_{int(time.time())}"
             os.makedirs(tmp_out_dir, exist_ok=True)
-            cmd = [
-                sys.executable,
-                "-u",
-                os.path.join(LONGCAT_CODE_DIR, "run_demo_avatar_single_audio_to_video.py"),
-                "--context_parallel_size=1",
-                f"--checkpoint_dir={MODEL_DIR}",
-                f"--stage_1={stage_1}",
-                f"--input_json={job_json_path}",
-                f"--output_dir={tmp_out_dir}",
-                f"--resolution={resolution}",
-                f"--num_segments={num_segments}",
-                "--use_distill",
-                "--lora_path", "loraB/lora.safetensors",
-                "--model_type", "avatar-v1.6",
-                f"--mix_steps={mix_steps}",
-                f"--mix_alpha={mix_alpha}",
-            ]
-            if use_int8:
-                cmd.append("--use_int8")
+            out_prefix = os.path.join(tmp_out_dir, "avatar_final")
+            output_tensor = torch.from_numpy(all_generated_frames[:generated_frame_count])
+            save_video_ffmpeg(output_tensor, out_prefix, audio_path, fps=save_fps, quality=10)
+            del output_tensor, all_generated_frames, full_audio_emb, audio_emb, latent, ref_latent
+            gc.collect()
+            torch.cuda.empty_cache()
 
-            run_env = os.environ.copy()
-            run_env.update({
-                "RANK": "0",
-                "WORLD_SIZE": "1",
-                "LOCAL_RANK": "0",
-                "MASTER_ADDR": "127.0.0.1",
-                "MASTER_PORT": str(random.randint(29500, 29990)),
-                "PYTHONPATH": LONGCAT_CODE_DIR + (":" + run_env["PYTHONPATH"] if run_env.get("PYTHONPATH") else ""),
-            })
-            proc = subprocess.Popen(
-                cmd,
-                cwd=LONGCAT_CODE_DIR,
-                env=run_env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                bufsize=0,
-            )
-            buf = ""
-            tail_lines = []
-            cur_seg_idx = 1
-            ansi_re = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
-            assert proc.stdout is not None
-            while True:
-                chunk = proc.stdout.read(256)
-                if not chunk:
-                    break
-                text = ansi_re.sub("", chunk.decode("utf-8", errors="replace"))
-                for ch in text:
-                    if ch in ("\r", "\n"):
-                        ln = buf.strip()
-                        buf = ""
-                        if not ln:
-                            continue
-                        tail_lines.append(ln)
-                        if len(tail_lines) > 40:
-                            tail_lines = tail_lines[-40:]
-                        if os.path.exists("/content/.cancel_minimax"):
-                            try:
-                                os.unlink("/content/.cancel_minimax")
-                            except Exception:
-                                pass
-                            proc.kill()
-                            raise RuntimeError("🛑 已手动停止数字人视频生成任务")
-                        if "loading" in ln.lower() and "lora" in ln.lower():
-                            JOB_STATE["pct"] = 5
-                            JOB_STATE["message"] = "🎭 [LongCat-Avatar-1.6] 正在融合 DMD + OPSD 双蒸馏 LoRA 适配器 (总进度 5%)..."
-                        elif "generating segment" in ln.lower():
-                            m_seg = re.search(r"segment\s+(\d+)/(\d+)", ln, re.IGNORECASE)
-                            if m_seg:
-                                cur_seg_idx = max(1, int(m_seg.group(1)))
-                            glob_done = (cur_seg_idx - 1) * 8
-                            glob_tot = max(8, num_segments * 8)
-                            seg_base_pct = min(96, max(5, 5 + int(round((glob_done / float(glob_tot)) * 92))))
-                            JOB_STATE["step"] = glob_done
-                            JOB_STATE["total_steps"] = glob_tot
-                            JOB_STATE["pct"] = seg_base_pct
-                            JOB_STATE["message"] = f"🎬 [LongCat-Avatar-1.6] 正在生成第 {cur_seg_idx}/{num_segments} 段 · 总计 {glob_done}/{glob_tot} 步 (总进度 {seg_base_pct}%)"
-                        else:
-                            m = re.search(r"(\d+)%\|.*\|\s*(\d+)/(\d+)", ln)
-                            if m:
-                                pct = int(m.group(1))
-                                cur_s = int(m.group(2))
-                                tot_s = max(1, int(m.group(3)))
-                                if tot_s <= 16:
-                                    # 8步扩散采样进度 (跨多段平滑累加，严格从 5% 到 97% 反映全局总进度)
-                                    glob_step = (cur_seg_idx - 1) * tot_s + cur_s
-                                    glob_tot = max(1, num_segments * tot_s)
-                                    JOB_STATE["step"] = glob_step
-                                    JOB_STATE["total_steps"] = glob_tot
-                                    seg_frac = glob_step / float(glob_tot)
-                                    ov_pct = min(97, max(5, 5 + int(round(seg_frac * 92))))
-                                    JOB_STATE["pct"] = ov_pct
-                                    seg_tag = f"第 {cur_seg_idx}/{num_segments} 段 (本段 {cur_s}/{tot_s} 步 · 总计 {glob_step}/{glob_tot} 步)" if num_segments > 1 else f"第 {cur_s}/{tot_s} 步"
-                                    JOB_STATE["message"] = f"🎭 [LongCat-Avatar-1.6] 正在扩散生成数字人视频: {seg_tag} (总进度 {ov_pct}%)"
-                    else:
-                        buf += ch
-            proc.wait()
             mp4_list = [
                 p for p in sorted(glob.glob(os.path.join(tmp_out_dir, "*.mp4")), key=os.path.getmtime, reverse=True)
                 if os.path.getsize(p) > 10240
             ]
             if not mp4_list:
-                err_tail = "\n".join(tail_lines[-16:])
-                raise RuntimeError(f"LongCat-Video-Avatar 退出码 {proc.returncode}:\n{err_tail}")
+                raise RuntimeError("FFmpeg 音画封装未生成有效 MP4 文件")
 
             dt = round(time.time() - t0, 1)
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -2440,6 +2840,7 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    threading.Thread(target=_warmup_engine_bg, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", 30000), _LongCatAvatarHandler)
     srv.serve_forever()
 '''
@@ -2494,7 +2895,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
         log(f"正在安装 LongCat-Video-Avatar 运行与语音依赖 ({', '.join(missing_pkgs)})...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_pkgs, check=False)
 
-    # 若当前环境未预装编译版 flash_attn，自动注入基于 PyTorch 2.6 原生 CUDA SDPA 的零编译兼容层
+    # 若当前环境未预装编译版 flash_attn，自动注入基于 PyTorch 原生 CUDA SDPA 的零同步兼容层
     try:
         __import__("flash_attn")
     except ImportError:
@@ -2509,16 +2910,16 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
                 "        q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2),\n"
                 "        dropout_p=dropout_p, is_causal=causal, scale=softmax_scale,\n"
                 "    )\n"
-                "    return out.transpose(1, 2).contiguous()\n\n"
+                "    return out.transpose(1, 2)\n\n"
                 "def flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_k, max_seqlen_q=None, max_seqlen_k=None, dropout_p=0.0, softmax_scale=None, causal=False, **kwargs):\n"
-                "    q_bounds = cu_seqlens_q.tolist()\n"
-                "    k_bounds = cu_seqlens_k.tolist()\n"
-                "    if len(q_bounds) == 2 and len(k_bounds) == 2:\n"
+                "    if cu_seqlens_q.numel() == 2 and cu_seqlens_k.numel() == 2:\n"
                 "        out = F.scaled_dot_product_attention(\n"
                 "            q.unsqueeze(0).transpose(1, 2), k.unsqueeze(0).transpose(1, 2), v.unsqueeze(0).transpose(1, 2),\n"
                 "            dropout_p=dropout_p, is_causal=causal, scale=softmax_scale,\n"
                 "        )\n"
-                "        return out.transpose(1, 2).squeeze(0).contiguous()\n"
+                "        return out.transpose(1, 2).squeeze(0)\n"
+                "    q_bounds = cu_seqlens_q.tolist()\n"
+                "    k_bounds = cu_seqlens_k.tolist()\n"
                 "    outs = []\n"
                 "    for i in range(len(q_bounds) - 1):\n"
                 "        qi = q[q_bounds[i]:q_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
@@ -2526,7 +2927,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
                 "        vi = v[k_bounds[i]:k_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
                 "        oi = F.scaled_dot_product_attention(qi, ki, vi, dropout_p=dropout_p, is_causal=causal, scale=softmax_scale)\n"
                 "        outs.append(oi.transpose(1, 2).squeeze(0))\n"
-                "    return torch.cat(outs, dim=0).contiguous()\n"
+                "    return torch.cat(outs, dim=0)\n"
             )
 
     server_py = "/content/longcat_avatar_server.py"
@@ -4196,7 +4597,9 @@ def save_local_endpoint_config(cfg: Dict[str, Any]):
     try:
         cur = load_local_endpoint_config()
         cur.update(cfg)
-        LOCAL_ENDPOINT_FILE.write_text(json.dumps(cur, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp_f = LOCAL_ENDPOINT_FILE.with_suffix(f".tmp.{os.getpid()}")
+        tmp_f.write_text(json.dumps(cur, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(tmp_f, LOCAL_ENDPOINT_FILE)
     except Exception:
         pass
 
@@ -4212,7 +4615,9 @@ def run_local_proxy_daemon(port: int = 30000):
             pass
 
         def _handle(self):
-            save_local_endpoint_config({"last_activity_ts": time.time()})
+            raw_p = (self.path or "/").split("?")[0]
+            if self.command == "POST" or not any(raw_p.endswith(s) for s in ("/video/status", "/video/upscale_status", "/health", "/models")):
+                save_local_endpoint_config({"last_activity_ts": time.time()})
             cfg = load_local_endpoint_config()
             upstream = (cfg.get("tunnel_url") or "").rstrip("/")
             if not upstream:

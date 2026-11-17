@@ -5408,6 +5408,11 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 with urllib.request.urlopen(req, timeout=12) as resp:
                     d = json.loads(resp.read().decode("utf-8"))
                     if d.get("running"):
+                        try:
+                            cfg["last_activity_ts"] = time.time()
+                            ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                        except Exception:
+                            pass
                         if d.get("message"):
                             _append_panel_log(f"[视频生成] {d.get('message')}")
                         timing_info = _compute_video_timing_from_logs(int(d.get("pct") or 8))
@@ -5473,6 +5478,11 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 with urllib.request.urlopen(req, timeout=12) as resp:
                     d = json.loads(resp.read().decode("utf-8"))
                     if d.get("running"):
+                        try:
+                            cfg["last_activity_ts"] = time.time()
+                            ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                        except Exception:
+                            pass
                         _LAST_LOGGED_UPSCALE_ERR[0] = ""
                         if d.get("message"):
                             _append_panel_log(f"[视频超分] {d.get('message')}")
