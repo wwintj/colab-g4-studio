@@ -3628,7 +3628,7 @@ async function refreshStatus(force = false) {
         document.getElementById('driveSub').innerText = `剩余可用: ${m.disk_drive.free_gb} GB (${m.disk_drive.pct}%)`;
         document.getElementById('driveBar').style.width = `${Math.min(100, m.disk_drive.pct)}%`;
         document.getElementById('syncBadge').innerText = m.sync_running ? '⏳ 正在往云盘同步...' : '✅ 已挂载 (同步完成)';
-      } else {
+      } else if (!(d.gdrive_info && d.gdrive_info.bound)) {
         document.getElementById('driveVal').innerText = '未挂载';
         document.getElementById('syncBadge').innerText = '未挂载';
       }
@@ -3667,7 +3667,8 @@ async function refreshStatus(force = false) {
     const gd = d.gdrive_info;
     if (gd && gd.bound) {
       if (gd.quota) {
-        document.getElementById('driveVal').innerText = `${gd.quota.used_gb} / ${gd.quota.total_gb} GB`;
+        const totLabel = gd.quota.total_gb >= 1024 ? `${gd.quota.total_gb} GB (${Math.round(gd.quota.total_gb / 1024)}TB)` : `${gd.quota.total_gb} GB`;
+        document.getElementById('driveVal').innerText = `${gd.quota.used_gb} / ${totLabel}`;
         document.getElementById('driveSub').innerText = `剩余可用: ${gd.quota.free_gb} GB (${gd.quota.pct}%)`;
         document.getElementById('driveBar').style.width = `${Math.min(100, gd.quota.pct)}%`;
       }
