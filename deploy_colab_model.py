@@ -2135,6 +2135,23 @@ def _run_avatar_job(payload: dict):
         })
 
         with GPU_LOCK:
+            # 确保 save_video_ffmpeg 已打上音频静音补齐 (-af apad) 与 BrokenPipe 保护补丁
+            tu_p = os.path.join(LONGCAT_CODE_DIR, "longcat_video/audio_process/torch_utils.py")
+            if os.path.isfile(tu_p):
+                try:
+                    tu_txt = open(tu_p, "r", encoding="utf-8").read()
+                    if 'process.stdin.write(memoryview(video[start:start + 16]).cast("B"))' in tu_txt and "except BrokenPipeError:" not in tu_txt:
+                        tu_txt = tu_txt.replace(
+                            '"-c:a", "aac", "-shortest", output_path,',
+                            '"-af", "apad", "-c:a", "aac", "-shortest", output_path,',
+                        ).replace(
+                            '        for start in range(0, frame_count, 16):\n            process.stdin.write(memoryview(video[start:start + 16]).cast("B"))\n        process.stdin.close()',
+                            '        for start in range(0, frame_count, 16):\n            try:\n                process.stdin.write(memoryview(video[start:start + 16]).cast("B"))\n            except BrokenPipeError:\n                break\n        try:\n            process.stdin.close()\n        except BrokenPipeError:\n            pass',
+                        )
+                        open(tu_p, "w", encoding="utf-8").write(tu_txt)
+                except Exception:
+                    pass
+
             tmp_out_dir = f"/tmp/longcat_out_{int(time.time())}"
             os.makedirs(tmp_out_dir, exist_ok=True)
             cmd = [
@@ -2220,13 +2237,17 @@ def _run_avatar_job(payload: dict):
                     else:
                         buf += ch
             proc.wait()
-            mp4_list = sorted(glob.glob(os.path.join(tmp_out_dir, "*.mp4")), key=os.path.getmtime, reverse=True)
-            if proc.returncode != 0 or not mp4_list:
+            mp4_list = [
+                p for p in sorted(glob.glob(os.path.join(tmp_out_dir, "*.mp4")), key=os.path.getmtime, reverse=True)
+                if os.path.getsize(p) > 10240
+            ]
+            if not mp4_list:
                 err_tail = "\n".join(tail_lines[-16:])
                 raise RuntimeError(f"LongCat-Video-Avatar 退出码 {proc.returncode}:\n{err_tail}")
 
+            dt = round(time.time() - t0, 1)
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            fname = f"longcat_avatar_{stage_1}_{ts}_seed{cur_seed}.mp4"
+            fname = f"longcat_avatar_{stage_1}_{ts}_dur{max(1, int(round(dt)))}s_seed{cur_seed}.mp4"
             out_path = os.path.join(OUTPUT_DIR, fname)
             shutil.move(mp4_list[0], out_path)
             shutil.rmtree(tmp_out_dir, ignore_errors=True)
