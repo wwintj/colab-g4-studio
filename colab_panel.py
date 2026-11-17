@@ -1935,29 +1935,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- ==================== 第 1 行 (单独一行 100% 宽度)：☰ 镜头与多模态提示词 (内部四个框也全部各自单独一行) ==================== -->
-  <div style="padding:18px;margin-bottom:16px;background:#0f172a;border:1px solid var(--border);border-radius:14px;">
+  <div id="promptSectionCard" style="padding:18px;margin-bottom:16px;background:#0f172a;border:1px solid var(--border);border-radius:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
       <div style="display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:800;color:#f8fafc;">
         <span style="color:#3b82f6;">☰</span>
-        <span>镜头与多模态提示词</span>
+        <span id="promptSectionTitle">镜头与多模态提示词</span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;">
+      <div id="fourBoxActionBtns" style="display:flex;align-items:center;gap:8px;">
         <button type="button" class="btn-outline" style="padding:4px 12px;font-size:12px;border-color:#3b82f6;color:#93c5fd;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 结果填入四框</button>
         <button type="button" class="btn-outline" style="padding:4px 12px;font-size:12px;border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
       </div>
     </div>
 
     <!-- 框 1 (单独一行)：主体、构图、光影与风格描述 -->
-    <div style="margin-bottom:14px;">
+    <div id="videoPromptBox1Wrap" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
+        <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
       <textarea id="videoPrompt" rows="4" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;">Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.</textarea>
     </div>
 
     <!-- 框 2 (单独一行)：环境音效与台词对白（可选） -->
-    <div style="margin-bottom:14px;">
+    <div id="videoSoundBoxWrap" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">2. 环境音效与台词对白（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoSoundPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
@@ -1966,7 +1966,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
 
     <!-- 框 3 (单独一行)：背景音乐风格（可选） -->
-    <div style="margin-bottom:14px;">
+    <div id="videoMusicBoxWrap" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">3. 背景音乐风格（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoMusicPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
@@ -1975,7 +1975,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
 
     <!-- 框 4 (单独一行)：反向提示词 Negative Prompt（可选，排除低质或多余元素） -->
-    <div>
+    <div id="videoNegBoxWrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <div onclick="toggleNegPromptBox()" style="font-size:12.5px;font-weight:700;color:#94a3b8;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;">
           <span id="negArrowIcon">⌄</span>
@@ -2007,7 +2007,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
 
     <!-- 第 1 排横条：分辨率 | 采样步数 | 随机种子 | 批量连抽 (四项一字排开) -->
-    <div style="display:grid;grid-template-columns: 1.3fr 1.15fr 1fr 1.15fr;gap:12px;align-items:center;margin-bottom:10px;">
+    <div id="specRow1Grid" style="display:grid;grid-template-columns: 1.3fr 1.15fr 1fr 1.15fr;gap:12px;align-items:center;margin-bottom:10px;">
       <!-- 1. 视频分辨率 -->
       <div style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:5px 10px;border-radius:9px;border:1px solid var(--border);">
         <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">分辨率</span>
@@ -2021,7 +2021,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <!-- 2. 采样步数 -->
-      <div style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:6px 12px;border-radius:9px;border:1px solid var(--border);">
+      <div id="stepsControlWrap" style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:6px 12px;border-radius:9px;border:1px solid var(--border);">
         <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">步数</span>
         <input type="range" id="videoSteps" min="10" max="60" step="2" value="30" oninput="document.getElementById('stepsValLabel').innerText = this.value + ' 步'" style="flex:1;accent-color:#3b82f6;cursor:pointer;min-width:60px;">
         <span id="stepsValLabel" style="font-size:12.5px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:36px;text-align:right;">30 步</span>
@@ -2038,7 +2038,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <!-- 4. 批量连抽 -->
-      <div style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:4px 8px;border-radius:9px;border:1px solid var(--border);">
+      <div id="batchControlWrap" style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:4px 8px;border-radius:9px;border:1px solid var(--border);">
         <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;padding-left:2px;">连抽</span>
         <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;flex:1;" id="batchCountGroup">
           <button type="button" class="batch-pill" data-batch="1" onclick="selectBatchCount(1)" style="padding:4px 0;border-radius:6px;border:none;background:#3b82f6;color:#ffffff;font-size:12px;font-weight:700;cursor:pointer;">1条</button>
@@ -2051,20 +2051,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧「🎬 开始生成音视频」按钮 -->
     <div style="display:grid;grid-template-columns: 1fr 290px;gap:12px;align-items:center;">
-      <div style="display:flex;align-items:center;gap:10px;background:#1e293b;padding:6px 12px;border-radius:9px;border:1px solid var(--border);flex-wrap:wrap;">
-        <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">时长/帧数</span>
-        <input type="range" id="videoFrames" min="90" max="481" step="17" value="124" oninput="onFramesSliderChange(this.value)" style="width:115px;accent-color:#3b82f6;cursor:pointer;">
-        <span id="framesValLabel" style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:102px;">124 帧 · 约 5.2 秒</span>
-        <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;flex:1;min-width:235px;" id="durationPills">
-          <button type="button" class="dur-pill" data-frames="90" onclick="selectDurationFrames(90)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">4s</button>
-          <button type="button" class="dur-pill" data-frames="124" onclick="selectDurationFrames(124)" style="padding:4px 0;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#60a5fa;font-size:11.5px;font-weight:700;cursor:pointer;">5s</button>
-          <button type="button" class="dur-pill" data-frames="192" onclick="selectDurationFrames(192)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">8s</button>
-          <button type="button" class="dur-pill" data-frames="243" onclick="selectDurationFrames(243)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">10s</button>
-          <button type="button" class="dur-pill" data-frames="294" onclick="selectDurationFrames(294)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">12s</button>
-          <button type="button" class="dur-pill" data-frames="362" onclick="selectDurationFrames(362)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">15s</button>
-          <button type="button" class="dur-pill" data-frames="481" title="单次 20 秒实验档位 (建议在 832×480 / 480×832 分辨率下使用；若需 30s~60s 满血画质推荐用下方「🔗 尾帧续写」)" onclick="selectDurationFrames(481)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">20s</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1e293b;padding:6px 12px;border-radius:9px;border:1px solid var(--border);flex-wrap:wrap;">
+        <div id="framesSliderInner" style="display:flex;align-items:center;gap:10px;flex:1;flex-wrap:wrap;">
+          <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">时长/帧数</span>
+          <input type="range" id="videoFrames" min="90" max="481" step="17" value="124" oninput="onFramesSliderChange(this.value)" style="width:115px;accent-color:#3b82f6;cursor:pointer;">
+          <span id="framesValLabel" style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:102px;">124 帧 · 约 5.2 秒</span>
+          <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;flex:1;min-width:235px;" id="durationPills">
+            <button type="button" class="dur-pill" data-frames="90" onclick="selectDurationFrames(90)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">4s</button>
+            <button type="button" class="dur-pill" data-frames="124" onclick="selectDurationFrames(124)" style="padding:4px 0;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#60a5fa;font-size:11.5px;font-weight:700;cursor:pointer;">5s</button>
+            <button type="button" class="dur-pill" data-frames="192" onclick="selectDurationFrames(192)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">8s</button>
+            <button type="button" class="dur-pill" data-frames="243" onclick="selectDurationFrames(243)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">10s</button>
+            <button type="button" class="dur-pill" data-frames="294" onclick="selectDurationFrames(294)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">12s</button>
+            <button type="button" class="dur-pill" data-frames="362" onclick="selectDurationFrames(362)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">15s</button>
+            <button type="button" class="dur-pill" data-frames="481" title="单次 20 秒实验档位 (建议在 832×480 / 480×832 分辨率下使用；若需 30s~60s 满血画质推荐用下方「🔗 尾帧续写」)" onclick="selectDurationFrames(481)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">20s</button>
+          </div>
         </div>
-        <label title="勾选后：MiniMax-H3 生成完 480p 视频后，自动接力调用 ReCaVSR (Wan2.2-5B) 单步流式超分至 2K 超清并保留原生立体声" style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.42);color:#c4b5fd;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;user-select:none;">
+        <div id="avatarSpecHint" style="display:none;font-size:12px;font-weight:600;color:#34d399;">
+          ⚡ LongCat-Avatar-1.6：固定 8 步双蒸馏 (DMD + OPSD) · 声音与口型由上方驱动音频决定 · 视频时长由上方「生成段数」控制
+        </div>
+        <label title="勾选后：生成完 480p 视频后，自动接力调用 ReCaVSR (Wan2.2-5B) 单步流式超分至 2K 超清并保留原生音轨" style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.42);color:#c4b5fd;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;user-select:none;">
           <input id="autoUpscale2kChk" type="checkbox" style="width:13.5px;height:13.5px;accent-color:#8b5cf6;cursor:pointer;">
           <span>✨ 生成后自动 2K 超分</span>
         </label>
@@ -3906,15 +3911,69 @@ function switchMiniMaxMode(mode) {
   const titleEl = document.getElementById('videoStudioTitle');
   const badgeEl = document.getElementById('videoStudioBadge');
   const pEl = document.getElementById('videoPrompt');
+  const pSecTitle = document.getElementById('promptSectionTitle');
+  const fourBtns = document.getElementById('fourBoxActionBtns');
+  const box1Wrap = document.getElementById('videoPromptBox1Wrap');
+  const box1Lbl = document.getElementById('videoPromptBox1Label');
+  const box2Wrap = document.getElementById('videoSoundBoxWrap');
+  const box3Wrap = document.getElementById('videoMusicBoxWrap');
+  const box4Wrap = document.getElementById('videoNegBoxWrap');
+  const specRow1 = document.getElementById('specRow1Grid');
+  const stepsWrap = document.getElementById('stepsControlWrap');
+  const batchWrap = document.getElementById('batchControlWrap');
+  const framesInner = document.getElementById('framesSliderInner');
+  const avSpecHint = document.getElementById('avatarSpecHint');
+  const btnGen = document.getElementById('btnVideoGen');
   if (isAv) {
     if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
     if (badgeEl) badgeEl.innerText = 'Whisper-v3 唇形同步 + DMD/OPSD 8步双LoRA蒸馏 + Kim_Vocal_2 人声分离';
-    if (pEl && pEl.value.includes('Makoto Shinkai anime style')) {
-      pEl.value = 'A western man stands on stage under dramatic lighting, holding a microphone close to their mouth. Wearing a vibrant red jacket with gold embroidery, the singer is speaking while smoke swirls around them, creating a dynamic and atmospheric scene.';
+    if (pSecTitle) pSecTitle.innerText = '3. 人物动作与画面提示词（可选修改 · 已填好默认词，可直接点下方按钮生成）';
+    if (fourBtns) fourBtns.style.display = 'none';
+    if (box1Wrap) box1Wrap.style.marginBottom = '0';
+    if (box1Lbl) box1Lbl.innerText = '画面与人物神态描述 Prompt（若已上传照片，此处仅描述说话神态/动作/光影即可）';
+    if (box2Wrap) box2Wrap.style.display = 'none';
+    if (box3Wrap) box3Wrap.style.display = 'none';
+    if (box4Wrap) box4Wrap.style.display = 'none';
+    if (stepsWrap) stepsWrap.style.display = 'none';
+    if (batchWrap) batchWrap.style.display = 'none';
+    if (specRow1) specRow1.style.gridTemplateColumns = '1.3fr 1fr';
+    if (framesInner) framesInner.style.display = 'none';
+    if (avSpecHint) avSpecHint.style.display = 'block';
+    if (btnGen && btnGen.getAttribute('data-running') !== '1') {
+      btnGen.innerText = '🎬 开始生成数字人视频';
+    }
+    if (pEl) {
+      pEl.rows = 2;
+      pEl.style.minHeight = '66px';
+      if (pEl.value.includes('Makoto Shinkai anime style')) {
+        pEl.value = 'A western man stands on stage under dramatic lighting, holding a microphone close to their mouth. Wearing a vibrant red jacket with gold embroidery, the singer is speaking while smoke swirls around them, creating a dynamic and atmospheric scene.';
+      }
     }
   } else {
     if (titleEl) titleEl.innerText = '🎬 MiniMax-H3 多模态有声视频创作工作台';
     if (badgeEl) badgeEl.innerText = '32kHz 原生立体声音轨 + 32B 视觉编码器';
+    if (pSecTitle) pSecTitle.innerText = '镜头与多模态提示词';
+    if (fourBtns) fourBtns.style.display = 'flex';
+    if (box1Wrap) box1Wrap.style.marginBottom = '14px';
+    if (box1Lbl) box1Lbl.innerText = '1. 主体、构图、光影与风格描述';
+    if (box2Wrap) box2Wrap.style.display = 'block';
+    if (box3Wrap) box3Wrap.style.display = 'block';
+    if (box4Wrap) box4Wrap.style.display = 'block';
+    if (stepsWrap) stepsWrap.style.display = 'flex';
+    if (batchWrap) batchWrap.style.display = 'flex';
+    if (specRow1) specRow1.style.gridTemplateColumns = '1.3fr 1.15fr 1fr 1.15fr';
+    if (framesInner) framesInner.style.display = 'flex';
+    if (avSpecHint) avSpecHint.style.display = 'none';
+    if (btnGen && btnGen.getAttribute('data-running') !== '1') {
+      btnGen.innerText = '🎬 开始生成音视频';
+    }
+    if (pEl) {
+      pEl.rows = 4;
+      pEl.style.minHeight = '110px';
+      if (pEl.value.includes('A western man stands on stage under dramatic lighting')) {
+        pEl.value = 'Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.';
+      }
+    }
   }
 }
 
@@ -4338,7 +4397,7 @@ function setVideoBtnRunningState(running, customLabel) {
     btn.setAttribute('data-running', '0');
     btn.style.background = '';
     btn.style.boxShadow = '0 6px 16px -4px rgba(59,130,246,0.5)';
-    btn.innerText = '🎬 开始生成音视频';
+    btn.innerText = currentMiniMaxMode === 'avatar' ? '🎬 开始生成数字人视频' : '🎬 开始生成音视频';
     if (!upscalePollTimer) setStopButtonsVisible(false);
   }
 }
@@ -4441,10 +4500,13 @@ async function startVideoGenerate() {
   const st = document.getElementById('videoGenStatus');
   const pWrap = document.getElementById('videoProgressWrap');
   const pBar = document.getElementById('videoProgressBar');
-  setVideoBtnRunningState(true, selectedBatchCount > 1 ? `🛑 正在连抽 ${selectedBatchCount} 条... (点击停止)` : '🛑 正在合成有声视频... (点击停止)');
+  const isAvMode = currentMiniMaxMode === 'avatar';
+  setVideoBtnRunningState(true, isAvMode ? '🛑 正在生成数字人视频... (点击停止)' : (selectedBatchCount > 1 ? `🛑 正在连抽 ${selectedBatchCount} 条... (点击停止)` : '🛑 正在合成有声视频... (点击停止)'));
   pWrap.style.display = 'block';
   pBar.style.width = '8%';
-  st.innerText = `⏳ 已提交至 RTX PRO 6000 MiniMax-H3 引擎 (连抽 ${selectedBatchCount} 条)，正在调用 32B 无审查编码器...`;
+  st.innerText = isAvMode
+    ? '⏳ 已提交至 LongCat-Video-Avatar-1.6 引擎，正在分离人声并提取 Whisper-v3 唇形特征...'
+    : `⏳ 已提交至 MiniMax-H3 引擎 (连抽 ${selectedBatchCount} 条)，正在调用多模态编码器...`;
   st.style.color = '#f59e0b';
   try {
     const r = await fetch('/api/video_generate', {
@@ -4454,13 +4516,25 @@ async function startVideoGenerate() {
     });
     const d = await r.json();
     if (!d.ok) {
-      st.innerText = '❌ ' + (d.error || '启动失败（请确认当前已加载运行 MiniMax-H3）');
+      st.innerText = '❌ ' + (d.error || '启动失败（请确认模型服务已就绪）');
       st.style.color = '#ef4444';
       setVideoBtnRunningState(false);
       return;
     }
     if (d.auto_switching) {
-      selectPresetModel('preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors');
+      if (isAvMode) {
+        if (currentPresetTier === 't4') {
+          selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors');
+        } else {
+          selectPresetModel('preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors');
+        }
+      } else {
+        if (currentPresetTier === 't4') {
+          selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf');
+        } else {
+          selectPresetModel('preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors');
+        }
+      }
       if (d.message) {
         st.innerText = d.message;
         st.style.color = '#f59e0b';
@@ -5715,11 +5789,11 @@ p.wait()
                                 d_code = _DEPLOY_STATE.get("exit_code")
                             if not d_run:
                                 if d_code not in (0, None):
-                                    _PENDING_VIDEO_JOB["error"] = "❌ 自动切换加载 MiniMax-H3 失败，请查看下方实时部署日志"
+                                    _PENDING_VIDEO_JOB["error"] = f"❌ 自动切换加载 {target_label} 失败，请查看下方实时部署日志"
                                     _PENDING_VIDEO_JOB["active"] = False
                                     return
                                 break
-                        # MiniMax-H3 部署完成，等待 /v1/video/generations 接收任务
+                        # 视频引擎部署完成，等待 /v1/video/generations 接收任务
                         c_now = _load_endpoint_cfg()
                         body_bytes = json.dumps(job_payload).encode("utf-8")
                         for _ in range(60):
@@ -5736,13 +5810,13 @@ p.wait()
                                 with urllib.request.urlopen(r2, timeout=20) as resp2:
                                     res2 = json.loads(resp2.read().decode("utf-8"))
                                     if res2.get("ok"):
-                                        _append_panel_log("✅ [自动切换完成] MiniMax-H3 已就绪并自动开始采样生成有声视频！")
+                                        _append_panel_log(f"✅ [自动切换完成] {target_label} 已就绪并自动开始采样生成有声视频！")
                                         _PENDING_VIDEO_JOB["active"] = False
                                         return
                             except Exception:
                                 pass
                             time.sleep(2)
-                        _PENDING_VIDEO_JOB["error"] = "❌ MiniMax-H3 加载后提交视频生成超时，请再点一次「开始生成音视频」"
+                        _PENDING_VIDEO_JOB["error"] = f"❌ {target_label} 加载后提交视频生成超时，请再点一次「开始生成」"
                         _PENDING_VIDEO_JOB["active"] = False
                     except Exception as ex:
                         _PENDING_VIDEO_JOB["error"] = f"❌ 自动切换异常: {ex}"
@@ -5752,7 +5826,7 @@ p.wait()
                 self._send_json({
                     "ok": True,
                     "auto_switching": True,
-                    "message": "🔄 检测到当前显存为 Qwen3.8-27B（或尚未启动 MiniMax-H3），正在自动从 Google Drive 切换加载 MiniMax-H3，就绪后将自动开始生成视频...",
+                    "message": f"🔄 检测到当前尚未运行 {target_label}，正在自动加载 {target_label}，就绪后将自动开始生成视频...",
                 })
                 return
 
