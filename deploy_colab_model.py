@@ -2240,15 +2240,19 @@ def _run_avatar_job(payload: dict):
                             proc.kill()
                             raise RuntimeError("🛑 已手动停止数字人视频生成任务")
                         if "loading" in ln.lower() and "lora" in ln.lower():
-                            JOB_STATE["pct"] = 18
-                            JOB_STATE["message"] = "🎭 [LongCat-Avatar-1.6] 正在融合 DMD + OPSD 双蒸馏 LoRA 适配器..."
+                            JOB_STATE["pct"] = 5
+                            JOB_STATE["message"] = "🎭 [LongCat-Avatar-1.6] 正在融合 DMD + OPSD 双蒸馏 LoRA 适配器 (总进度 5%)..."
                         elif "generating segment" in ln.lower():
                             m_seg = re.search(r"segment\s+(\d+)/(\d+)", ln, re.IGNORECASE)
                             if m_seg:
                                 cur_seg_idx = max(1, int(m_seg.group(1)))
-                            seg_base_pct = 20 + int(((cur_seg_idx - 1) / float(max(1, num_segments))) * 75)
-                            JOB_STATE["pct"] = min(95, max(20, seg_base_pct))
-                            JOB_STATE["message"] = f"🎬 [LongCat-Avatar-1.6] 正在生成第 {cur_seg_idx}/{num_segments} 段 (8步口型与动作扩散采样中)..."
+                            glob_done = (cur_seg_idx - 1) * 8
+                            glob_tot = max(8, num_segments * 8)
+                            seg_base_pct = min(96, max(5, 5 + int(round((glob_done / float(glob_tot)) * 92))))
+                            JOB_STATE["step"] = glob_done
+                            JOB_STATE["total_steps"] = glob_tot
+                            JOB_STATE["pct"] = seg_base_pct
+                            JOB_STATE["message"] = f"🎬 [LongCat-Avatar-1.6] 正在生成第 {cur_seg_idx}/{num_segments} 段 · 总计 {glob_done}/{glob_tot} 步 (总进度 {seg_base_pct}%)"
                         else:
                             m = re.search(r"(\d+)%\|.*\|\s*(\d+)/(\d+)", ln)
                             if m:
@@ -2256,16 +2260,16 @@ def _run_avatar_job(payload: dict):
                                 cur_s = int(m.group(2))
                                 tot_s = max(1, int(m.group(3)))
                                 if tot_s <= 16:
-                                    # 8步扩散采样进度 (跨多段平滑累加)
+                                    # 8步扩散采样进度 (跨多段平滑累加，严格从 5% 到 97% 反映全局总进度)
                                     glob_step = (cur_seg_idx - 1) * tot_s + cur_s
-                                    glob_tot = num_segments * tot_s
+                                    glob_tot = max(1, num_segments * tot_s)
                                     JOB_STATE["step"] = glob_step
                                     JOB_STATE["total_steps"] = glob_tot
-                                    seg_frac = ((cur_seg_idx - 1) + (pct / 100.0)) / float(max(1, num_segments))
-                                    ov_pct = min(96, max(20, 22 + int(seg_frac * 74)))
+                                    seg_frac = glob_step / float(glob_tot)
+                                    ov_pct = min(97, max(5, 5 + int(round(seg_frac * 92))))
                                     JOB_STATE["pct"] = ov_pct
-                                    seg_tag = f"第 {cur_seg_idx}/{num_segments} 段 · " if num_segments > 1 else ""
-                                    JOB_STATE["message"] = f"🎭 [LongCat-Avatar-1.6] 正在扩散生成数字人视频: {seg_tag}第 {cur_s}/{tot_s} 步 (总进度 {ov_pct}%)"
+                                    seg_tag = f"第 {cur_seg_idx}/{num_segments} 段 (本段 {cur_s}/{tot_s} 步 · 总计 {glob_step}/{glob_tot} 步)" if num_segments > 1 else f"第 {cur_s}/{tot_s} 步"
+                                    JOB_STATE["message"] = f"🎭 [LongCat-Avatar-1.6] 正在扩散生成数字人视频: {seg_tag} (总进度 {ov_pct}%)"
                     else:
                         buf += ch
             proc.wait()

@@ -330,12 +330,29 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
             m_p = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]", ln)
             if m_p:
                 prompt_enc_ts = _parse_log_hms_to_epoch(m_p.group(1), now_ts)
-        elif "正在扩散采样生成有声视频" in ln:
+        elif "正在扩散采样生成有声视频" in ln or "正在扩散生成数字人视频" in ln:
+            m_tot = re.search(r"^\[(\d{2}:\d{2}:\d{2})\].*总计\s*(\d+)/(\d+)\s*步", ln)
+            m_seg_s = re.search(r"^\[(\d{2}:\d{2}:\d{2})\].*第\s*(\d+)/(\d+)\s*段.*第\s*(\d+)/(\d+)\s*步", ln)
             m_s = re.search(r"^\[(\d{2}:\d{2}:\d{2})\].*第\s*(\d+)/(\d+)\s*步", ln)
-            if m_s:
+            if m_tot:
+                ts_val = _parse_log_hms_to_epoch(m_tot.group(1), now_ts)
+                c_s = int(m_tot.group(2))
+                t_s = int(m_tot.group(3))
+            elif m_seg_s:
+                ts_val = _parse_log_hms_to_epoch(m_seg_s.group(1), now_ts)
+                seg_i, seg_n = int(m_seg_s.group(2)), max(1, int(m_seg_s.group(3)))
+                stp_i, stp_n = int(m_seg_s.group(4)), max(1, int(m_seg_s.group(5)))
+                c_s = (seg_i - 1) * stp_n + stp_i
+                t_s = seg_n * stp_n
+            elif m_s:
                 ts_val = _parse_log_hms_to_epoch(m_s.group(1), now_ts)
                 c_s = int(m_s.group(2))
                 t_s = int(m_s.group(3))
+            else:
+                ts_val = 0.0
+                c_s = 0
+                t_s = 0
+            if ts_val > 0 and t_s > 0:
                 if first_step_ts <= 0.0:
                     first_step_ts = ts_val
                     first_step_num = c_s
@@ -3787,8 +3804,19 @@ async function pollLogs() {
       if (!d.running && latestVideoActive) {
         const vMsg = latestVideoActive.msg;
         const pctM = vMsg.match(/(\d+)%/);
-        const vPct = pctM ? Math.max(5, Math.min(99, parseInt(pctM[1], 10))) : 8;
+        const segM = vMsg.match(/第\s*(\d+)\/(\d+)\s*段/);
+        let vPct = 8;
+        if (pctM) {
+          vPct = Math.max(5, Math.min(99, parseInt(pctM[1], 10)));
+        } else if (segM) {
+          const sCur = parseInt(segM[1], 10) || 1;
+          const sTot = Math.max(1, parseInt(segM[2], 10) || 1);
+          vPct = Math.max(5, Math.min(96, 5 + Math.round(((sCur - 1) / sTot) * 90)));
+        }
         pLabel.innerText = `⏳ ${vMsg}`;
+        if (liveVideoElapsedSec === null && pSpeed) {
+          pSpeed.innerText = `总进度 ${vPct}% · 正在生成中...`;
+        }
         pBar.className = 'progress-fill';
         pBar.style.width = `${vPct}%`;
         st.innerText = '⏳ 视频正在生成中...';
