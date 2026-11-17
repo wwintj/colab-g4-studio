@@ -1136,6 +1136,11 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
                     folder = "MiniMax-H3-T4-GGUF"
                     pattern = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
                     auto_switched_note = f"⚡ [T4 智能适配] 当前为 T4 (16GB) 账号，已自动将 {old_folder} 切换为 T4 专享量化版 {folder} (UD-Q2_K_XL · 8步有声视频)"
+                elif folder == "LongCat-Video-Avatar-1.6":
+                    repo = "meituan-longcat/LongCat-Video-Avatar-1.6"
+                    folder = "LongCat-Video-Avatar-1.6-INT8"
+                    pattern = "base_model_int8/*.safetensors"
+                    auto_switched_note = "⚡ [T4 智能适配] 当前为 T4 (16GB) 账号，已自动将 LongCat-Video-Avatar-1.6 切换为 INT8 量化版 (LongCat-Video-Avatar-1.6-INT8)"
                 elif folder in g4_only_folders or "bf16.gguf" in (pattern or "").lower():
                     old_folder = folder
                     repo = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
@@ -1745,6 +1750,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
       </div>
+
+      <div class="folder-tag preset-card" id="preset_longcat_avatar" onclick="selectPresetModel('preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#f8fafc;font-size:13px;">🎭 LongCat-Video-Avatar-1.6</div>
+          <div style="color:var(--muted);font-size:11px;">BF16 + 双LoRA + 底座 · 58.8 GB (数字人视频)</div>
+        </div>
+        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
+      </div>
     </div>
 
     <!-- T4 16GB 模型区 -->
@@ -1753,6 +1766,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div>
           <div style="font-weight:700;color:#34d399;font-size:13px;">🎬 MiniMax-H3 (T4 量化版)</div>
           <div style="color:var(--muted);font-size:11px;">UD-Q2_K_XL 蒸馏 · 7.5 GB (8步有声)</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_t4_longcat_int8" onclick="selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+        <div>
+          <div style="font-weight:700;color:#34d399;font-size:13px;">🎭 LongCat-Avatar-1.6 (INT8版)</div>
+          <div style="color:var(--muted);font-size:11px;">INT8 量化主干 + 双LoRA · 14.8 GB (数字人)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
       </div>
@@ -2990,7 +3011,7 @@ function switchPresetTierTab(tier, autoSelect = true) {
     }
     if (autoSelect) {
       const curF = (document.getElementById('inpFolder') || {}).value || '';
-      if (!curF.includes('-T4-') && curF !== 'ReCaVSR') {
+      if (!curF.includes('-T4-') && !curF.endsWith('-INT8') && curF !== 'ReCaVSR') {
         selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf');
       }
     }
@@ -3009,7 +3030,7 @@ function switchPresetTierTab(tier, autoSelect = true) {
     }
     if (autoSelect) {
       const curF = (document.getElementById('inpFolder') || {}).value || '';
-      if (curF.includes('-T4-') || curF === 'ReCaVSR') {
+      if (curF.includes('-T4-') || curF.endsWith('-INT8') || curF === 'ReCaVSR') {
         selectPresetModel('preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf');
       }
     }
@@ -3027,7 +3048,7 @@ function renderGroupedDriveFolders(folders, updateButtons = true) {
   (lastDriveFoldersRaw || []).forEach(item => {
     savedDriveFolders.add(item.folder);
     const gb = typeof item.total_gb === 'number' ? item.total_gb : 0;
-    const isT4Named = item.folder.includes('-T4-') || item.folder === 'ReCaVSR';
+    const isT4Named = item.folder.includes('-T4-') || item.folder.endsWith('-INT8') || item.folder === 'ReCaVSR';
     if (!isT4Named && gb > 15.5) g4List.push(item);
     else t4List.push(item);
   });
@@ -3089,6 +3110,8 @@ function syncDriveFolderHighlight(folderName, rerenderList = true) {
     'Qwen3.8-27B-GGUF': 'Qwen3.8-27B-Q4',
     'Qwen-Image-2.1': 'Qwen-Image-2.1',
     'Z-Image-Turbo': 'Z-Image-Turbo',
+    'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
+    'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar(INT8)',
     'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4)',
     'Qwen3.8-27B-T4-MTP': 'Qwen3.8-27B(MTP)',
     'Qwen3-14B-T4-Q6': 'Qwen3-14B(Q6)',
@@ -3151,6 +3174,8 @@ function selectDriveFolder(folderName, firstFile) {
     'Qwen3.8-27B-GGUF': 'unsloth/Qwen3.8-27B-GGUF',
     'Qwen-Image-2.1': 'Qwen/Qwen-Image-2.1',
     'Z-Image-Turbo': 'Tongyi-MAI/Z-Image-Turbo',
+    'LongCat-Video-Avatar-1.6': 'meituan-longcat/LongCat-Video-Avatar-1.6',
+    'LongCat-Video-Avatar-1.6-INT8': 'meituan-longcat/LongCat-Video-Avatar-1.6',
     'Qwen3.8-27B-T4-Q3': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
     'Qwen3.8-27B-T4-MTP': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
     'Qwen3-14B-T4-Q6': 'bartowski/huihui-ai_Qwen3-14B-abliterated-GGUF',
@@ -3166,6 +3191,8 @@ function selectDriveFolder(folderName, firstFile) {
     'Qwen3.8-27B-GGUF': 'preset_qwen_q4',
     'Qwen-Image-2.1': 'preset_qwen_img',
     'Z-Image-Turbo': 'preset_z_img',
+    'LongCat-Video-Avatar-1.6': 'preset_longcat_avatar',
+    'LongCat-Video-Avatar-1.6-INT8': 'preset_t4_longcat_int8',
     'Qwen3.8-27B-T4-Q3': 'preset_t4_qwen38_q3',
     'Qwen3.8-27B-T4-MTP': 'preset_t4_qwen38_mtp',
     'Qwen3-14B-T4-Q6': 'preset_t4_qwen14b',
@@ -3176,6 +3203,8 @@ function selectDriveFolder(folderName, firstFile) {
   const patternMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf',
     'MiniMax-H3': 'FL2VA/*.safetensors',
+    'LongCat-Video-Avatar-1.6': 'base_model/*.safetensors',
+    'LongCat-Video-Avatar-1.6-INT8': 'base_model_int8/*.safetensors',
     'Qwen3.8-27B-T4-Q3': 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf',
     'Qwen3.8-27B-T4-MTP': 'Huihui-Qwen3.8-27B-abliterated-GSQ-RCO-IQ3_S-mtp.gguf',
     'Qwen3-14B-T4-Q6': 'huihui-ai_Qwen3-14B-abliterated-Q6_K.gguf',
@@ -3299,6 +3328,9 @@ async function refreshStatus(force = false) {
       'Qwen/Qwen-Image-2.1': 'Qwen-Image-2.1',
       'Z-Image-Turbo': 'Z-Image-Turbo',
       'Tongyi-MAI/Z-Image-Turbo': 'Z-Image-Turbo',
+      'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
+      'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar(INT8)',
+      'meituan-longcat/LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
     };
     const folderShort = rawFolder.split('/').pop();
     const activeModelDisplay = friendlyModelMap[rawFolder] || friendlyModelMap[folderShort] || folderShort || 'Qwen3.8-27B(无审查)';

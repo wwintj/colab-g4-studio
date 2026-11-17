@@ -212,6 +212,20 @@ PRESET_SAFETENSORS_FILES: Dict[str, List[str]] = {
         "text_encoder/model-00003-of-00003.safetensors",
         "vae/diffusion_pytorch_model.safetensors",
     ],
+    "meituan-longcat/LongCat-Video-Avatar-1.6": [
+        *(f"base_model/diffusion_pytorch_model-{i:05d}-of-00006.safetensors" for i in range(1, 7)),
+        "loraA/lora.safetensors",
+        "loraB/lora.safetensors",
+        "vocal_separator/Kim_Vocal_2.onnx",
+        "whisper-large-v3/model.safetensors",
+    ],
+    "meituan-longcat/LongCat-Video-Avatar-1.6#int8": [
+        *(f"base_model_int8/quantized_model-{i:05d}-of-00004.safetensors" for i in range(1, 5)),
+        "loraA/lora.safetensors",
+        "loraB/lora.safetensors",
+        "vocal_separator/Kim_Vocal_2.onnx",
+        "whisper-large-v3/model.safetensors",
+    ],
 }
 
 
@@ -240,15 +254,18 @@ def resolve_hf_safetensors_files(repo_id: str, pattern: str = "", token: str = "
             size_map[rfn] = sz
             all_siblings.append((rfn, sz))
 
-    if repo_id in PRESET_SAFETENSORS_FILES:
-        preset_list = PRESET_SAFETENSORS_FILES[repo_id]
+    preset_key = repo_id
+    if repo_id == "meituan-longcat/LongCat-Video-Avatar-1.6" and "int8" in (pattern or "").lower():
+        preset_key = "meituan-longcat/LongCat-Video-Avatar-1.6#int8"
+    if preset_key in PRESET_SAFETENSORS_FILES:
+        preset_list = PRESET_SAFETENSORS_FILES[preset_key]
         out: List[Tuple[str, int]] = [(fn, size_map.get(fn, 0)) for fn in preset_list]
         # 顺带附带该仓库下的轻量 json/txt/model/py 配置文件，方便离线直接加载
         prefix_filter = "FL2VA/" if repo_id == "MiniMaxAI/MiniMax-H3" else ""
         for rfn, sz in all_siblings:
             if prefix_filter and not rfn.startswith(prefix_filter):
                 continue
-            if rfn.endswith((".json", ".txt", ".yaml", ".py", "tokenizer.model")) and sz < 50 * 1024 * 1024 and rfn not in preset_list:
+            if rfn.endswith((".json", ".txt", ".yaml", ".py", "tokenizer.model", "spiece.model")) and sz < 50 * 1024 * 1024 and rfn not in preset_list:
                 out.append((rfn, sz))
         return out
 
@@ -2768,6 +2785,10 @@ def run_remote_vm_main():
             HF_REPO = "unsloth/MiniMax-H3-GGUF"
             MODEL_FOLDER = "MiniMax-H3-T4-GGUF"
             FILE_PATTERN = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
+        elif HF_REPO.lower() == "meituan-longcat/longcat-video-avatar-1.6" and "int8" not in FILE_PATTERN.lower() and not DOWNLOAD_ONLY:
+            log(f"⚡ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，已自动将 LongCat-Video-Avatar-1.6 切换为 INT8 量化版 (base_model_int8)！")
+            MODEL_FOLDER = "LongCat-Video-Avatar-1.6-INT8"
+            FILE_PATTERN = "base_model_int8/*.safetensors"
         elif "bf16.gguf" in FILE_PATTERN.lower() and not DOWNLOAD_ONLY:
             log(f"⚠️ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，已自动将 53GB BF16 切换为 T4 16G 满速版 UD-Q3_K_XL (12.4 GB)！")
             MODEL_FOLDER = "Qwen3.8-27B-T4-Q3"
@@ -2888,6 +2909,17 @@ def run_remote_vm_main():
                 sz = uncensored_te_sizes[base_fn]
             resolved_plan.append((rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, max(0, int(sz))))
 
+        if HF_REPO.lower() == "meituan-longcat/longcat-video-avatar-1.6":
+            log("🔗 正在合并 LongCat-Video 基础底座组件 (VAE / Tokenizer / UMT5-XXL TextEncoder)...")
+            try:
+                base_repo = "meituan-longcat/LongCat-Video"
+                base_siblings = resolve_hf_safetensors_files(base_repo, "*.safetensors", HF_TOKEN)
+                for rfn, b_sz in base_siblings:
+                    if rfn.startswith(("vae/", "tokenizer/", "text_encoder/")):
+                        resolved_plan.append((rfn, base_repo, rfn, target_dir, max(0, int(b_sz))))
+            except Exception as e_lc:
+                log(f"⚠️ 解析 LongCat-Video 底座组件提示: {e_lc}")
+
         batch_total_bytes = sum(x[4] for x in resolved_plan)
         total_gb = batch_total_bytes / (1024 ** 3)
         log(f"共解析到 {len(resolved_plan)} 个模型文件 (总计约 {total_gb:.2f} GB)，目标目录: {target_dir}")
@@ -2920,15 +2952,33 @@ def run_remote_vm_main():
                     _pull_from_rclone_drive_if_exists(MODEL_FOLDER, target_dir)
                     break
                 raise
-        expected_core_count = max(1, len(st_files))
+        expected_core_count = max(1, len(resolved_plan))
         if has_rclone and not fuse_mounted and gdrive_saved_count < expected_core_count:
             _sync_local_to_rclone_drive(target_dir, background=not DOWNLOAD_ONLY)
-        log(f"✅ 模型 {HF_REPO} 全部 {len(st_files)} 个文件已就绪！")
+        log(f"✅ 模型 {HF_REPO} 全部 {len(resolved_plan)} 个文件已就绪！")
         if DOWNLOAD_ONLY:
             log(f"🎉 [仅下载模式] 已完成全部权重下载并持久化至 Google Drive 云盘 (gdrive:models/{MODEL_FOLDER})！")
             return
         if HF_REPO.lower() == "unsloth/minimax-h3-gguf" or MODEL_FOLDER == "MiniMax-H3-T4-GGUF":
             _start_minimax_t4_gguf_server_on_30000(target_dir)
+        elif "longcat-video-avatar" in HF_REPO.lower() or MODEL_FOLDER.startswith("LongCat-Video-Avatar"):
+            lc_link = os.path.join(os.path.dirname(target_dir), "LongCat-Video")
+            if not os.path.exists(lc_link):
+                try:
+                    os.symlink(target_dir, lc_link)
+                except Exception:
+                    pass
+            if not os.path.isdir("/content/LongCat-Video/.git"):
+                log("正在拉取美团 LongCat-Video-Avatar-1.6 推理框架...")
+                subprocess.run(["git", "clone", "--depth", "1", "https://github.com/meituan-longcat/LongCat-Video.git", "/content/LongCat-Video"], check=False)
+            _ensure_recavsr_service_on_30002()
+            for _ in range(30):
+                txt = subprocess.getoutput("cat /content/recavsr_tunnel.log 2>/dev/null")
+                if "trycloudflare.com" in txt:
+                    shutil.copyfile("/content/recavsr_tunnel.log", "/content/cf_tunnel.log")
+                    break
+                time.sleep(1)
+            log(f"[显存装载] {MODEL_FOLDER}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
         else:
             _start_minimax_h3_server_on_30000(target_dir)
         _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
