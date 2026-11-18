@@ -2374,12 +2374,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </h2>
   <div id="taskProgressArea" style="margin-bottom:14px;padding:12px 14px;background:#0f172a;border:1px solid var(--border);border-radius:10px;">
-    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
-      <span id="taskProgressLabel" style="font-weight:600;color:#93c5fd;">当前进度：已就绪 (100%)</span>
-      <span id="taskProgressSpeed" style="font-family:'SF Mono',monospace;color:var(--green);">50.90 / 50.90 GB · 服务运行中</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;font-size:13px;margin-bottom:6px;height:20px;overflow:hidden;">
+      <span id="taskProgressLabel" style="font-weight:600;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">当前进度：已就绪 (100%)</span>
+      <span id="taskProgressSpeed" style="font-family:'SF Mono',monospace;color:var(--green);white-space:nowrap;flex-shrink:0;">50.90 / 50.90 GB · 服务运行中</span>
     </div>
     <div class="progress-bar" style="height:10px;">
-      <div class="progress-fill green" id="taskProgressBar" style="width:100%;"></div>
+      <div class="progress-fill green" id="taskProgressBar" style="width:100%;transition:width 0.35s ease;"></div>
     </div>
   </div>
   <pre class="log-box" id="logBox">等待操作... 你可以点击上方「🔄 刷新显存与硬盘」、「▶️ 一键开机 / 启动服务」或「🛑 关闭服务器」。</pre>
@@ -3792,8 +3792,21 @@ async function pollLogs() {
       box.innerText = fullTxt;
       box.scrollTop = box.scrollHeight;
 
-      // 解析最新一条任务状态：优先匹配最新的视频生成/视频超分/视频回传/视频完成，或下载/云盘预热/显存装载进度
+      // 解析最新一条任务状态：部署运行期间始终独立提取最新下载/预热/装载进度，防止被自动切换日志截断或互相覆盖闪烁
       let latestDeployMatch = null;
+      let latestDeployPostStage = null;
+      for (let i = d.logs.length - 1; i >= 0; i--) {
+        const line = d.logs[i];
+        if (!latestDeployPostStage && /正在(拉取最新 ComfyUI|检查 ComfyUI 运行依赖|启动 Cloudflare Tunnel|安装 cloudflared)/.test(line)) {
+          latestDeployPostStage = line.replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '').trim();
+        }
+        const m = line.match(/\[(HF 下载|云盘极速预热|云盘同步|显存装载)\]\s+([^:]+):\s+(\d+)%\s+\(([^,]+),\s*([^)]+)\)/);
+        if (m) {
+          latestDeployMatch = m;
+          break;
+        }
+      }
+
       let latestVideoActive = null;
       let latestUpscaleActive = null;
       let latestVideoDone = null;
@@ -3832,11 +3845,6 @@ async function pollLogs() {
           } else {
             latestVideoDone = mvDone[2];
           }
-          break;
-        }
-        const m = line.match(/\[(HF 下载|云盘极速预热|云盘同步|显存装载)\]\s+([^:]+):\s+(\d+)%\s+\(([^,]+),\s*([^)]+)\)/);
-        if (m) {
-          latestDeployMatch = m;
           break;
         }
       }
@@ -3929,13 +3937,21 @@ async function pollLogs() {
         pBar.style.width = '100%';
       } else if (latestDeployMatch) {
         const stage = latestDeployMatch[1];
-        const fname = latestDeployMatch[2];
+        const rawFname = latestDeployMatch[2];
+        const fname = rawFname
+          .replace(/\((\d+\/\d+)\s*·\s*[^)]+\)/g, '($1 个核心组件)')
+          .replace(/([a-zA-Z0-9_.-]{14})[a-zA-Z0-9_.-]{12,}([a-zA-Z0-9_.-]{10})/g, '$1...$2');
         const pct = parseInt(latestDeployMatch[3], 10);
         const gbStr = latestDeployMatch[4];
         const spdStr = latestDeployMatch[5];
         const icon = stage === '显存装载' ? '🎮' : '⏳';
-        pLabel.innerText = `${icon} [${stage}] ${fname}: ${pct}%`;
-        pSpeed.innerText = `${gbStr} · 速度 ${spdStr}`;
+        if (d.running && pct >= 100 && stage !== '显存装载' && latestDeployPostStage) {
+          pLabel.innerText = `🎮 [环境与显存装载] ${latestDeployPostStage}`;
+          pSpeed.innerText = `${gbStr} · 正在启动推理引擎`;
+        } else {
+          pLabel.innerText = `${icon} [${stage}] ${fname}: ${pct}%`;
+          pSpeed.innerText = `${gbStr} · ${spdStr.includes('复用') || spdStr.includes('已就绪') ? spdStr : ('速度 ' + spdStr)}`;
+        }
         pBar.style.background = '';
         pBar.className = stage === '显存装载' ? 'progress-fill green' : 'progress-fill';
         pBar.style.width = `${Math.min(100, pct)}%`;
@@ -5246,11 +5262,28 @@ async function pollVideoStatus() {
       return;
     }
     if (d.running) {
-      setVideoBtnRunningState(true, '🛑 正在合成有声视频... (点击停止)');
+      const isImgMode = currentMiniMaxMode === 'image';
+      const isAvMode = currentMiniMaxMode === 'avatar';
+      const runLbl = isImgMode ? '🛑 正在生成 4K 写真大图... (点击停止)' : (isAvMode ? '🛑 正在生成数字人视频... (点击停止)' : '🛑 正在合成有声视频... (点击停止)');
+      setVideoBtnRunningState(true, runLbl);
       if (pWrap) pWrap.style.display = 'block';
       if (!videoPollTimer) {
         videoPollTimer = setInterval(pollVideoStatus, 2000);
       }
+    }
+    if (d.auto_switching) {
+      // 模型自动切换/预热/装载期间，底部主进度条由 pollLogs() 独占驱动，严禁在此覆盖导致左右百分比与进度条来回跳变闪烁
+      liveVideoElapsedSec = null;
+      liveVideoEtaSec = null;
+      liveVideoPct = null;
+      liveVideoBaseMsg = '';
+      const swPct = typeof d.pct === 'number' ? Math.max(8, Math.min(99, d.pct)) : 15;
+      if (pBar) pBar.style.width = `${swPct}%`;
+      if (st && d.message) {
+        st.innerText = d.message;
+        st.style.color = '#f59e0b';
+      }
+      return;
     }
     const prog = typeof d.pct === 'number' ? d.pct : (typeof d.progress === 'number' ? d.progress : null);
     if (prog !== null) {
@@ -5707,11 +5740,8 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     if m:
                         st_type, _, st_pct_s = m.group(1), m.group(2), m.group(3)
                         st_pct = int(st_pct_s)
-                        if st_type == "显存装载":
-                            pct_val = max(8, min(15, 8 + int(st_pct * 0.07)))
-                        else:
-                            pct_val = max(3, min(8, 3 + int(st_pct * 0.05)))
-                        stage_msg = f"🔄 正在自动切换加载 {target_eng} ({st_type}: {st_pct}%)，就绪后将立即自动生成视频..."
+                        pct_val = max(8, min(98, st_pct))
+                        stage_msg = f"🔄 正在自动切换加载 {target_eng} ({st_type}: {st_pct}%)，就绪后将立即自动开始生成..."
                         break
                 self._send_json({
                     "running": True,

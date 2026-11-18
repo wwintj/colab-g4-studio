@@ -4437,7 +4437,7 @@ def run_remote_vm_main():
         st_stage_tag = "云盘极速预热" if gdrive_saved_count > 0 else "HF 下载"
         for idx, (rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, sz) in enumerate(resolved_plan, start=1):
             existing_p = os.path.join(target_dir, rel_fn)
-            lbl_str = f"{MODEL_FOLDER} 总进度 ({idx}/{len(resolved_plan)} · {os.path.basename(rel_fn)})"
+            lbl_str = f"{MODEL_FOLDER} 总进度 ({idx}/{len(resolved_plan)} 个核心组件)"
             if os.path.exists(existing_p) and (sz <= 0 or os.path.getsize(existing_p) == sz):
                 actual_sz = os.path.getsize(existing_p) if os.path.exists(existing_p) else sz
                 cum_done_bytes += actual_sz
