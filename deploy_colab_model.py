@@ -2417,17 +2417,20 @@ def _ensure_ming_talker(update_job_state: bool = True):
 
         import torch
         ming_root = os.path.join(MODEL_DIR, "ming_talker")
+        shared_ming_root = "/content/local_models/ming_talker"
+        if not os.path.isfile(os.path.join(ming_root, "talker/model.safetensors")) and os.path.isfile(os.path.join(shared_ming_root, "talker/model.safetensors")):
+            ming_root = shared_ming_root
         talker_dir = os.path.join(ming_root, "talker")
         os.makedirs(ming_root, exist_ok=True)
 
-        # 确保依赖就绪
+        # 确保依赖就绪 (Python 3.13 跳过 C++ 源码编译的 pynini/fasttext，使用内置纯 Python TalkerRE 文本正则归一化)
         missing_deps = []
         for pkg, mod in [
             ("x-transformers", "x_transformers"),
             ("inflect", "inflect"),
-            ("pynini==2.1.7", "pynini"),
-            ("fasttext-wheel==0.9.2", "fasttext"),
             ("onnxruntime", "onnxruntime"),
+            ("librosa", "librosa"),
+            ("soundfile", "soundfile"),
         ]:
             try:
                 __import__(mod)
@@ -2465,6 +2468,39 @@ def _ensure_ming_talker(update_job_state: bool = True):
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
+
+        # 为 Python 3.13 环境注入无 pynini C++ 依赖的 Normalizer 兼容补丁 (TalkerRE 已完成纯 Python 数字/日期/符号转换)
+        norm_py = os.path.join(talker_dir, "talker_tn/normalizer.py")
+        if os.path.isfile(norm_py):
+            try:
+                norm_txt = open(norm_py, "r", encoding="utf-8").read()
+                if "from pynini import escape, Fst, shortestpath" in norm_txt and "except ImportError:" not in norm_txt:
+                    open(norm_py, "w", encoding="utf-8").write(
+                        "try:\n"
+                        "    from pynini import escape, Fst, shortestpath\n"
+                        "    _HAS_PYNINI = True\n"
+                        "except ImportError:\n"
+                        "    _HAS_PYNINI = False\n"
+                        "from .token_parser import TokenParser\n\n"
+                        "class Normalizer:\n"
+                        "    def __init__(self, prefix_p, ordertype='tn'):\n"
+                        "        self.ordertype = ordertype\n"
+                        "        if _HAS_PYNINI:\n"
+                        "            self.tagger = Fst.read(f'{prefix_p}_tagger.fst').optimize()\n"
+                        "            self.verbalizer = Fst.read(f'{prefix_p}_verbalizer.fst').optimize()\n"
+                        "    def normalize(self, input):\n"
+                        "        if not _HAS_PYNINI or len(input) == 0:\n"
+                        "            return input\n"
+                        "        lattice = escape(input) @ self.tagger\n"
+                        "        tmp = shortestpath(lattice, nshortest=1, unique=True).string()\n"
+                        "        if len(tmp) == 0:\n"
+                        "            return ''\n"
+                        "        output = TokenParser(self.ordertype).reorder(tmp)\n"
+                        "        lattice2 = escape(output) @ self.verbalizer\n"
+                        "        return shortestpath(lattice2, nshortest=1, unique=True).string()\n"
+                    )
+            except Exception:
+                pass
 
         if update_job_state:
             JOB_STATE.update({
@@ -3161,8 +3197,6 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
         ("einops", "einops"),
         ("x-transformers", "x_transformers"),
         ("inflect", "inflect"),
-        ("pynini==2.1.7", "pynini"),
-        ("fasttext-wheel==0.9.2", "fasttext"),
     ]:
         try:
             __import__(mod)
@@ -3293,6 +3327,7 @@ _IMG_ENGINE = {
     "unet": None,
     "clip": None,
     "vae": None,
+    "ming_talker": None,
 }
 
 JOB_STATE = {
@@ -3499,6 +3534,149 @@ def _warmup_image_engine_bg():
                 JOB_STATE["message"] = "⚡ 就绪：MiniMax-H3-Image (33B · Heretic无审查 + 1680万像素4K直出 + 免Mask换装) 已常驻显存"
     except Exception as e:
         print(f"[MiniMax-H3-Image Warmup Error] {e}", flush=True)
+
+
+def _ensure_img_ming_talker():
+    """在 MiniMax-H3-Image (45.2GB) 引擎中也支持直接按需加载 Ming-3.0-Talker (2.78GB) 进行试听配音"""
+    if _IMG_ENGINE.get("ming_talker") is not None:
+        return _IMG_ENGINE["ming_talker"]
+
+    with ENGINE_INIT_LOCK:
+        if _IMG_ENGINE.get("ming_talker") is not None:
+            return _IMG_ENGINE["ming_talker"]
+
+        import torch
+        candidates = [
+            "/content/local_models/LongCat-Video-Avatar-1.6/ming_talker",
+            "/content/drive/MyDrive/models/LongCat-Video-Avatar-1.6/ming_talker",
+            "/content/local_models/ming_talker",
+        ]
+        ming_root = "/content/local_models/ming_talker"
+        for c_dir in candidates:
+            if os.path.isfile(os.path.join(c_dir, "talker/model.safetensors")):
+                ming_root = c_dir
+                break
+        talker_dir = os.path.join(ming_root, "talker")
+        os.makedirs(ming_root, exist_ok=True)
+
+        missing_deps = []
+        for pkg, mod in [
+            ("x-transformers", "x_transformers"),
+            ("inflect", "inflect"),
+            ("onnxruntime", "onnxruntime"),
+            ("librosa", "librosa"),
+            ("soundfile", "soundfile"),
+        ]:
+            try:
+                __import__(mod)
+            except ImportError:
+                missing_deps.append(pkg)
+        if missing_deps:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_deps, check=False)
+
+        need_weights = (
+            not os.path.isfile(os.path.join(talker_dir, "model.safetensors"))
+            or not os.path.isfile(os.path.join(talker_dir, "vae/model.safetensors"))
+        )
+        need_code = not os.path.isfile(os.path.join(talker_dir, "inference.py"))
+        if need_weights or need_code:
+            from huggingface_hub import snapshot_download
+            ignore_pats = ["*__pycache__*"] if need_weights else ["*.safetensors", "*.onnx", "*__pycache__*"]
+            snapshot_download(
+                repo_id="inclusionAI/Ming-3.0-audio-flash",
+                allow_patterns=["talker/*", "voice_presets/*"],
+                ignore_patterns=ignore_pats,
+                local_dir=ming_root,
+            )
+
+        norm_py = os.path.join(talker_dir, "talker_tn/normalizer.py")
+        if os.path.isfile(norm_py):
+            try:
+                norm_txt = open(norm_py, "r", encoding="utf-8").read()
+                if "from pynini import escape, Fst, shortestpath" in norm_txt and "except ImportError:" not in norm_txt:
+                    open(norm_py, "w", encoding="utf-8").write(
+                        "try:\n"
+                        "    from pynini import escape, Fst, shortestpath\n"
+                        "    _HAS_PYNINI = True\n"
+                        "except ImportError:\n"
+                        "    _HAS_PYNINI = False\n"
+                        "from .token_parser import TokenParser\n\n"
+                        "class Normalizer:\n"
+                        "    def __init__(self, prefix_p, ordertype='tn'):\n"
+                        "        self.ordertype = ordertype\n"
+                        "        if _HAS_PYNINI:\n"
+                        "            self.tagger = Fst.read(f'{prefix_p}_tagger.fst').optimize()\n"
+                        "            self.verbalizer = Fst.read(f'{prefix_p}_verbalizer.fst').optimize()\n"
+                        "    def normalize(self, input):\n"
+                        "        if not _HAS_PYNINI or len(input) == 0:\n"
+                        "            return input\n"
+                        "        lattice = escape(input) @ self.tagger\n"
+                        "        tmp = shortestpath(lattice, nshortest=1, unique=True).string()\n"
+                        "        if len(tmp) == 0:\n"
+                        "            return ''\n"
+                        "        output = TokenParser(self.ordertype).reorder(tmp)\n"
+                        "        lattice2 = escape(output) @ self.verbalizer\n"
+                        "        return shortestpath(lattice2, nshortest=1, unique=True).string()\n"
+                    )
+            except Exception:
+                pass
+
+        if ming_root not in sys.path:
+            sys.path.insert(0, ming_root)
+        from talker import MingTalker
+        talker = MingTalker.from_pretrained(
+            Path(talker_dir),
+            dtype=torch.bfloat16,
+            device="cuda:0",
+        )
+        _IMG_ENGINE["ming_talker"] = talker
+        return talker
+
+
+@__import__("torch").inference_mode()
+def _synthesize_img_ming_talker_wav(
+    text: str,
+    voice_spec: str = "ming:灵小柔",
+    clone_ref_b64: str = "",
+    clone_prompt_text: str = "",
+) -> str:
+    import librosa
+    import numpy as np
+    import soundfile as sf
+
+    talker = _ensure_img_ming_talker()
+    clean_v = str(voice_spec or "ming:灵小柔").split("|")[0].strip()
+    if clean_v.startswith("ming:"):
+        clean_v = clean_v[len("ming:"):].strip()
+    if not clean_v:
+        clean_v = "灵小柔"
+
+    reference = None
+    prompt_txt = str(clone_prompt_text or "").strip() or None
+    if clone_ref_b64 or clean_v == "__clone__":
+        if clone_ref_b64:
+            raw_b = clone_ref_b64.split(",", 1)[-1]
+            ref_tmp = "/tmp/ming_clone_ref_input"
+            with open(ref_tmp, "wb") as rf:
+                rf.write(base64.b64decode(raw_b))
+            samples, sr = librosa.load(ref_tmp, sr=None, mono=True)
+            max_samples = int(sr * 12)
+            if len(samples) > max_samples:
+                samples = samples[:max_samples]
+            reference = {"samples": samples.astype(np.float32), "sample_rate": int(sr)}
+
+    audio_out = talker.synthesize(
+        text,
+        ip_name="灵小柔" if reference is not None else clean_v,
+        reference=reference,
+        prompt_text=prompt_txt if reference is not None else None,
+        max_steps=1000,
+    )
+    waveform = audio_out["audio"].squeeze().detach().float().cpu().numpy()
+    sample_rate = int(audio_out["sr"])
+    out_wav = "/tmp/longcat_ming_tts.wav"
+    sf.write(out_wav, waveform, sample_rate)
+    return out_wav
 
 
 @__import__("torch").inference_mode()
@@ -3742,6 +3920,43 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/cancel"):
             open("/content/.cancel_minimax", "w").write("1")
             self._send_json({"ok": True, "message": "🛑 正在停止 MiniMax-H3-Image 生成任务..."})
+            return
+
+        if self.path.startswith("/v1/audio/ming_tts"):
+            try:
+                tts_text = str(payload.get("text") or "").strip()
+                tts_voice = str(payload.get("voice") or "ming:灵小柔").strip()
+                clone_ref_b64 = str(payload.get("clone_ref_b64") or "").strip()
+                clone_prompt_text = str(payload.get("clone_prompt_text") or "").strip()
+                if not tts_text:
+                    self._send_json({"ok": False, "error": "台词内容不能为空"}, status=400)
+                    return
+                with GPU_LOCK:
+                    wav_path = _synthesize_img_ming_talker_wav(
+                        tts_text,
+                        voice_spec=tts_voice,
+                        clone_ref_b64=clone_ref_b64,
+                        clone_prompt_text=clone_prompt_text,
+                    )
+                wav_bytes = Path(wav_path).read_bytes()
+                dur_sec = 4.0
+                try:
+                    import soundfile as sf
+                    info = sf.info(wav_path)
+                    dur_sec = round(float(info.duration), 1)
+                except Exception:
+                    pass
+                auto_segs = 1 if dur_sec <= 3.85 else max(1, min(200, 1 + int(math.ceil((dur_sec - 3.72) / 3.20))))
+                b64_str = "data:audio/wav;base64," + base64.b64encode(wav_bytes).decode("ascii")
+                self._send_json({
+                    "ok": True,
+                    "audio_b64": b64_str,
+                    "audio_ext": ".wav",
+                    "duration_sec": dur_sec,
+                    "auto_segments": auto_segs,
+                })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations") or self.path.startswith("/v1/images/generations"):

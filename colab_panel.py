@@ -6369,10 +6369,36 @@ p.wait()
                     self._send_json({"ok": False, "error": "台词内容不能为空"})
                     return
 
+                cfg = _load_endpoint_cfg()
+                try:
+                    cfg["last_activity_ts"] = time.time()
+                    ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                except Exception:
+                    pass
+
                 is_ming_req = tts_voice_raw.startswith("ming:") or bool(clone_ref_b64)
                 if is_ming_req:
-                    # 优先请求云端 G4 GPU 上运行的 LongCat-Avatar + Ming-3.0-Talker (/v1/audio/ming_tts)
-                    cfg = _load_endpoint_cfg()
+                    # 1. 若本地保存的 tunnel_url 失效但 Colab 实例在线，自动从实例 /content/cf_tunnel.log 修复最新隧道地址
+                    try:
+                        from colab_cli.common import state
+                        sess_map = state.store.list()
+                        if sess_map:
+                            s_obj = state.get_session(list(sess_map.keys())[0])
+                            if s_obj and getattr(s_obj, "url", None) and getattr(s_obj, "token", None):
+                                cf_req = urllib.request.Request(
+                                    f"{s_obj.url.rstrip('/')}/api/contents/content/cf_tunnel.log?colab-runtime-proxy-token={urllib.parse.quote(s_obj.token)}",
+                                    headers={"X-Colab-Runtime-Proxy-Token": s_obj.token},
+                                )
+                                with urllib.request.urlopen(cf_req, timeout=5) as cf_r:
+                                    cf_txt = json.loads(cf_r.read().decode("utf-8")).get("content") or ""
+                                    m_urls = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", cf_txt)
+                                    if m_urls and m_urls[-1] != cfg.get("tunnel_url"):
+                                        cfg["tunnel_url"] = m_urls[-1]
+                                        ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                    except Exception:
+                        pass
+
+                    # 2. 请求云端 G4 GPU 上运行的 Ming-3.0-Talker (/v1/audio/ming_tts，MiniMax-H3-Image 与 LongCat-Avatar 均已原生挂载)
                     try:
                         req_m = urllib.request.Request(
                             "http://127.0.0.1:30000/v1/audio/ming_tts",
@@ -6388,33 +6414,74 @@ p.wait()
                             },
                             method="POST",
                         )
-                        with urllib.request.urlopen(req_m, timeout=90) as r_m:
+                        with urllib.request.urlopen(req_m, timeout=120) as r_m:
                             d_m = json.loads(r_m.read().decode("utf-8"))
                             if d_m.get("ok") and d_m.get("audio_b64"):
+                                d_m["note"] = f"🎭 [Ming-3.0 GPU 原生戏剧语音] 已在云端 G4 合成「{tts_voice_raw.replace('ming:', '')}」与真人气口"
                                 self._send_json(d_m)
                                 return
                     except Exception:
                         pass
 
-                # 本机 Edge-TTS 极速合成（若当前云端尚未切换到 LongCat-Avatar，先用本机音色极速预听时长，正式生成视频时自动在云端 GPU 调用 Ming-3.0）
-                clean_edge_text = re.sub(
-                    r"\[(Breathing|Cough|Sigh|Laughter|Surprise-ah|Surprise-oh|Dissatisfaction-hnn|Uhm|Confirmation-en|Question-ei|Question-ah|Question-en|Question-oh|Question-huh)\]",
-                    "",
-                    tts_text,
-                ).strip() or tts_text
+                # 3. 本机 Edge-TTS 极速合成（或当云端 G4 实例处于关机休眠状态时的离线预听：将气口标签转为拟声词并为不同人设匹配差异化声线）
+                paraling_spoken_map = {
+                    "[Breathing]": "，呼…，",
+                    "[Cough]": "，咳咳，",
+                    "[Sigh]": "，唉…，",
+                    "[Laughter]": "，呵呵~，",
+                    "[Surprise-ah]": "，啊~！",
+                    "[Surprise-oh]": "，噢~！",
+                    "[Dissatisfaction-hnn]": "，哼~！",
+                    "[Uhm]": "，唔…，",
+                    "[Confirmation-en]": "，嗯~，",
+                    "[Question-ei]": "，诶？",
+                    "[Question-ah]": "，啊？",
+                    "[Question-en]": "，嗯？",
+                    "[Question-oh]": "，哦？",
+                    "[Question-huh]": "，哈？",
+                }
+                clean_edge_text = tts_text
+                for k_tag, v_spoken in paraling_spoken_map.items():
+                    clean_edge_text = clean_edge_text.replace(k_tag, v_spoken)
+                clean_edge_text = re.sub(r"，{2,}", "，", clean_edge_text).strip("， ") or tts_text
+
                 v_parts = [p.strip() for p in tts_voice_raw.split("|") if p.strip()]
-                is_male_ming = any(k in tts_voice_raw for k in ("灵空", "灵宇", "灵朗", "灵信远", "灵孤影", "灵思齐", "灵晓声", "灵楷", "四郎", "康熙", "雍正", "唐僧", "武松", "余则成", "悟空", "说唱", "小新", "James"))
-                tts_voice = (
-                    ("zh-CN-YunxiNeural" if is_male_ming else "zh-CN-XiaoyiNeural")
-                    if is_ming_req
-                    else (v_parts[0] if v_parts else "zh-CN-XiaoyiNeural")
-                )
                 extra_flags = []
-                for vp in v_parts[1:]:
-                    if vp.startswith("pitch="):
-                        extra_flags.append(f"--{vp}")
-                    elif vp.startswith("rate="):
-                        extra_flags.append(f"--{vp}")
+                if is_ming_req:
+                    # 离线状态下按人设精准分配不同底模音色与音高/语速，避免离线预听听起来千篇一律
+                    if any(k in tts_voice_raw for k in ("妲己", "潘金莲", "绿茶")):
+                        tts_voice, extra_flags = "zh-TW-HsiaoChenNeural", ["--pitch=+3Hz", "--rate=-8%"]
+                    elif any(k in tts_voice_raw for k in ("灵梦", "灵恬", "开心", "吃货", "小柔")):
+                        tts_voice, extra_flags = "zh-CN-XiaoyiNeural", ["--pitch=+7Hz", "--rate=-4%"]
+                    elif any(k in tts_voice_raw for k in ("嗔怒", "傲娇", "吃醋")):
+                        tts_voice, extra_flags = "zh-CN-XiaoyiNeural", ["--pitch=+5Hz", "--rate=+8%"]
+                    elif any(k in tts_voice_raw for k in ("委屈", "破碎", "凄美")):
+                        tts_voice, extra_flags = "zh-TW-HsiaoYuNeural", ["--pitch=-2Hz", "--rate=-14%"]
+                    elif any(k in tts_voice_raw for k in ("御姐", "女王")):
+                        tts_voice, extra_flags = "zh-CN-XiaoxiaoNeural", ["--pitch=-7Hz", "--rate=-6%"]
+                    elif any(k in tts_voice_raw for k in ("灵空", "高冷", "心碎")):
+                        tts_voice, extra_flags = "zh-CN-YunxiNeural", ["--pitch=-9Hz", "--rate=-8%"]
+                    elif any(k in tts_voice_raw for k in ("四郎", "康熙", "雍正", "武松", "震怒", "霸总")):
+                        tts_voice, extra_flags = "zh-CN-YunjianNeural", ["--pitch=-6Hz", "--rate=-5%"]
+                    elif any(k in tts_voice_raw for k in ("灵宇", "灵朗", "暖男", "唐僧", "余则成", "灵楷")):
+                        tts_voice, extra_flags = "zh-CN-YunyangNeural", ["--pitch=-3Hz", "--rate=-4%"]
+                    elif "小新" in tts_voice_raw:
+                        tts_voice, extra_flags = "zh-CN-YunxiaNeural", ["--pitch=-4Hz", "--rate=-10%"]
+                    elif "佩奇" in tts_voice_raw:
+                        tts_voice, extra_flags = "zh-CN-XiaoyiNeural", ["--pitch=+12Hz", "--rate=+5%"]
+                    elif "Stella" in tts_voice_raw:
+                        tts_voice, extra_flags = "en-US-AvaMultilingualNeural", []
+                    elif "James" in tts_voice_raw:
+                        tts_voice, extra_flags = "en-US-AndrewMultilingualNeural", []
+                    else:
+                        tts_voice, extra_flags = "zh-CN-XiaoxiaoNeural", ["--pitch=+2Hz", "--rate=-6%"]
+                else:
+                    tts_voice = v_parts[0] if v_parts else "zh-CN-XiaoyiNeural"
+                    for vp in v_parts[1:]:
+                        if vp.startswith("pitch="):
+                            extra_flags.append(f"--{vp}")
+                        elif vp.startswith("rate="):
+                            extra_flags.append(f"--{vp}")
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
                     tmp_mp3 = tf.name
                 subprocess.run(
