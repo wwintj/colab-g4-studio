@@ -1235,6 +1235,9 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
+            if payload.get("mode") in ("image", "avatar"):
+                self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3 cannot run image/avatar mode"}, status=503)
+                return
             if os.path.exists("/content/.cancel_minimax"):
                 try:
                     os.unlink("/content/.cancel_minimax")
@@ -1301,8 +1304,8 @@ def _start_minimax_h3_server_on_30000(target_dir: str):
     except Exception:
         pass
 
-    log("正在释放旧模型显存 (保留内存盘/NVMe 中的 Qwen3.8 权重以便随时 20 秒切回)...")
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|/content/app\\.py' || true", shell=True)
+    log("正在释放旧模型显存 (保留内存盘/NVMe 中的权重以便随时极速切回)...")
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(2)
 
     if not os.path.exists("/content/DiffSynth-Studio"):
@@ -1845,6 +1848,9 @@ class _MiniMaxT4Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
+            if payload.get("mode") in ("image", "avatar"):
+                self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3 cannot run image/avatar mode"}, status=503)
+                return
             if os.path.exists("/content/.cancel_minimax"):
                 try:
                     os.unlink("/content/.cancel_minimax")
@@ -1991,7 +1997,7 @@ def _start_minimax_t4_gguf_server_on_30000(target_dir: str):
         pass
 
     log("正在释放旧模型进程，准备启动 MiniMax-H3 (T4 量化版 · UD-Q2_K_XL)...")
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|/content/app\\.py' || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     _ensure_sd_cli_binary(target_dir)
@@ -2875,6 +2881,9 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
+            if payload.get("mode") in ("image", "t2va", "fl2va"):
+                self._send_json({"ok": False, "error": "Engine mismatch: longcat-avatar cannot run image/minimax-h3 mode"}, status=503)
+                return
             if os.path.exists("/content/.cancel_minimax"):
                 try:
                     os.unlink("/content/.cancel_minimax")
@@ -2922,7 +2931,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
             check=True,
         )
 
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|/content/app\\.py' || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     lc_link = os.path.join(os.path.dirname(target_dir), "LongCat-Video")
@@ -3017,10 +3026,12 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
         try:
             with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
                 if resp.status == 200:
-                    log(f"[显存装载] {os.path.basename(target_dir)}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
-                    log("✅ LongCat-Video-Avatar-1.6 数字人音频驱动视频服务已启动 (端口 30000)！")
-                    __import__("threading").Thread(target=_ensure_recavsr_service_on_30002, daemon=True).start()
-                    return
+                    h_data = json.loads(resp.read().decode("utf-8"))
+                    if h_data.get("engine") == "longcat-avatar-1.6":
+                        log(f"[显存装载] {os.path.basename(target_dir)}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
+                        log("✅ LongCat-Video-Avatar-1.6 数字人音频驱动视频服务已启动 (端口 30000)！")
+                        __import__("threading").Thread(target=_ensure_recavsr_service_on_30002, daemon=True).start()
+                        return
         except Exception:
             pass
         time.sleep(1)
@@ -3517,6 +3528,9 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations") or self.path.startswith("/v1/images/generations"):
+            if payload.get("mode") in ("avatar", "t2va", "fl2va"):
+                self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3-image cannot run video/avatar mode"}, status=503)
+                return
             if os.path.exists("/content/.cancel_minimax"):
                 try:
                     os.unlink("/content/.cancel_minimax")
@@ -3564,7 +3578,7 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
             check=True,
         )
 
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     if not os.path.isdir("/content/ComfyUI/.git"):
@@ -3598,9 +3612,11 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
         try:
             with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
                 if resp.status == 200:
-                    log(f"[显存装载] MiniMax-H3-Image(33B·无审查4K): 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
-                    log("✅ MiniMax-H3-Image (11秒4K无审查写真 + 免Mask锁脸换装) 服务已启动 (端口 30000)！")
-                    return
+                    h_data = json.loads(resp.read().decode("utf-8"))
+                    if h_data.get("engine") == "minimax-h3-image":
+                        log(f"[显存装载] MiniMax-H3-Image(33B·无审查4K): 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
+                        log("✅ MiniMax-H3-Image (11秒4K无审查写真 + 免Mask锁脸换装) 服务已启动 (端口 30000)！")
+                        return
         except Exception:
             pass
         time.sleep(1)
@@ -4819,7 +4835,7 @@ def run_remote_vm_main():
     if not already_running:
         mtp_candidates = [mtp_gguf, None] if mtp_gguf else [None]
         for attempt_mtp in mtp_candidates:
-            subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|/content/app\\.py' || true", shell=True)
+            subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
 
             cmd = [
                 bin_path,
