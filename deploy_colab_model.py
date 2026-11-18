@@ -1158,15 +1158,43 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "File not found"}, status=404)
                 return
             fsize = os.path.getsize(fpath)
+            range_hdr = self.headers.get("Range")
+            if range_hdr and range_hdr.startswith("bytes="):
+                try:
+                    parts = range_hdr.replace("bytes=", "").split("-")
+                    start = int(parts[0]) if parts[0] else 0
+                    end = int(parts[1]) if (len(parts) > 1 and parts[1]) else (fsize - 1)
+                    end = min(end, fsize - 1)
+                    length = max(0, end - start + 1)
+                    self.send_response(206)
+                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(length))
+                    self.end_headers()
+                    with open(fpath, "rb") as rf:
+                        rf.seek(start)
+                        rem = length
+                        while rem > 0:
+                            buf = rf.read(min(262144, rem))
+                            if not buf:
+                                break
+                            self.wfile.write(buf)
+                            rem -= len(buf)
+                    return
+                except Exception:
+                    pass
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(fsize))
             self.send_header("Content-Disposition", f'inline; filename="{fname}"')
             self.end_headers()
             with open(fpath, "rb") as rf:
                 while True:
-                    buf = rf.read(65536)
+                    buf = rf.read(262144)
                     if not buf:
                         break
                     self.wfile.write(buf)
@@ -1740,15 +1768,43 @@ class _MiniMaxT4Handler(BaseHTTPRequestHandler):
                 self._send_json({"error": "File not found"}, status=404)
                 return
             fsize = os.path.getsize(fpath)
+            range_hdr = self.headers.get("Range")
+            if range_hdr and range_hdr.startswith("bytes="):
+                try:
+                    parts = range_hdr.replace("bytes=", "").split("-")
+                    start = int(parts[0]) if parts[0] else 0
+                    end = int(parts[1]) if (len(parts) > 1 and parts[1]) else (fsize - 1)
+                    end = min(end, fsize - 1)
+                    length = max(0, end - start + 1)
+                    self.send_response(206)
+                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(length))
+                    self.end_headers()
+                    with open(fpath, "rb") as rf:
+                        rf.seek(start)
+                        rem = length
+                        while rem > 0:
+                            buf = rf.read(min(262144, rem))
+                            if not buf:
+                                break
+                            self.wfile.write(buf)
+                            rem -= len(buf)
+                    return
+                except Exception:
+                    pass
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(fsize))
             self.send_header("Content-Disposition", f'inline; filename="{fname}"')
             self.end_headers()
             with open(fpath, "rb") as rf:
                 while True:
-                    buf = rf.read(65536)
+                    buf = rf.read(262144)
                     if not buf:
                         break
                     self.wfile.write(buf)
@@ -2748,15 +2804,43 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "File not found"}, status=404)
                 return
             fsize = os.path.getsize(fpath)
+            range_hdr = self.headers.get("Range")
+            if range_hdr and range_hdr.startswith("bytes="):
+                try:
+                    parts = range_hdr.replace("bytes=", "").split("-")
+                    start = int(parts[0]) if parts[0] else 0
+                    end = int(parts[1]) if (len(parts) > 1 and parts[1]) else (fsize - 1)
+                    end = min(end, fsize - 1)
+                    length = max(0, end - start + 1)
+                    self.send_response(206)
+                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(length))
+                    self.end_headers()
+                    with open(fpath, "rb") as rf:
+                        rf.seek(start)
+                        rem = length
+                        while rem > 0:
+                            buf = rf.read(min(262144, rem))
+                            if not buf:
+                                break
+                            self.wfile.write(buf)
+                            rem -= len(buf)
+                    return
+                except Exception:
+                    pass
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(fsize))
             self.send_header("Content-Disposition", f'inline; filename="{fname}"')
             self.end_headers()
             with open(fpath, "rb") as rf:
                 while True:
-                    buf = rf.read(65536)
+                    buf = rf.read(262144)
                     if not buf:
                         break
                     self.wfile.write(buf)
@@ -3217,6 +3301,8 @@ def _run_image_job(payload: dict):
             height = max(512, min(6272, (int(h_s) // 32) * 32))
         except Exception:
             width, height = 3552, 4736
+        if width < 1024 and height < 1024:
+            width, height = (4736, 3552) if width > height else (3552, 4736)
 
         ref_b64_list = payload.get("ref_images_b64") or []
         if not ref_b64_list and payload.get("first_frame_b64"):
@@ -3298,9 +3384,9 @@ def _run_image_job(payload: dict):
             dt = round(time.time() - t0, 1)
             ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             kind = "edit" if ref_images_dict else "t2i"
-            fname = f"minimax_h3_image_{kind}_{width}x{height}_{ts}_dur{max(1, int(round(dt)))}s_seed{cur_seed}.png"
+            fname = f"minimax_h3_image_{kind}_{width}x{height}_{ts}_dur{max(1, int(round(dt)))}s_seed{cur_seed}.jpg"
             out_path = os.path.join(OUTPUT_DIR, fname)
-            pil_out.save(out_path, format="PNG", compress_level=3)
+            pil_out.save(out_path, format="JPEG", quality=96, subsampling=0, optimize=True)
 
             del decoded, sampled, latent, positive, negative, ref_images_dict
             gc.collect()
@@ -3374,15 +3460,43 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
                 return
             fsize = os.path.getsize(fpath)
             ctype = "image/png" if fname.lower().endswith(".png") else ("image/jpeg" if fname.lower().endswith((".jpg", ".jpeg")) else "video/mp4")
+            range_hdr = self.headers.get("Range")
+            if range_hdr and range_hdr.startswith("bytes="):
+                try:
+                    parts = range_hdr.replace("bytes=", "").split("-")
+                    start = int(parts[0]) if parts[0] else 0
+                    end = int(parts[1]) if (len(parts) > 1 and parts[1]) else (fsize - 1)
+                    end = min(end, fsize - 1)
+                    length = max(0, end - start + 1)
+                    self.send_response(206)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(length))
+                    self.end_headers()
+                    with open(fpath, "rb") as rf:
+                        rf.seek(start)
+                        rem = length
+                        while rem > 0:
+                            buf = rf.read(min(262144, rem))
+                            if not buf:
+                                break
+                            self.wfile.write(buf)
+                            rem -= len(buf)
+                    return
+                except Exception:
+                    pass
             self.send_response(200)
             self.send_header("Content-Type", ctype)
+            self.send_header("Accept-Ranges", "bytes")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(fsize))
             self.send_header("Content-Disposition", f'inline; filename="{fname}"')
             self.end_headers()
             with open(fpath, "rb") as rf:
                 while True:
-                    buf = rf.read(65536)
+                    buf = rf.read(262144)
                     if not buf:
                         break
                     self.wfile.write(buf)
@@ -5228,11 +5342,13 @@ def run_local_proxy_daemon(port: int = 30000):
                     self.send_header("Connection", "close")
                     self.end_headers()
                     while True:
-                        chunk = resp.read(4096 if is_chunked else 32768)
+                        chunk = resp.read(4096 if is_chunked else 262144)
                         if not chunk:
                             break
                         self.wfile.write(chunk)
-                        self.wfile.flush()
+                        if is_chunked:
+                            self.wfile.flush()
+                    self.wfile.flush()
             except urllib.error.HTTPError as he:
                 err_body = he.read()
                 self.send_response(he.code)

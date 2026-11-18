@@ -401,37 +401,159 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
             "start_ts": time.time(),
         })
         cfg = _load_endpoint_cfg()
-        url = f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(safe_name)}"
-        req = urllib.request.Request(
-            url,
-            headers={"Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}"},
-            method="GET",
+        upstream = (cfg.get("tunnel_url") or "").rstrip("/")
+        url = (
+            f"{upstream}/v1/video/file/{urllib.parse.quote(safe_name)}"
+            if upstream
+            else f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(safe_name)}"
         )
+        auth_hdr = {
+            "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+            "User-Agent": "ColabLocalGateway/1.0",
+        }
         tmp_path = LOCAL_MOVIES_DIR / (safe_name + ".part")
         is_img_file = safe_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
         dl_tag = "图片回传" if is_img_file else "视频回传"
         done_tag = "图片已落盘" if is_img_file else "视频已落盘"
         try:
-            with urllib.request.urlopen(req, timeout=180) as resp, open(tmp_path, "wb") as wf:
-                tot_bytes = int(resp.headers.get("Content-Length", "0") or "0")
-                tot_mb = tot_bytes / (1024 * 1024) if tot_bytes > 0 else 12.0
-                _VIDEO_DL_STATE["tot_mb"] = tot_mb
-                done_bytes = 0
-                last_log_t = 0.0
-                while True:
-                    chunk = resp.read(131072)
-                    if not chunk:
-                        break
-                    wf.write(chunk)
-                    done_bytes += len(chunk)
-                    done_mb = done_bytes / (1024 * 1024)
-                    pct = min(99, int(done_bytes * 100 // max(1, tot_bytes))) if tot_bytes > 0 else 50
-                    _VIDEO_DL_STATE["done_mb"] = done_mb
-                    _VIDEO_DL_STATE["pct"] = pct
-                    now = time.time()
-                    if now - last_log_t >= 2.0:
-                        last_log_t = now
-                        _append_panel_log(f"[{dl_tag}] {safe_name}: {pct}% ({done_mb:.1f}/{tot_mb:.1f} MB, 保存至 ~/Movies/EasyColab)")
+            # 1. 探测远端是否支持 HTTP 206 Range 并发分片拉取 (16 线程并发突破单连接限速)
+            tot_bytes = 0
+            supports_range = False
+            probe_req = urllib.request.Request(url, headers={**auth_hdr, "Range": "bytes=0-0"}, method="GET")
+            probe_resp = urllib.request.urlopen(probe_req, timeout=20)
+            try:
+                if probe_resp.status == 206:
+                    cr = probe_resp.headers.get("Content-Range", "")
+                    if "/" in cr:
+                        tot_bytes = int(cr.split("/")[-1].strip() or "0")
+                    if tot_bytes > 0:
+                        supports_range = True
+                        probe_resp.close()
+                else:
+                    tot_bytes = int(probe_resp.headers.get("Content-Length", "0") or "0")
+            except Exception:
+                pass
+
+            tot_mb = tot_bytes / (1024 * 1024) if tot_bytes > 0 else 12.0
+            _VIDEO_DL_STATE["tot_mb"] = tot_mb
+
+            if supports_range and tot_bytes > 262144:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                with open(tmp_path, "wb") as wf:
+                    wf.truncate(tot_bytes)
+                chunk_sz = 524288  # 512 KB per slice
+                ranges = []
+                off = 0
+                while off < tot_bytes:
+                    end_b = min(tot_bytes - 1, off + chunk_sz - 1)
+                    ranges.append((off, end_b))
+                    off = end_b + 1
+
+                prog_lock = threading.Lock()
+                state_box = {"done": 0, "last_log": 0.0}
+                fd = os.open(str(tmp_path), os.O_RDWR)
+                try:
+                    def _fetch_slice(rng):
+                        s_b, e_b = rng
+                        for attempt in range(3):
+                            try:
+                                r_req = urllib.request.Request(
+                                    url,
+                                    headers={**auth_hdr, "Range": f"bytes={s_b}-{e_b}"},
+                                    method="GET",
+                                )
+                                with urllib.request.urlopen(r_req, timeout=45) as r_s:
+                                    pos = s_b
+                                    while True:
+                                        buf = r_s.read(131072)
+                                        if not buf:
+                                            break
+                                        os.pwrite(fd, buf, pos)
+                                        pos += len(buf)
+                                        with prog_lock:
+                                            state_box["done"] += len(buf)
+                                            d_mb = state_box["done"] / (1024 * 1024)
+                                            pct = min(99, int(state_box["done"] * 100 // max(1, tot_bytes)))
+                                            _VIDEO_DL_STATE["done_mb"] = d_mb
+                                            _VIDEO_DL_STATE["pct"] = pct
+                                            now = time.time()
+                                            if now - state_box["last_log"] >= 1.2:
+                                                state_box["last_log"] = now
+                                                _append_panel_log(f"[{dl_tag}] {safe_name}: {pct}% ({d_mb:.1f}/{tot_mb:.1f} MB · 16线程极速回传)")
+                                return True
+                            except Exception:
+                                if attempt == 2:
+                                    raise
+                                time.sleep(0.3)
+                        return False
+
+                    n_workers = min(16, max(2, len(ranges)))
+                    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+                        futs = [pool.submit(_fetch_slice, rg) for rg in ranges]
+                        for f in as_completed(futs):
+                            f.result()
+                finally:
+                    os.close(fd)
+            else:
+                # 2. 若远端旧进程尚未启用 206 Range，且文件较大 (>5MB)，同时启动 Google Drive rclone 8线程极速通道竞速
+                rclone_won = threading.Event()
+                tmp_rc_path = LOCAL_MOVIES_DIR / (safe_name + ".rclone.part")
+                rclone_bin = BASE_DIR / ".venv" / "bin" / "rclone"
+                rclone_conf = BASE_DIR / ".gdrive_rclone.conf"
+                if tot_bytes > 5 * 1024 * 1024 and rclone_bin.exists() and rclone_conf.exists():
+                    def _race_rclone():
+                        time.sleep(1.2)
+                        if rclone_won.is_set():
+                            return
+                        out_sub = "LongCat-Avatar_outputs" if "longcat" in safe_name.lower() else "MiniMax-H3_outputs"
+                        try:
+                            rc_res = subprocess.run(
+                                [
+                                    str(rclone_bin), "copyto",
+                                    f"gdrive:models/{out_sub}/{safe_name}",
+                                    str(tmp_rc_path),
+                                    "--config", str(rclone_conf),
+                                    "--multi-thread-streams", "8",
+                                    "--multi-thread-cutoff", "1M",
+                                ],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                timeout=60,
+                            )
+                            if rc_res.returncode == 0 and tmp_rc_path.exists() and tmp_rc_path.stat().st_size >= max(1024, tot_bytes):
+                                rclone_won.set()
+                        except Exception:
+                            pass
+                    threading.Thread(target=_race_rclone, daemon=True).start()
+
+                with probe_resp as resp, open(tmp_path, "wb") as wf:
+                    done_bytes = 0
+                    last_log_t = 0.0
+                    while True:
+                        if rclone_won.is_set() and tmp_rc_path.exists():
+                            break
+                        chunk = resp.read(262144)
+                        if not chunk:
+                            break
+                        wf.write(chunk)
+                        done_bytes += len(chunk)
+                        done_mb = done_bytes / (1024 * 1024)
+                        pct = min(99, int(done_bytes * 100 // max(1, tot_bytes))) if tot_bytes > 0 else 50
+                        _VIDEO_DL_STATE["done_mb"] = done_mb
+                        _VIDEO_DL_STATE["pct"] = pct
+                        now = time.time()
+                        if now - last_log_t >= 1.5:
+                            last_log_t = now
+                            _append_panel_log(f"[{dl_tag}] {safe_name}: {pct}% ({done_mb:.1f}/{tot_mb:.1f} MB, 保存至 ~/Movies/EasyColab)")
+                if rclone_won.is_set() and tmp_rc_path.exists():
+                    os.replace(tmp_rc_path, tmp_path)
+                else:
+                    rclone_won.set()
+                    if tmp_rc_path.exists():
+                        try:
+                            tmp_rc_path.unlink()
+                        except Exception:
+                            pass
             os.replace(tmp_path, dest_path)
             if elapsed_s and elapsed_s > 0:
                 meta_map: Dict[str, float] = {}
@@ -5407,7 +5529,7 @@ async function pollVideoStatus() {
         }
       }
       if (dState) {
-        const isImgDoneOrRun = (currentMiniMaxMode === 'image') || /MiniMax-H3-Image|写真|大图|\.png/i.test(d.message || '');
+        const isImgDoneOrRun = (currentMiniMaxMode === 'image') || /MiniMax-H3-Image|写真|大图|\.(png|jpe?g|webp)/i.test(d.message || '');
         dState.innerText = d.running
           ? (isImgDoneOrRun ? '⏳ 4K 写真图片正在生成中...' : '⏳ 视频正在生成中...')
           : (isImgDoneOrRun ? '✅ 4K 写真图片生成已完成' : '✅ 视频生成已完成');
