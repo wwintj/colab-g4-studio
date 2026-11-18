@@ -2180,11 +2180,65 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <input type="file" id="inpAvatarAudio" accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*" onchange="handleAvatarAudioSelect(this)" style="font-size:12px;color:var(--muted);width:100%;">
         <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-            <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 免上传音频：直接输入台词 (27款男女音色 + 撒娇/御姐/低音炮调节)</span>
+            <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 台词配音 (Ming-3.0 戏剧人设/气口/克隆 + 微软极速音色 · 共75+款)</span>
             <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-              <select id="avatarTtsVoiceSelect" onchange="onAvatarVoiceOrStyleChange()" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;max-width:215px;">
-                <optgroup label="👩 精选女声 (15款 · 大陆/台湾/粤语/方言/多语)">
-                  <option value="zh-CN-XiaoyiNeural" selected>🎀 晓伊 (俏皮甜美·活泼少女音)</option>
+              <select id="avatarTtsVoiceSelect" onchange="onAvatarVoiceOrStyleChange()" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;max-width:235px;">
+                <optgroup label="🔥 Ming-3.0 戏剧女声 (百灵3.0 GPU · 支持呼吸/笑声/哼声气口)">
+                  <option value="ming:妩媚妲己">🔥 妩媚妲己 (酥麻撩人·尾音微扬魅惑女声)</option>
+                  <option value="ming:灵梦">💕 灵梦 (撒娇粘人·恋爱女友求陪伴)</option>
+                  <option value="ming:灵恬">🍬 灵恬 (蜜糖甜妹·娇羞笃定表白腔)</option>
+                  <option value="ming:灵雨汐_中性" selected>☁️ 灵雨汐·温柔 (棉花糖软妹·贴耳自然呼吸感)</option>
+                  <option value="ming:灵雨汐_高兴">✨ 灵雨汐·开心 (清甜少女·雀跃欢快)</option>
+                  <option value="ming:灵雨汐_生气">💢 灵雨汐·嗔怒 (傲娇女友/闺蜜急促娇嗔)</option>
+                  <option value="ming:灵雨汐_悲伤">💧 灵雨汐·委屈 (楚楚可怜·带脆弱呼吸感)</option>
+                  <option value="ming:灵雨汐_惊讶">😮 灵雨汐·惊喜 (银铃清脆赞叹少女音)</option>
+                  <option value="ming:灵雨汐_恐惧">😨 灵雨汐·惊慌 (压低声音急促呼吸颤音)</option>
+                  <option value="ming:灵黛嗔_生气">👑 灵黛嗔·傲娇 (大小姐发脾气·要人哄的娇纵感)</option>
+                  <option value="ming:灵黛嗔_高兴">🌻 灵黛嗔·明媚 (午后暖阳带笑意治愈女声)</option>
+                  <option value="ming:灵黛嗔_惊讶">🎉 灵黛嗔·惊喜 (中奖般高亢雀跃邻家女孩)</option>
+                  <option value="ming:灵书悦_悲伤">📱 灵书悦·吃醋 (查岗怀疑男友·委屈质问女友腔)</option>
+                  <option value="ming:灵书悦_厌恶">🙄 灵书悦·绿茶 (看似无辜柔弱·实则敷衍拉扯)</option>
+                  <option value="ming:灵书悦_高兴">🍰 灵书悦·吃货 (邻家甜妹吃到美食的幸福感)</option>
+                  <option value="ming:灵风信_中性">🌷 灵风信·暖心 (春光般温柔体贴·深夜哄睡女友)</option>
+                  <option value="ming:灵惜梦_中性">💎 灵惜梦·御姐 (珠落玉盘·独立干练都市姐姐)</option>
+                  <option value="ming:灵惜梦_悲伤">💔 灵惜梦·破碎 (带明显哭腔与脆弱绝望感)</option>
+                  <option value="ming:灵采薇_悲伤">🌙 灵采薇·凄美 (字字裹着气音的深情破碎感)</option>
+                  <option value="ming:灵心澜_厌恶">👠 灵心澜·女王 (冷艳高贵·大女主压迫感)</option>
+                  <option value="ming:灵小柔">🌸 灵小柔 (清亮甜美·百灵官方看板娘)</option>
+                  <option value="ming:灵婉">💌 灵婉 (深夜谈心·私密治愈告白少女)</option>
+                  <option value="ming:灵小梨">🍐 灵小梨 (江南水乡微风·灵动俏皮文艺女声)</option>
+                  <option value="ming:水浒传_潘金莲">🎬 潘金莲 (《水浒传》经典娇媚影视角色原声)</option>
+                </optgroup>
+                <optgroup label="🕺 Ming-3.0 戏剧男声 & 影视名角 (低音炮/霸总/帝王/动漫)">
+                  <option value="ming:灵空">🎧 灵空 (深夜哄睡低音炮男友·贴耳呼吸感 ASMR)</option>
+                  <option value="ming:灵宇">🌹 灵宇 (乙女游戏男主·自信含笑撩人学长)</option>
+                  <option value="ming:灵朗">🥂 灵朗 (深情霸总·成熟稳重宠溺男主)</option>
+                  <option value="ming:灵信远_中性">☀️ 灵信远·暖男 (带浅笑与呼吸感的新婚男友)</option>
+                  <option value="ming:灵孤影_厌恶">❄️ 灵孤影·高冷 (冰冷禁欲系霸总·生人勿近)</option>
+                  <option value="ming:灵孤影_悲伤">🌧️ 灵孤影·心碎 (浓重鼻音与叹息·深情虐恋男主)</option>
+                  <option value="ming:灵孤影_生气">🔥 灵孤影·震怒 (低沉压迫感·暴风雨前夕霸总)</option>
+                  <option value="ming:灵思齐_生气">💳 灵思齐·霸总 (给钱不给爱·居高临下冷酷总裁)</option>
+                  <option value="ming:灵晓声_中性">♟️ 灵晓声·腹黑 (运筹帷幄·极具侵略性宿敌男主)</option>
+                  <option value="ming:灵楷">📻 灵楷 (温润磁性电台主播·百灵官方男主)</option>
+                  <option value="ming:甄嬛传_四郎">🎬 甄嬛传·四郎 (经典雍正帝沉稳威严影视原声)</option>
+                  <option value="ming:康熙王朝_康熙">🎬 康熙大帝 (《康熙王朝》霸气帝王影视原声)</option>
+                  <option value="ming:雍正王朝_雍正">🎬 雍正王朝·雍正 (冷峻威严帝王影视原声)</option>
+                  <option value="ming:西游记_唐僧">🎬 西游记·唐僧 (温润慈悲经典影视原声)</option>
+                  <option value="ming:水浒传_武松">🎬 水浒传·武松 (豪迈硬汉经典影视原声)</option>
+                  <option value="ming:潜伏_余则成">🎬 潜伏·余则成 (沉稳内敛谍战经典原声)</option>
+                  <option value="ming:悟空">🐵 悟空 (活灵活现神话评书大师腔)</option>
+                  <option value="ming:说唱小哥">🎤 说唱小哥 (节奏感拉满潮流 Rap 青年)</option>
+                  <option value="ming:蜡笔小新_野原新之助">🖍️ 蜡笔小新 (经典搞怪呆萌卡通原声)</option>
+                  <option value="ming:蜡笔小新_野原美伢">👩 野原美伢 (《蜡笔小新》妈妈经典原声)</option>
+                  <option value="ming:小猪佩奇_佩奇">🐷 小猪佩奇 (经典可爱动画角色原声)</option>
+                  <option value="ming:US_Stella">🇺🇸 US_Stella (地道美式温暖自然女声)</option>
+                  <option value="ming:US_James">🇺🇸 US_James (地道美式磁性纪录片男声)</option>
+                </optgroup>
+                <optgroup label="🧬 Ming-3.0 零样本声音克隆 (3~10秒样本复刻任意人声)">
+                  <option value="ming:__clone__">🧬 零样本声音克隆 (使用下方上传的 3~10 秒声音样本)</option>
+                </optgroup>
+                <optgroup label="⚡ 微软 Edge-TTS 极速女声 (本机0.5秒直出 · 15款)">
+                  <option value="zh-CN-XiaoyiNeural">🎀 晓伊 (俏皮甜美·活泼少女音)</option>
                   <option value="zh-CN-XiaoyiNeural|pitch=+6Hz|rate=-5%">🍬 晓伊·撒娇版 (软糯夹子音·甜度拉满)</option>
                   <option value="zh-CN-XiaoxiaoNeural">🌸 晓晓 (温柔知性·自然女友音)</option>
                   <option value="zh-CN-XiaoxiaoNeural|pitch=-6Hz|rate=-6%">🍷 晓晓·御姐版 (低沉磁性·成熟姐姐音)</option>
@@ -2200,7 +2254,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                   <option value="ja-JP-NanamiNeural">🇯🇵 七海 Nanami (日本动漫萌妹·日语)</option>
                   <option value="ko-KR-SunHiNeural">🇰🇷 善熙 SunHi (韩国温柔韩剧女声·韩语)</option>
                 </optgroup>
-                <optgroup label="👨 精选男声 (12款 · 少年/低音炮/霸总/暖男/粤语)">
+                <optgroup label="⚡ 微软 Edge-TTS 极速男声 (本机0.5秒直出 · 12款)">
                   <option value="zh-CN-YunxiNeural">🎙️ 云希 (阳光少年·清朗磁性男声)</option>
                   <option value="zh-CN-YunxiNeural|pitch=-8Hz|rate=-5%">🥂 云希·低音炮 (深情耳畔低语·磁性男声)</option>
                   <option value="zh-CN-YunjianNeural">🦁 云健 (霸总沉稳·浑厚爆发力男声)</option>
@@ -2215,7 +2269,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
                   <option value="ja-JP-KeitaNeural">🇯🇵 圭太 Keita (日本爽朗青年男声·日语)</option>
                 </optgroup>
               </select>
-              <select id="avatarTtsStyleSelect" onchange="onAvatarVoiceOrStyleChange()" title="微调任意音色的音调高低与语速快慢" style="padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:600;">
+              <select id="avatarTtsStyleSelect" onchange="onAvatarVoiceOrStyleChange()" title="微调 Edge-TTS 音色的音调高低与语速快慢" style="padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:600;">
                 <option value="" selected>🎛️ 默认语感</option>
                 <option value="pitch=+6Hz|rate=-5%">🍬 升调撒娇 (+6Hz)</option>
                 <option value="pitch=-6Hz|rate=-6%">🍷 降调御姐/低音 (-6Hz)</option>
@@ -2225,7 +2279,31 @@ HTML_PAGE = r"""<!DOCTYPE html>
               <button type="button" id="btnPreviewTts" onclick="previewAvatarTts()" style="padding:2px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #3b82f6;background:rgba(59,130,246,0.2);color:#93c5fd;cursor:pointer;white-space:nowrap;">🔊 合成并试听</button>
             </div>
           </div>
-          <textarea id="inpAvatarTtsText" rows="2" oninput="onAvatarTtsInput(this)" placeholder="在此粘贴人物要说的话（例如：胜哥，刚才刷朋友圈看到你导航导错了...）" style="width:100%;min-height:52px;padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:12.5px;line-height:1.45;resize:vertical;"></textarea>
+
+          <!-- Ming-3.0 副语言气口快捷插入栏 (呼吸/笑声/叹气/傲娇哼~) -->
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:6px;padding:4px 6px;border-radius:6px;background:rgba(15,23,42,0.75);border:1px dashed rgba(244,114,182,0.35);">
+            <span style="font-size:10.5px;color:#f472b6;font-weight:700;margin-right:2px;">🎭 插入真人气口:</span>
+            <button type="button" onclick="insertMingParalinguisticTag('[Breathing]')" title="插入贴耳呼吸/喘息声，数字人嘴型与神态同步联动" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">😮‍💨 呼吸</button>
+            <button type="button" onclick="insertMingParalinguisticTag('[Laughter]')" title="插入真实笑出声" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">🤭 笑声</button>
+            <button type="button" onclick="insertMingParalinguisticTag('[Sigh]')" title="插入无奈或深情叹气声" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">😔 叹气</button>
+            <button type="button" onclick="insertMingParalinguisticTag('[Dissatisfaction-hnn]')" title="插入傲娇不满的『哼~』声" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">😤 傲娇哼~</button>
+            <button type="button" onclick="insertMingParalinguisticTag('[Surprise-ah]')" title="插入惊喜『啊~』声" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">😲 惊喜啊~</button>
+            <button type="button" onclick="insertMingParalinguisticTag('[Question-ei]')" title="插入好奇疑问『诶？』" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">❓ 诶？</button>
+            <button type="button" onclick="insertMingParalinguisticTag('[Uhm]')" title="插入思考犹豫『唔...』" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">🤔 唔...</button>
+            <button type="button" onclick="insertMingParalinguisticTag('[Cough]')" title="插入自然轻咳清嗓" style="padding:1px 6px;font-size:10.5px;border-radius:4px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">🤧 轻咳</button>
+          </div>
+
+          <textarea id="inpAvatarTtsText" rows="2" oninput="onAvatarTtsInput(this)" placeholder="在此粘贴人物要说的话（支持点击上方按钮穿插 [Sigh] 叹气、[Dissatisfaction-hnn] 傲娇哼~、[Laughter] 笑声等真人气口）" style="width:100%;min-height:52px;padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:12.5px;line-height:1.45;resize:vertical;"></textarea>
+
+          <!-- Ming-3.0 零样本 3~10秒声音克隆槽位 -->
+          <div style="margin-top:6px;padding:6px 8px;border-radius:6px;background:rgba(15,23,42,0.85);border:1px solid #334155;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:210px;">
+              <span style="font-size:11px;font-weight:700;color:#c084fc;white-space:nowrap;">🧬 3秒声音克隆(可选):</span>
+              <input type="file" id="inpMingCloneAudio" accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*" onchange="handleMingCloneAudioSelect(this)" style="font-size:10.5px;color:var(--muted);max-width:165px;">
+              <input type="text" id="inpMingClonePromptText" placeholder="可选：样本音频原话(填上可开启高保真韵律续写)" style="flex:1;min-width:120px;padding:3px 7px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:11px;">
+            </div>
+            <button type="button" onclick="clearMingCloneAudio()" style="padding:2px 7px;font-size:10.5px;border-radius:4px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;white-space:nowrap;">✕ 清除克隆样本</button>
+          </div>
         </div>
         <audio id="avatarAudioPreview" controls style="display:none;margin-top:8px;width:100%;height:34px;"></audio>
       </div>
@@ -4611,8 +4689,13 @@ function applyH3ImagePresetTemplate(tplKey) {
   if (pEl && t.prompt) pEl.value = t.prompt;
 }
 
+let mingCloneAudioB64 = '';
+
 function getCombinedAvatarTtsSpec() {
-  const vRaw = ((document.getElementById('avatarTtsVoiceSelect') || {}).value || 'zh-CN-XiaoyiNeural').trim();
+  const vRaw = ((document.getElementById('avatarTtsVoiceSelect') || {}).value || 'ming:灵雨汐_中性').trim();
+  if (vRaw.startsWith('ming:')) {
+    return vRaw;
+  }
   const sRaw = ((document.getElementById('avatarTtsStyleSelect') || {}).value || '').trim();
   if (sRaw && !vRaw.includes('|')) {
     return `${vRaw}|${sRaw}`;
@@ -4620,11 +4703,73 @@ function getCombinedAvatarTtsSpec() {
   return vRaw;
 }
 
+function insertMingParalinguisticTag(tag) {
+  const el = document.getElementById('inpAvatarTtsText');
+  if (!el) return;
+  const start = typeof el.selectionStart === 'number' ? el.selectionStart : el.value.length;
+  const end = typeof el.selectionEnd === 'number' ? el.selectionEnd : el.value.length;
+  const before = el.value.slice(0, start);
+  const after = el.value.slice(end);
+  const padL = (before && !before.endsWith(' ')) ? ' ' : '';
+  const padR = (after && !after.startsWith(' ')) ? ' ' : '';
+  el.value = `${before}${padL}${tag}${padR}${after}`;
+  const newPos = (before + padL + tag + padR).length;
+  el.focus();
+  el.setSelectionRange(newPos, newPos);
+  // 若当前选中的是微软 Edge-TTS，自动切换到 Ming-3.0 音色以发挥副语言气口表现力
+  const vSel = document.getElementById('avatarTtsVoiceSelect');
+  if (vSel && !String(vSel.value || '').startsWith('ming:')) {
+    vSel.value = 'ming:灵雨汐_中性';
+  }
+  onAvatarTtsInput(el);
+}
+
+function handleMingCloneAudioSelect(inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  const stEl = document.getElementById('avatarAudioStatus');
+  if (!file) {
+    mingCloneAudioB64 = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    mingCloneAudioB64 = ev.target.result || '';
+    avatarAudioB64 = '';
+    avatarUseBuiltinSample = false;
+    const vSel = document.getElementById('avatarTtsVoiceSelect');
+    if (vSel) vSel.value = 'ming:__clone__';
+    if (stEl) {
+      stEl.innerText = `🧬 已载入声音克隆样本「${file.name}」！输入台词后点「🔊 合成并试听」或「🎬 生成数字人视频」即可复刻该音色`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearMingCloneAudio() {
+  mingCloneAudioB64 = '';
+  const inp = document.getElementById('inpMingCloneAudio');
+  const pTxt = document.getElementById('inpMingClonePromptText');
+  const vSel = document.getElementById('avatarTtsVoiceSelect');
+  const stEl = document.getElementById('avatarAudioStatus');
+  if (inp) inp.value = '';
+  if (pTxt) pTxt.value = '';
+  if (vSel && vSel.value === 'ming:__clone__') vSel.value = 'ming:灵雨汐_中性';
+  if (stEl) stEl.innerText = '✅ 已清除克隆样本，已切回 Ming-3.0 内置戏剧人设音色';
+}
+
 function onAvatarVoiceOrStyleChange() {
   avatarAudioB64 = '';
+  const vSel = document.getElementById('avatarTtsVoiceSelect');
+  const sSel = document.getElementById('avatarTtsStyleSelect');
+  const isMing = vSel && String(vSel.value || '').startsWith('ming:');
+  if (sSel) {
+    sSel.style.display = isMing ? 'none' : 'inline-block';
+  }
   const stEl = document.getElementById('avatarAudioStatus');
   if (stEl) {
-    stEl.innerText = '🎙️ 已切换配音音色/语感！可点「🔊 合成并试听」试听新音色，或直接点下方开始生成';
+    stEl.innerText = isMing
+      ? '🎭 已切换至 Ming-3.0 百灵戏剧/克隆音色 (支持呼吸/笑声/哼声标签)！可点「🔊 合成并试听」或直接点下方生成视频'
+      : '🎙️ 已切换至微软 Edge-TTS 极速音色！可点「🔊 合成并试听」试听新音色，或直接点下方开始生成';
   }
 }
 
@@ -4682,19 +4827,25 @@ async function previewAvatarTts() {
     btn.innerText = '⏳ 合成中...';
   }
   if (stEl) stEl.innerText = `⏳ 正在使用 ${voice} 合成高拟真语音...`;
+  const clonePromptText = ((document.getElementById('inpMingClonePromptText') || {}).value || '').trim();
   try {
     const r = await fetch('/api/tts_preview', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text, voice}),
+      body: JSON.stringify({
+        text,
+        voice,
+        clone_ref_b64: mingCloneAudioB64,
+        clone_prompt_text: clonePromptText,
+      }),
     });
     const d = await r.json();
     if (!d.ok || !d.audio_b64) {
       if (stEl) stEl.innerText = '❌ 语音合成失败: ' + (d.error || '未知错误');
       return;
     }
-    avatarAudioB64 = d.audio_b64;
-    avatarAudioExt = '.mp3';
+    avatarAudioB64 = d.used_edge_fallback ? '' : d.audio_b64;
+    avatarAudioExt = d.audio_ext || '.mp3';
     avatarUseBuiltinSample = false;
     if (audEl) {
       audEl.src = d.audio_b64;
@@ -4703,7 +4854,9 @@ async function previewAvatarTts() {
     }
     const durInfo = d.duration_sec ? ` · 时长 ${d.duration_sec} 秒 (自动匹配 ${d.auto_segments || 1} 段)` : '';
     if (stEl) {
-      stEl.innerText = `🎵 台词语音已就绪${durInfo}！可直接点下方「🎬 开始生成数字人视频」`;
+      stEl.innerText = d.note
+        ? `🎵 ${d.note}${durInfo}`
+        : `🎵 台词语音已就绪${durInfo}！可直接点下方「🎬 生成数字人视频」`;
     }
   } catch (e) {
     if (stEl) stEl.innerText = '❌ 语音合成请求异常: ' + e;
@@ -5381,6 +5534,8 @@ async function startVideoGenerate(forceTarget = '') {
     payload.audio_ext = avatarAudioExt;
     payload.tts_text = ((document.getElementById('inpAvatarTtsText') || {}).value || '').trim();
     payload.tts_voice = getCombinedAvatarTtsSpec();
+    payload.clone_ref_b64 = mingCloneAudioB64;
+    payload.clone_prompt_text = ((document.getElementById('inpMingClonePromptText') || {}).value || '').trim();
     payload.use_builtin_sample = avatarUseBuiltinSample;
     payload.num_segments = parseInt((document.getElementById('avatarSegmentsSelect') || {}).value ?? '0', 10);
     if (isNaN(payload.num_segments)) payload.num_segments = 0;
@@ -6207,12 +6362,53 @@ p.wait()
                 import math
                 import tempfile
                 tts_text = str(payload.get("text") or "").strip()
-                tts_voice_raw = str(payload.get("voice") or "zh-CN-XiaoyiNeural").strip()
+                tts_voice_raw = str(payload.get("voice") or "ming:灵雨汐_中性").strip()
+                clone_ref_b64 = str(payload.get("clone_ref_b64") or "").strip()
+                clone_prompt_text = str(payload.get("clone_prompt_text") or "").strip()
                 if not tts_text:
                     self._send_json({"ok": False, "error": "台词内容不能为空"})
                     return
+
+                is_ming_req = tts_voice_raw.startswith("ming:") or bool(clone_ref_b64)
+                if is_ming_req:
+                    # 优先请求云端 G4 GPU 上运行的 LongCat-Avatar + Ming-3.0-Talker (/v1/audio/ming_tts)
+                    cfg = _load_endpoint_cfg()
+                    try:
+                        req_m = urllib.request.Request(
+                            "http://127.0.0.1:30000/v1/audio/ming_tts",
+                            data=json.dumps({
+                                "text": tts_text,
+                                "voice": tts_voice_raw,
+                                "clone_ref_b64": clone_ref_b64,
+                                "clone_prompt_text": clone_prompt_text,
+                            }).encode("utf-8"),
+                            headers={
+                                "Content-Type": "application/json",
+                                "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                            },
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req_m, timeout=90) as r_m:
+                            d_m = json.loads(r_m.read().decode("utf-8"))
+                            if d_m.get("ok") and d_m.get("audio_b64"):
+                                self._send_json(d_m)
+                                return
+                    except Exception:
+                        pass
+
+                # 本机 Edge-TTS 极速合成（若当前云端尚未切换到 LongCat-Avatar，先用本机音色极速预听时长，正式生成视频时自动在云端 GPU 调用 Ming-3.0）
+                clean_edge_text = re.sub(
+                    r"\[(Breathing|Cough|Sigh|Laughter|Surprise-ah|Surprise-oh|Dissatisfaction-hnn|Uhm|Confirmation-en|Question-ei|Question-ah|Question-en|Question-oh|Question-huh)\]",
+                    "",
+                    tts_text,
+                ).strip() or tts_text
                 v_parts = [p.strip() for p in tts_voice_raw.split("|") if p.strip()]
-                tts_voice = v_parts[0] if v_parts else "zh-CN-XiaoyiNeural"
+                is_male_ming = any(k in tts_voice_raw for k in ("灵空", "灵宇", "灵朗", "灵信远", "灵孤影", "灵思齐", "灵晓声", "灵楷", "四郎", "康熙", "雍正", "唐僧", "武松", "余则成", "悟空", "说唱", "小新", "James"))
+                tts_voice = (
+                    ("zh-CN-YunxiNeural" if is_male_ming else "zh-CN-XiaoyiNeural")
+                    if is_ming_req
+                    else (v_parts[0] if v_parts else "zh-CN-XiaoyiNeural")
+                )
                 extra_flags = []
                 for vp in v_parts[1:]:
                     if vp.startswith("pitch="):
@@ -6222,7 +6418,7 @@ p.wait()
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
                     tmp_mp3 = tf.name
                 subprocess.run(
-                    [str(PYTHON_BIN), "-m", "edge_tts", "--voice", tts_voice, *extra_flags, "--text", tts_text, "--write-media", tmp_mp3],
+                    [str(PYTHON_BIN), "-m", "edge_tts", "--voice", tts_voice, *extra_flags, "--text", clean_edge_text, "--write-media", tmp_mp3],
                     check=True,
                     timeout=30,
                 )
@@ -6243,11 +6439,19 @@ p.wait()
                     pass
                 auto_segs = 1 if dur_sec <= 3.85 else max(1, min(200, 1 + int(math.ceil((dur_sec - 3.72) / 3.20))))
                 b64_str = "data:audio/mp3;base64," + base64.b64encode(mp3_bytes).decode("ascii")
+                note_str = (
+                    f"已在本机极速预听台词节奏（点击下方「🎬 生成数字人视频」时，将在云端 G4 GPU 上自动调用 {tts_voice_raw} 合成满血戏剧/克隆语音）"
+                    if is_ming_req
+                    else ""
+                )
                 self._send_json({
                     "ok": True,
                     "audio_b64": b64_str,
+                    "audio_ext": ".mp3",
                     "duration_sec": dur_sec,
                     "auto_segments": auto_segs,
+                    "used_edge_fallback": is_ming_req,
+                    "note": note_str,
                 })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})

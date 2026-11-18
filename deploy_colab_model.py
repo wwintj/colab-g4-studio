@@ -2075,6 +2075,7 @@ _AVATAR_ENGINE = {
     "vocal_separator": None,
     "use_int8": None,
     "model_type": "avatar-v1.5",
+    "ming_talker": None,
 }
 
 _STEP_TRACKER = {
@@ -2405,6 +2406,145 @@ def _ensure_avatar_engine(use_int8: bool = False, update_job_state: bool = True)
         return pipe, vocal_separator
 
 
+def _ensure_ming_talker(update_job_state: bool = True):
+    """按需加载并常驻 Ming-3.0-Audio-Flash Talker (2.78 GB · 100+ 戏剧/影视人设音色 + 副语言气口 + 3秒零样本声音克隆)"""
+    if _AVATAR_ENGINE.get("ming_talker") is not None:
+        return _AVATAR_ENGINE["ming_talker"]
+
+    with ENGINE_INIT_LOCK:
+        if _AVATAR_ENGINE.get("ming_talker") is not None:
+            return _AVATAR_ENGINE["ming_talker"]
+
+        import torch
+        ming_root = os.path.join(MODEL_DIR, "ming_talker")
+        talker_dir = os.path.join(ming_root, "talker")
+        os.makedirs(ming_root, exist_ok=True)
+
+        # 确保依赖就绪
+        missing_deps = []
+        for pkg, mod in [
+            ("x-transformers", "x_transformers"),
+            ("inflect", "inflect"),
+            ("pynini==2.1.7", "pynini"),
+            ("fasttext-wheel==0.9.2", "fasttext"),
+            ("onnxruntime", "onnxruntime"),
+        ]:
+            try:
+                __import__(mod)
+            except ImportError:
+                missing_deps.append(pkg)
+        if missing_deps:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_deps, check=False)
+
+        # 若云盘中尚未缓存 ming_talker (2.78 GB)，自动按需拉取 talker/ 子目录并异步备份到 Google Drive
+        need_weights = (
+            not os.path.isfile(os.path.join(talker_dir, "model.safetensors"))
+            or not os.path.isfile(os.path.join(talker_dir, "vae/model.safetensors"))
+        )
+        need_code = not os.path.isfile(os.path.join(talker_dir, "inference.py"))
+        if need_weights or need_code:
+            if update_job_state:
+                JOB_STATE.update({
+                    "running": True,
+                    "pct": 4,
+                    "message": "🎭 [Ming-3.0-Talker] 首次启用百灵 3.0 戏剧与声音克隆引擎，正在拉取 2.78GB 核心组件并持久化至云盘...",
+                })
+            from huggingface_hub import snapshot_download
+            ignore_pats = ["*__pycache__*"] if need_weights else ["*.safetensors", "*.onnx", "*__pycache__*"]
+            snapshot_download(
+                repo_id="inclusionAI/Ming-3.0-audio-flash",
+                allow_patterns=["talker/*", "voice_presets/*"],
+                ignore_patterns=ignore_pats,
+                local_dir=ming_root,
+            )
+            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+            if need_weights and os.path.exists(rc_conf) and shutil.which("rclone"):
+                folder_name = os.path.basename(MODEL_DIR.rstrip("/"))
+                subprocess.Popen(
+                    ["rclone", "copy", ming_root, f"gdrive:models/{folder_name}/ming_talker", "--transfers=8", "--config", rc_conf],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+        if update_job_state:
+            JOB_STATE.update({
+                "running": True,
+                "pct": 5,
+                "message": "🎭 [Ming-3.0-Talker] 正在将 2.78GB 戏剧表现力 & 零样本声音克隆引擎装载至 GPU 显存...",
+            })
+        if ming_root not in sys.path:
+            sys.path.insert(0, ming_root)
+        from talker import MingTalker
+        talker = MingTalker.from_pretrained(
+            Path(talker_dir),
+            dtype=torch.bfloat16,
+            device="cuda:0",
+        )
+        _AVATAR_ENGINE["ming_talker"] = talker
+        return talker
+
+
+@__import__("torch").inference_mode()
+def _synthesize_ming_talker_wav(
+    text: str,
+    voice_spec: str = "ming:灵小柔",
+    clone_ref_b64: str = "",
+    clone_prompt_text: str = "",
+    update_job_state: bool = True,
+) -> str:
+    """使用 Ming-3.0-Audio-Flash Talker 合成带副语言气口 (呼吸/笑声/叹气/娇嗔) 或 3 秒零样本克隆的高表现力驱动语音"""
+    import librosa
+    import numpy as np
+    import soundfile as sf
+
+    talker = _ensure_ming_talker(update_job_state=update_job_state)
+    clean_v = str(voice_spec or "ming:灵小柔").split("|")[0].strip()
+    if clean_v.startswith("ming:"):
+        clean_v = clean_v[len("ming:"):].strip()
+    if not clean_v:
+        clean_v = "灵小柔"
+
+    reference = None
+    prompt_txt = str(clone_prompt_text or "").strip() or None
+    if clone_ref_b64 or clean_v == "__clone__":
+        if clone_ref_b64:
+            raw_b = clone_ref_b64.split(",", 1)[-1]
+            ref_tmp = "/tmp/ming_clone_ref_input"
+            with open(ref_tmp, "wb") as rf:
+                rf.write(base64.b64decode(raw_b))
+            samples, sr = librosa.load(ref_tmp, sr=None, mono=True)
+            # 截取前 12 秒黄金声纹区间，防止过长样本拖慢推理
+            max_samples = int(sr * 12)
+            if len(samples) > max_samples:
+                samples = samples[:max_samples]
+            reference = {"samples": samples.astype(np.float32), "sample_rate": int(sr)}
+        elif os.path.isfile(os.path.join(MODEL_DIR, "ming_talker/voice_presets/voice_audio/灵楷.wav")):
+            samples, sr = librosa.load(os.path.join(MODEL_DIR, "ming_talker/voice_presets/voice_audio/灵楷.wav"), sr=None, mono=True)
+            reference = {"samples": samples.astype(np.float32), "sample_rate": int(sr)}
+
+    if update_job_state:
+        mode_lbl = "零样本声音克隆" if reference is not None else f"Ming-3.0「{clean_v}」"
+        JOB_STATE.update({
+            "running": True,
+            "pct": 5,
+            "message": f"🎭 正在使用 {mode_lbl} 合成高表现力戏剧语音: 「{text[:28]}...」",
+            "error": "",
+        })
+
+    audio_out = talker.synthesize(
+        text,
+        ip_name="灵小柔" if reference is not None else clean_v,
+        reference=reference,
+        prompt_text=prompt_txt if reference is not None else None,
+        max_steps=1000,
+    )
+    waveform = audio_out["audio"].squeeze().detach().float().cpu().numpy()
+    sample_rate = int(audio_out["sr"])
+    out_wav = "/tmp/longcat_ming_tts.wav"
+    sf.write(out_wav, waveform, sample_rate)
+    return out_wav
+
+
 def _warmup_engine_bg():
     try:
         has_int8 = os.path.isdir(os.path.join(MODEL_DIR, "base_model_int8")) and not os.path.isdir(os.path.join(MODEL_DIR, "base_model"))
@@ -2448,6 +2588,8 @@ def _run_avatar_job(payload: dict):
             audio_ext = "." + audio_ext
         tts_text = str(payload.get("tts_text") or "").strip()
         tts_voice = str(payload.get("tts_voice") or "zh-CN-XiaoyiNeural").strip()
+        clone_ref_b64 = str(payload.get("clone_ref_b64") or "").strip()
+        clone_prompt_text = str(payload.get("clone_prompt_text") or "").strip()
         visual_prompt = prompt
 
         # 若用户把「台词如下：...」连同画面描述一起粘进了第 3 框，自动将画面描述与台词精准分离
@@ -2467,30 +2609,49 @@ def _run_avatar_job(payload: dict):
                 af.write(base64.b64decode(raw_a))
         elif tts_text:
             raw_v = tts_voice or ("zh-CN-YunxiNeural" if any(w in visual_prompt for w in ("男", "先生", "帅哥", "大叔", "boy", "man")) else "zh-CN-XiaoyiNeural")
-            v_parts = [p.strip() for p in raw_v.split("|") if p.strip()]
-            voice_name = v_parts[0] if v_parts else "zh-CN-XiaoyiNeural"
-            extra_flags = []
-            for vp in v_parts[1:]:
-                if vp.startswith("pitch="):
-                    extra_flags.append(f"--{vp}")
-                elif vp.startswith("rate="):
-                    extra_flags.append(f"--{vp}")
-            audio_path = "/tmp/longcat_tts_audio.mp3"
-            JOB_STATE.update({
-                "running": True,
-                "pct": 4,
-                "message": f"🎙️ 正在使用 {voice_name} 合成驱动语音: 「{tts_text[:28]}...」",
-                "error": "",
-            })
-            tts_cmd = [sys.executable, "-m", "edge_tts", "--voice", voice_name, *extra_flags, "--text", tts_text, "--write-media", audio_path]
-            r_tts = subprocess.run(tts_cmd, capture_output=True, text=True)
-            if r_tts.returncode != 0 or not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
-                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "edge-tts"], check=False)
-                subprocess.run(tts_cmd, check=False)
-            if not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
-                audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
-            else:
-                tts_note = f" (已合成配音: {raw_v})"
+            use_ming_talker = raw_v.startswith("ming:") or bool(clone_ref_b64) or any(
+                tag in tts_text for tag in ("[Breathing]", "[Laughter]", "[Sigh]", "[Dissatisfaction-hnn]", "[Surprise-ah]", "[Surprise-oh]", "[Question-ei]", "[Question-huh]", "[Uhm]", "[Cough]")
+            )
+            if use_ming_talker:
+                try:
+                    with GPU_LOCK:
+                        audio_path = _synthesize_ming_talker_wav(
+                            tts_text,
+                            voice_spec=raw_v if raw_v.startswith("ming:") else "ming:灵雨汐_中性",
+                            clone_ref_b64=clone_ref_b64,
+                            clone_prompt_text=clone_prompt_text,
+                            update_job_state=True,
+                        )
+                    tts_note = f" (已使用 Ming-3.0 合成: {'3秒声音克隆' if clone_ref_b64 else raw_v})"
+                except Exception as e_ming:
+                    print(f"[MingTalker Fallback to Edge-TTS] {e_ming}", flush=True)
+                    use_ming_talker = False
+            if not use_ming_talker:
+                v_parts = [p.strip() for p in raw_v.split("|") if p.strip()]
+                voice_name = v_parts[0] if v_parts and not v_parts[0].startswith("ming:") else "zh-CN-XiaoyiNeural"
+                extra_flags = []
+                for vp in v_parts[1:]:
+                    if vp.startswith("pitch="):
+                        extra_flags.append(f"--{vp}")
+                    elif vp.startswith("rate="):
+                        extra_flags.append(f"--{vp}")
+                audio_path = "/tmp/longcat_tts_audio.mp3"
+                JOB_STATE.update({
+                    "running": True,
+                    "pct": 4,
+                    "message": f"🎙️ 正在使用 {voice_name} 合成驱动语音: 「{tts_text[:28]}...」",
+                    "error": "",
+                })
+                clean_edge_text = re.sub(r"\[(Breathing|Cough|Sigh|Laughter|Surprise-ah|Surprise-oh|Dissatisfaction-hnn|Uhm|Confirmation-en|Question-ei|Question-ah|Question-en|Question-oh|Question-huh)\]", "", tts_text).strip() or tts_text
+                tts_cmd = [sys.executable, "-m", "edge_tts", "--voice", voice_name, *extra_flags, "--text", clean_edge_text, "--write-media", audio_path]
+                r_tts = subprocess.run(tts_cmd, capture_output=True, text=True)
+                if r_tts.returncode != 0 or not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
+                    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "edge-tts"], check=False)
+                    subprocess.run(tts_cmd, check=False)
+                if not os.path.isfile(audio_path) or os.path.getsize(audio_path) < 256:
+                    audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
+                else:
+                    tts_note = f" (已合成配音: {raw_v})"
         else:
             audio_path = os.path.join(LONGCAT_CODE_DIR, "assets/avatar/single/man.mp3")
 
@@ -2880,6 +3041,44 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "message": "🛑 正在停止数字人视频生成任务..."})
             return
 
+        if self.path.startswith("/v1/audio/ming_tts"):
+            try:
+                tts_text = str(payload.get("text") or "").strip()
+                tts_voice = str(payload.get("voice") or "ming:灵小柔").strip()
+                clone_ref_b64 = str(payload.get("clone_ref_b64") or "").strip()
+                clone_prompt_text = str(payload.get("clone_prompt_text") or "").strip()
+                if not tts_text:
+                    self._send_json({"ok": False, "error": "台词内容不能为空"}, status=400)
+                    return
+                with GPU_LOCK:
+                    wav_path = _synthesize_ming_talker_wav(
+                        tts_text,
+                        voice_spec=tts_voice,
+                        clone_ref_b64=clone_ref_b64,
+                        clone_prompt_text=clone_prompt_text,
+                        update_job_state=False,
+                    )
+                wav_bytes = Path(wav_path).read_bytes()
+                dur_sec = 4.0
+                try:
+                    import soundfile as sf
+                    info = sf.info(wav_path)
+                    dur_sec = round(float(info.duration), 1)
+                except Exception:
+                    pass
+                auto_segs = 1 if dur_sec <= 3.85 else max(1, min(200, 1 + int(math.ceil((dur_sec - 3.72) / 3.20))))
+                b64_str = "data:audio/wav;base64," + base64.b64encode(wav_bytes).decode("ascii")
+                self._send_json({
+                    "ok": True,
+                    "audio_b64": b64_str,
+                    "audio_ext": ".wav",
+                    "duration_sec": dur_sec,
+                    "auto_segments": auto_segs,
+                })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
+            return
+
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
             if payload.get("mode") in ("image", "t2va", "fl2va"):
                 self._send_json({"ok": False, "error": "Engine mismatch: longcat-avatar cannot run image/minimax-h3 mode"}, status=503)
@@ -2960,14 +3159,32 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
         ("onnxruntime-gpu", "onnxruntime"),
         ("ftfy", "ftfy"),
         ("einops", "einops"),
+        ("x-transformers", "x_transformers"),
+        ("inflect", "inflect"),
+        ("pynini==2.1.7", "pynini"),
+        ("fasttext-wheel==0.9.2", "fasttext"),
     ]:
         try:
             __import__(mod)
         except ImportError:
             missing_pkgs.append(pkg)
     if missing_pkgs:
-        log(f"正在安装 LongCat-Video-Avatar 运行与语音依赖 ({', '.join(missing_pkgs)})...")
+        log(f"正在安装 LongCat-Video-Avatar 与 Ming-3.0-Talker 运行依赖 ({', '.join(missing_pkgs)})...")
         subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_pkgs, check=False)
+
+    ming_talker_root = os.path.join(target_dir, "ming_talker")
+    if not os.path.isfile(os.path.join(ming_talker_root, "talker/inference.py")):
+        log("🎭 正在同步 Ming-3.0-Audio-Flash Talker 戏剧人设与零样本声音克隆模块...")
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id="inclusionAI/Ming-3.0-audio-flash",
+                allow_patterns=["talker/*", "voice_presets/*"],
+                ignore_patterns=["*.safetensors", "*.onnx", "*__pycache__*"],
+                local_dir=ming_talker_root,
+            )
+        except Exception as e_mt:
+            log(f"⚠️ 同步 MingTalker 脚本提示: {e_mt}")
 
     # 若当前环境未预装编译版 flash_attn，自动注入基于 PyTorch 原生 CUDA SDPA 的零同步兼容层
     try:
@@ -4538,7 +4755,7 @@ def run_remote_vm_main():
             resolved_plan.append((rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, max(0, int(sz))))
 
         if HF_REPO.lower() == "meituan-longcat/longcat-video-avatar-1.6":
-            log("🔗 正在合并 LongCat-Video 基础底座组件 (VAE / Tokenizer / UMT5-XXL TextEncoder)...")
+            log("🔗 正在合并 LongCat-Video 基础底座组件 (VAE / Tokenizer / UMT5-XXL TextEncoder) 与 Ming-3.0-Talker (2.78 GB 戏剧人设 & 声音克隆引擎)...")
             try:
                 base_repo = "meituan-longcat/LongCat-Video"
                 base_siblings = resolve_hf_safetensors_files(base_repo, "*.safetensors", HF_TOKEN)
@@ -4547,6 +4764,12 @@ def run_remote_vm_main():
                         resolved_plan.append((rfn, base_repo, rfn, target_dir, max(0, int(b_sz))))
             except Exception as e_lc:
                 log(f"⚠️ 解析 LongCat-Video 底座组件提示: {e_lc}")
+            ming_repo = "inclusionAI/Ming-3.0-audio-flash"
+            resolved_plan.extend([
+                ("ming_talker/talker/model.safetensors", ming_repo, "talker/model.safetensors", os.path.join(target_dir, "ming_talker/talker"), 1398191068),
+                ("ming_talker/talker/vae/model.safetensors", ming_repo, "talker/vae/model.safetensors", os.path.join(target_dir, "ming_talker/talker/vae"), 1560856068),
+                ("ming_talker/talker/campplus.onnx", ming_repo, "talker/campplus.onnx", os.path.join(target_dir, "ming_talker/talker"), 28303423),
+            ])
 
         if "minimax-h3-image" in HF_REPO.lower() or MODEL_FOLDER == "MiniMax-H3-Image":
             heretic_repo = "OTMFLY/Qwen3-VL-32B-Ultra-Heretic-MiniMax-H3-ComfyUI-INT8-ConvRot"
