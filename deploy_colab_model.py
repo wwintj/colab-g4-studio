@@ -3058,6 +3058,20 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
         except Exception:
             payload = {}
 
+        if self.path.startswith("/v1/video/upscale_cancel"):
+            try:
+                req2 = urllib.request.Request(
+                    "http://127.0.0.1:30002/v1/video/upscale_cancel",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2, timeout=10) as r2:
+                    self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=503)
+            return
+
         if self.path.startswith("/v1/video/upscale"):
             try:
                 req2 = urllib.request.Request(
@@ -3069,6 +3083,21 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
                 with urllib.request.urlopen(req2, timeout=15) as r2:
                     self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
             except Exception as e:
+                if os.path.isfile("/content/recavsr_server.py"):
+                    subprocess.Popen([sys.executable, "-u", "/content/recavsr_server.py"], stdout=open("/content/recavsr_server.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+                    time.sleep(2.5)
+                    try:
+                        req2 = urllib.request.Request(
+                            "http://127.0.0.1:30002/v1/video/upscale",
+                            data=json.dumps(payload).encode("utf-8"),
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req2, timeout=15) as r2:
+                            self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+                            return
+                    except Exception as e2:
+                        e = e2
                 self._send_json({"ok": False, "error": str(e)}, status=503)
             return
 
@@ -3281,7 +3310,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
                     if h_data.get("engine") == "longcat-avatar-1.6":
                         log(f"[显存装载] {os.path.basename(target_dir)}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
                         log("✅ LongCat-Video-Avatar-1.6 数字人音频驱动视频服务已启动 (端口 30000)！")
-                        __import__("threading").Thread(target=_ensure_recavsr_service_on_30002, daemon=True).start()
+                        _ensure_recavsr_service_on_30002()
                         return
         except Exception:
             pass
@@ -3858,6 +3887,13 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
             st["history"] = _list_history_files()
             self._send_json(st)
             return
+        if self.path.startswith("/v1/video/upscale_status"):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:30002/v1/video/upscale_status", timeout=5) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")))
+            except Exception as e:
+                self._send_json({"running": False, "error": str(e)}, status=503)
+            return
         if self.path.startswith("/v1/video/file/"):
             fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
             fpath = os.path.join(OUTPUT_DIR, fname)
@@ -3920,6 +3956,49 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/cancel"):
             open("/content/.cancel_minimax", "w").write("1")
             self._send_json({"ok": True, "message": "🛑 正在停止 MiniMax-H3-Image 生成任务..."})
+            return
+
+        if self.path.startswith("/v1/video/upscale_cancel"):
+            try:
+                req2 = urllib.request.Request(
+                    "http://127.0.0.1:30002/v1/video/upscale_cancel",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2, timeout=10) as r2:
+                    self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=503)
+            return
+
+        if self.path.startswith("/v1/video/upscale"):
+            try:
+                req2 = urllib.request.Request(
+                    "http://127.0.0.1:30002/v1/video/upscale",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2, timeout=15) as r2:
+                    self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+            except Exception as e:
+                if os.path.isfile("/content/recavsr_server.py"):
+                    subprocess.Popen([sys.executable, "-u", "/content/recavsr_server.py"], stdout=open("/content/recavsr_server.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+                    time.sleep(2.5)
+                    try:
+                        req2 = urllib.request.Request(
+                            "http://127.0.0.1:30002/v1/video/upscale",
+                            data=json.dumps(payload).encode("utf-8"),
+                            headers={"Content-Type": "application/json"},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req2, timeout=15) as r2:
+                            self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+                            return
+                    except Exception as e2:
+                        e = e2
+                self._send_json({"ok": False, "error": str(e)}, status=503)
             return
 
         if self.path.startswith("/v1/audio/ming_tts"):
@@ -4185,6 +4264,29 @@ def _init_recavsr():
     global MODEL, VAE, PROMPT, RECAVSR_READY, RECAVSR_ERROR
     try:
         t0 = time.time()
+        MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.run("cp -f /content/ReCaVSR/checkpoints/*.json /content/models/ReCaVSR/ 2>/dev/null || true", shell=True)
+        if not (MODEL_DIR / "transformer.safetensors").is_file():
+            # 若后台已有 rclone 正在同步，等待其完成；否则主动从云盘或 HF 拉取
+            for _ in range(90):
+                if (MODEL_DIR / "transformer.safetensors").is_file():
+                    break
+                if not subprocess.getoutput("pgrep -f 'rclone.*ReCaVSR'").strip():
+                    break
+                time.sleep(2)
+        if not (MODEL_DIR / "transformer.safetensors").is_file() and os.path.isfile("/root/.config/rclone/rclone.conf"):
+            print("[ReCaVSR] Pulling weights from Google Drive (gdrive:models/ReCaVSR)...", flush=True)
+            subprocess.run(["rclone", "copy", "gdrive:models/ReCaVSR", str(MODEL_DIR), "--transfers=8"], check=False)
+        if not (MODEL_DIR / "transformer.safetensors").is_file():
+            print("[ReCaVSR] Downloading weights from HuggingFace (kopper/ReCaVSR)...", flush=True)
+            from huggingface_hub import snapshot_download
+            snapshot_download(repo_id="kopper/ReCaVSR", allow_patterns=["*.safetensors", "*.json"], local_dir=str(MODEL_DIR))
+            if os.path.isfile("/root/.config/rclone/rclone.conf"):
+                subprocess.Popen(
+                    ["rclone", "copy", str(MODEL_DIR), "gdrive:models/ReCaVSR", "--transfers=8"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
         print("[ReCaVSR] Loading Wan2.2-5B 1-Step Streaming Transformer & FlashDecoder into CPU DDR5 RAM...", flush=True)
         MODEL = load_model(MODEL_DIR, device="cpu")
         for m in MODEL.modules():
@@ -4580,30 +4682,16 @@ def _ensure_recavsr_service_on_30002():
     except Exception:
         pass
     try:
-        log("正在准备 ReCaVSR (Wan2.2-5B) 2K/4K 超分伴随服务...")
+        log("正在启动 ReCaVSR (Wan2.2-5B) 2K/4K 超分伴随服务 (端口 30002)...")
         if not os.path.isdir("/content/ReCaVSR/.git"):
             subprocess.run(["git", "clone", "--depth", "1", "https://github.com/kopperx/ReCaVSR.git", "/content/ReCaVSR"], check=False)
         os.makedirs("/content/models/ReCaVSR", exist_ok=True)
         subprocess.run("cp -f /content/ReCaVSR/checkpoints/*.json /content/models/ReCaVSR/ 2>/dev/null || true", shell=True)
-        if not os.path.isfile("/content/models/ReCaVSR/transformer.safetensors"):
-            if os.path.isfile("/root/.config/rclone/rclone.conf"):
-                subprocess.run(["rclone", "copy", "gdrive:models/ReCaVSR", "/content/models/ReCaVSR", "--transfers=8"], check=False)
-        if not os.path.isfile("/content/models/ReCaVSR/transformer.safetensors"):
-            log("首次使用 ReCaVSR，正在从 HuggingFace (kopper/ReCaVSR) 高速拉取 5B 超分权重并备份至 Google Drive...")
-            sr_files = resolve_hf_safetensors_files("kopper/ReCaVSR", "*.safetensors")
-            if sr_files:
-                for sr_fn, _ in sr_files:
-                    fast_parallel_hf_download("kopper/ReCaVSR", sr_fn, "/content/models/ReCaVSR")
-                if os.path.isfile("/root/.config/rclone/rclone.conf"):
-                    subprocess.Popen(
-                        ["rclone", "copy", "/content/models/ReCaVSR", "gdrive:models/ReCaVSR", "--transfers=8"],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
         with open("/content/recavsr_server.py", "w", encoding="utf-8") as wf:
             wf.write(RECAVSR_SERVER_CODE)
         with open("/content/models/ReCaVSR/recavsr_server.py", "w", encoding="utf-8") as wf2:
             wf2.write(RECAVSR_SERVER_CODE)
+        # 立即启动 30002 HTTP 服务进程 (权重拉取与 CPU RAM 预热在 recavsr_server.py 独立守护进程内部异步完成，0.2 秒即响应请求)
         subprocess.Popen(
             [sys.executable, "-u", "/content/recavsr_server.py"],
             stdout=open("/content/recavsr_server.log", "w"),
@@ -4612,15 +4700,7 @@ def _ensure_recavsr_service_on_30002():
             close_fds=True,
             start_new_session=True,
         )
-        subprocess.Popen(
-            ["cloudflared", "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:30002"],
-            stdout=open("/content/recavsr_tunnel.log", "w"),
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-            start_new_session=True,
-        )
-        log("✅ ReCaVSR (Wan2.2-5B · 单步流式 2K/4K 超分服务) 已启动并挂载至 30002 端口！")
+        log("✅ ReCaVSR (Wan2.2-5B · 单步流式 2K/4K 超分服务) 已启动并挂载至 30002 端口 (后台自动预热权重)！")
     except Exception as ex:
         log(f"⚠️ ReCaVSR 启动提示: {ex}")
 
@@ -6093,6 +6173,7 @@ def run_local_wizard():
         save_local_endpoint_config({
             "api_key": captured_api_key,
             "tunnel_url": captured_tunnel_url,
+            "recavsr_tunnel_url": "",
             "model_id": hf_repo or model_folder,
             "model_folder": model_folder,
             "last_activity_ts": time.time(),

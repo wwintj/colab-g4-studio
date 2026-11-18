@@ -662,10 +662,7 @@ def _load_endpoint_cfg() -> Dict[str, Any]:
 
 
 def _get_recavsr_base_url() -> str:
-    cfg = _load_endpoint_cfg()
-    rc_url = str(cfg.get("recavsr_tunnel_url") or "").strip().rstrip("/")
-    if rc_url:
-        return rc_url
+    # 统一走本机永久固定代理网关 127.0.0.1:30000 -> 云端 30000 端口内部转发至 127.0.0.1:30002，彻底避免旧会话残留的 recavsr_tunnel_url 域名过期导致 Errno 8 DNS 报错
     return "http://127.0.0.1:30000"
 
 
@@ -1294,7 +1291,7 @@ for key, root_p in [("local_files", "/dev/shm/local_models"), ("drive_files", "/
         res[key] = items
 
 res["sync_running"] = bool(subprocess.getoutput("pgrep -af '[c]p -rn|[r]clone copy'").strip())
-llama_proc = subprocess.getoutput("pgrep -af '[l]lama-server|minimax_server\\.py'").strip()
+llama_proc = subprocess.getoutput("pgrep -af '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py'").strip()
 res["llama_running"] = bool(llama_proc)
 m_k = re.search(r"--api-key\\s+(\\S+)", llama_proc)
 if m_k:
@@ -6897,6 +6894,7 @@ p.wait()
                 stopped.append(f"{s['name']} ({s['endpoint']})")
             cfg = _load_endpoint_cfg()
             cfg["tunnel_url"] = ""
+            cfg["recavsr_tunnel_url"] = ""
             ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             _LAST_METRICS_CACHE["data"] = None
             _LAST_METRICS_CACHE["timestamp"] = 0.0
