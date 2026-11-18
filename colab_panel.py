@@ -206,8 +206,8 @@ def _compact_progress_log_lines(raw_lines: List[str]) -> List[str]:
             if "[显存装载]" in s and "[显存装载]" in prev:
                 out[-1] = s
                 continue
-            m_dl = re.search(r"\[视频回传\]\s+([^:]+):", s)
-            if m_dl and f"[视频回传] {m_dl.group(1)}:" in prev:
+            m_dl = re.search(r"\[(视频回传|图片回传)\]\s+([^:]+):", s)
+            if m_dl and f"[{m_dl.group(1)}] {m_dl.group(2)}:" in prev:
                 out[-1] = s
                 continue
         out.append(s)
@@ -232,10 +232,10 @@ def _append_panel_log(msg_text: str):
         return
     _LAST_VIDEO_LOG_MSG[0] = clean
     now_ts = time.time()
-    if "[提交视频生成任务]" in clean or "正在使用 32B 无审查多模态编码器解析提示词" in clean:
+    if "[提交视频生成任务]" in clean or "[提交 4K 写真/换装任务]" in clean or "正在使用 32B 无审查多模态编码器解析提示词" in clean or "正在使用 Heretic 32B 编码指令" in clean:
         _VIDEO_STEP_TIMING["first_step_ts"] = 0.0
         _VIDEO_STEP_TIMING["first_step_num"] = 0.0
-    elif "正在扩散采样生成有声视频:" in clean:
+    elif "正在扩散采样生成有声视频:" in clean or "正在 6 步极速扩散采样:" in clean:
         m_st = re.search(r"第\s*(\d+)/(\d+)\s*步", clean)
         if m_st and _VIDEO_STEP_TIMING["first_step_ts"] <= 0.0:
             _VIDEO_STEP_TIMING["first_step_ts"] = now_ts
@@ -247,10 +247,10 @@ def _append_panel_log(msg_text: str):
         logs = _DEPLOY_STATE["logs"]
         replaced = False
         if logs:
-            m_dl = re.match(r"^\[视频回传\]\s+([^:]+):", clean)
+            m_dl = re.match(r"^\[(视频回传|图片回传)\]\s+([^:]+):", clean)
             for idx in range(len(logs) - 1, max(-1, len(logs) - 7), -1):
                 cand_ln = logs[idx]
-                if m_dl and f"[视频回传] {m_dl.group(1)}:" in cand_ln:
+                if m_dl and f"[{m_dl.group(1)}] {m_dl.group(2)}:" in cand_ln:
                     logs[idx] = line
                     replaced = True
                     break
@@ -299,7 +299,7 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
     start_ts = 0.0
     for i in range(len(lines) - 1, -1, -1):
         ln = lines[i]
-        if "[提交视频生成任务]" in ln:
+        if "[提交视频生成任务]" in ln or "[提交 4K 写真/换装任务]" in ln:
             m_t = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]", ln)
             start_ts = _parse_log_hms_to_epoch(m_t.group(1), now_ts) if m_t else now_ts
             start_idx = i
@@ -307,7 +307,7 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
     if start_idx < 0:
         for i in range(len(lines) - 1, -1, -1):
             ln = lines[i]
-            if "[视频生成]" in ln:
+            if "[视频生成]" in ln or "[图片生成]" in ln:
                 m_t = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]", ln)
                 start_ts = _parse_log_hms_to_epoch(m_t.group(1), now_ts) if m_t else now_ts
                 start_idx = i
@@ -326,11 +326,11 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
     total_steps = 0
     scan_from = max(0, start_idx)
     for ln in lines[scan_from:]:
-        if "正在使用 32B 无审查多模态编码器解析提示词" in ln:
+        if "正在使用 32B 无审查多模态编码器解析提示词" in ln or "正在使用 Heretic 32B 编码指令" in ln:
             m_p = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]", ln)
             if m_p:
                 prompt_enc_ts = _parse_log_hms_to_epoch(m_p.group(1), now_ts)
-        elif "正在扩散采样生成有声视频" in ln or "正在扩散生成数字人视频" in ln:
+        elif "正在扩散采样生成有声视频" in ln or "正在扩散生成数字人视频" in ln or "正在 6 步极速扩散采样" in ln:
             m_tot = re.search(r"^\[(\d{2}:\d{2}:\d{2})\].*总计\s*(\d+)/(\d+)\s*步", ln)
             m_seg_s = re.search(r"^\[(\d{2}:\d{2}:\d{2})\].*第\s*(\d+)/(\d+)\s*段.*第\s*(\d+)/(\d+)\s*步", ln)
             m_s = re.search(r"^\[(\d{2}:\d{2}:\d{2})\].*第\s*(\d+)/(\d+)\s*步", ln)
@@ -408,6 +408,9 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
             method="GET",
         )
         tmp_path = LOCAL_MOVIES_DIR / (safe_name + ".part")
+        is_img_file = safe_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+        dl_tag = "图片回传" if is_img_file else "视频回传"
+        done_tag = "图片已落盘" if is_img_file else "视频已落盘"
         try:
             with urllib.request.urlopen(req, timeout=180) as resp, open(tmp_path, "wb") as wf:
                 tot_bytes = int(resp.headers.get("Content-Length", "0") or "0")
@@ -428,7 +431,7 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
                     now = time.time()
                     if now - last_log_t >= 2.0:
                         last_log_t = now
-                        _append_panel_log(f"[视频回传] {safe_name}: {pct}% ({done_mb:.1f}/{tot_mb:.1f} MB, 保存至 ~/Movies/EasyColab)")
+                        _append_panel_log(f"[{dl_tag}] {safe_name}: {pct}% ({done_mb:.1f}/{tot_mb:.1f} MB, 保存至 ~/Movies/EasyColab)")
             os.replace(tmp_path, dest_path)
             if elapsed_s and elapsed_s > 0:
                 meta_map: Dict[str, float] = {}
@@ -439,10 +442,10 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
                         meta_map = {}
                 meta_map[safe_name] = float(elapsed_s)
                 ELAPSED_META_FILE.write_text(json.dumps(meta_map, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            _append_panel_log(f"✅ [视频已落盘] {safe_name} 已完整保存至 {LOCAL_MOVIES_DIR}/{safe_name}")
+            _append_panel_log(f"✅ [{done_tag}] {safe_name} 已完整保存至 {LOCAL_MOVIES_DIR}/{safe_name}")
             return True
         except Exception as ex:
-            _append_panel_log(f"⚠️ [视频回传重试] {safe_name}: {ex}")
+            _append_panel_log(f"⚠️ [{dl_tag}重试] {safe_name}: {ex}")
             if tmp_path.exists():
                 try:
                     tmp_path.unlink()
@@ -2244,8 +2247,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧「🎬 开始生成音视频」按钮 -->
-    <div style="display:grid;grid-template-columns: 1fr 290px;gap:12px;align-items:center;">
+    <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧双按钮「📸 仅生成 4K 图片」+「🎬 生成有声视频」 -->
+    <div id="specRow2ActionGrid" style="display:grid;grid-template-columns: 1fr 430px;gap:12px;align-items:center;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1e293b;padding:6px 12px;border-radius:9px;border:1px solid var(--border);flex-wrap:wrap;">
         <div id="framesSliderInner" style="display:flex;align-items:center;gap:10px;flex:1;flex-wrap:wrap;">
           <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">时长/帧数</span>
@@ -2264,15 +2267,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div id="avatarSpecHint" style="display:none;font-size:12px;font-weight:600;color:#34d399;">
           ⚡ LongCat-Avatar-1.6：固定 8 步双蒸馏 (DMD + OPSD) · 声音与口型由上方驱动音频决定 · 视频时长由上方「生成段数」控制
         </div>
-        <label title="勾选后：生成完 480p 视频后，自动接力调用 ReCaVSR (Wan2.2-5B) 单步流式超分至 2K 超清并保留原生音轨" style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.42);color:#c4b5fd;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;user-select:none;">
+        <label id="autoUpscale2kLabel" title="勾选后：生成完 480p 视频后，自动接力调用 ReCaVSR (Wan2.2-5B) 单步流式超分至 2K 超清并保留原生音轨" style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.42);color:#c4b5fd;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;user-select:none;">
           <input id="autoUpscale2kChk" type="checkbox" style="width:13.5px;height:13.5px;accent-color:#8b5cf6;cursor:pointer;">
           <span>✨ 生成后自动 2K 超分</span>
         </label>
+        <span id="h3ImagePureTag" style="display:none;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;background:rgba(244,114,182,0.15);border:1px solid rgba(244,114,182,0.42);color:#f9a8d4;font-size:11.5px;font-weight:700;white-space:nowrap;">
+          🖼️ 纯图片直出 (不生成视频 · 满意后可在右侧点「🎭 送入数字人说话」)
+        </span>
       </div>
 
-      <button class="btn-primary" style="width:100%;height:100%;min-height:38px;justify-content:center;padding:8px 14px;font-size:14px;font-weight:800;border-radius:9px;box-shadow:0 6px 16px -4px rgba(59,130,246,0.5);" onclick="startVideoGenerate()" id="btnVideoGen">
-        🎬 开始生成音视频
-      </button>
+      <div style="display:flex;gap:8px;width:100%;height:100%;">
+        <button type="button" id="btnImageOnlyGen" onclick="startVideoGenerate('image')" title="仅生成原生 4K 高清写真/换装 PNG 图片（约 11~17 秒，不生成视频）" style="flex:1;min-height:38px;display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;font-size:13.5px;font-weight:800;border-radius:9px;border:1px solid rgba(244,114,182,0.55);background:linear-gradient(135deg, #ec4899, #9333ea);color:#ffffff;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.45);white-space:nowrap;">
+          📸 仅生成 4K 图片
+        </button>
+        <button class="btn-primary" style="flex:1.15;min-height:38px;justify-content:center;padding:8px 12px;font-size:13.5px;font-weight:800;border-radius:9px;box-shadow:0 6px 16px -4px rgba(59,130,246,0.5);white-space:nowrap;" onclick="startVideoGenerate('video')" id="btnVideoGen">
+          🎬 生成有声视频
+        </button>
+      </div>
     </div>
 
     <div id="videoProgressWrap" style="display:none;margin-top:8px;">
@@ -3829,7 +3840,7 @@ async function pollLogs() {
           latestUpscaleActive = { stage: mvSrAct[1], msg: mvSrAct[2] };
           break;
         }
-        const mvAct = line.match(/\[(视频生成|视频回传|自动切换引擎)\]\s+(.+)$/);
+        const mvAct = line.match(/\[(视频生成|图片生成|视频回传|图片回传|自动切换引擎)\]\s+(.+)$/);
         if (mvAct) {
           if (mvAct[1] === '视频回传' && mvAct[2].includes('_ReCaVSR_')) {
             latestUpscaleActive = { stage: mvAct[1], msg: mvAct[2] };
@@ -3838,7 +3849,7 @@ async function pollLogs() {
           }
           break;
         }
-        const mvDone = line.match(/\[(视频完成|视频已落盘)\]\s+(.+)$/);
+        const mvDone = line.match(/\[(视频完成|图片完成|视频已落盘|图片已落盘)\]\s+(.+)$/);
         if (mvDone) {
           if (mvDone[2].includes('_ReCaVSR_')) {
             latestUpscaleDone = mvDone[2];
@@ -4230,7 +4241,10 @@ function switchMiniMaxMode(mode) {
   const batchWrap = document.getElementById('batchControlWrap');
   const framesInner = document.getElementById('framesSliderInner');
   const avSpecHint = document.getElementById('avatarSpecHint');
+  const sr2kLbl = document.getElementById('autoUpscale2kLabel');
+  const pureImgTag = document.getElementById('h3ImagePureTag');
   const btnGen = document.getElementById('btnVideoGen');
+  const btnImgGen = document.getElementById('btnImageOnlyGen');
   const resSel = document.getElementById('videoRes');
   if (resSel) {
     if (isImg && prevMode !== 'image') {
@@ -4254,12 +4268,19 @@ function switchMiniMaxMode(mode) {
     if (batchWrap) batchWrap.style.display = 'none';
     if (specRow1) specRow1.style.gridTemplateColumns = '1.4fr 1fr';
     if (framesInner) framesInner.style.display = 'none';
+    if (sr2kLbl) sr2kLbl.style.display = 'none';
+    if (pureImgTag) pureImgTag.style.display = 'inline-flex';
     if (avSpecHint) {
       avSpecHint.style.display = 'block';
-      avSpecHint.innerText = '⚡ MiniMax-H3-Image：固定 6 步蒸馏 (CFG=1.0 · 免负面词) · 生成的照片可一键送入 LongCat 数字人开口说话！';
+      avSpecHint.innerText = '⚡ MiniMax-H3-Image：固定 6 步蒸馏 (CFG=1.0 · 免负面词)';
+    }
+    if (btnImgGen && btnImgGen.getAttribute('data-running') !== '1') {
+      btnImgGen.innerText = '📸 仅生成 4K 写真图片';
+      btnImgGen.style.flex = '1.35';
     }
     if (btnGen && btnGen.getAttribute('data-running') !== '1') {
-      btnGen.innerText = '📸 开始生成 4K 写真 / 换装大图';
+      btnGen.innerText = '🎬 生成有声视频';
+      btnGen.style.flex = '0.95';
     }
     if (pEl) {
       pEl.rows = 4;
@@ -4282,12 +4303,19 @@ function switchMiniMaxMode(mode) {
     if (batchWrap) batchWrap.style.display = 'none';
     if (specRow1) specRow1.style.gridTemplateColumns = '1.3fr 1fr';
     if (framesInner) framesInner.style.display = 'none';
+    if (sr2kLbl) sr2kLbl.style.display = 'inline-flex';
+    if (pureImgTag) pureImgTag.style.display = 'none';
     if (avSpecHint) {
       avSpecHint.style.display = 'block';
       avSpecHint.innerText = '⚡ LongCat-Avatar-1.6：固定 8 步双蒸馏 (DMD + OPSD) · 声音与口型由上方驱动音频决定 · 视频时长由上方「生成段数」控制';
     }
+    if (btnImgGen && btnImgGen.getAttribute('data-running') !== '1') {
+      btnImgGen.innerText = '📸 仅生成 4K 图片';
+      btnImgGen.style.flex = '1';
+    }
     if (btnGen && btnGen.getAttribute('data-running') !== '1') {
-      btnGen.innerText = '🎬 开始生成数字人视频';
+      btnGen.innerText = '🎬 生成数字人视频';
+      btnGen.style.flex = '1.2';
     }
     if (pEl) {
       pEl.rows = 3;
@@ -4311,9 +4339,16 @@ function switchMiniMaxMode(mode) {
     if (batchWrap) batchWrap.style.display = 'flex';
     if (specRow1) specRow1.style.gridTemplateColumns = '1.3fr 1.15fr 1fr 1.15fr';
     if (framesInner) framesInner.style.display = 'flex';
+    if (sr2kLbl) sr2kLbl.style.display = 'inline-flex';
+    if (pureImgTag) pureImgTag.style.display = 'none';
     if (avSpecHint) avSpecHint.style.display = 'none';
+    if (btnImgGen && btnImgGen.getAttribute('data-running') !== '1') {
+      btnImgGen.innerText = '📸 仅生成 4K 图片';
+      btnImgGen.style.flex = '1';
+    }
     if (btnGen && btnGen.getAttribute('data-running') !== '1') {
-      btnGen.innerText = '🎬 开始生成音视频';
+      btnGen.innerText = '🎬 生成有声视频';
+      btnGen.style.flex = '1.2';
     }
     if (pEl) {
       pEl.rows = 4;
@@ -5030,22 +5065,49 @@ function setStopButtonsVisible(visible) {
 }
 
 function setVideoBtnRunningState(running, customLabel) {
-  const btn = document.getElementById('btnVideoGen');
-  if (!btn) return;
-  btn.disabled = false;
+  const btnVid = document.getElementById('btnVideoGen');
+  const btnImg = document.getElementById('btnImageOnlyGen');
+  const isImgTask = (currentMiniMaxMode === 'image') || /写真|图片|4K/i.test(customLabel || '');
   if (running) {
-    btn.setAttribute('data-running', '1');
-    btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-    btn.style.boxShadow = '0 6px 16px -4px rgba(239,68,68,0.55)';
-    btn.innerText = customLabel || '🛑 正在合成中... (点击停止)';
+    if (isImgTask) {
+      if (btnImg) {
+        btnImg.setAttribute('data-running', '1');
+        btnImg.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+        btnImg.style.boxShadow = '0 6px 16px -4px rgba(239,68,68,0.55)';
+        btnImg.innerText = customLabel || '🛑 正在生成 4K 图片... (点击停止)';
+      }
+      if (btnVid) {
+        btnVid.setAttribute('data-running', '0');
+        btnVid.style.opacity = '0.45';
+      }
+    } else {
+      if (btnVid) {
+        btnVid.setAttribute('data-running', '1');
+        btnVid.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+        btnVid.style.boxShadow = '0 6px 16px -4px rgba(239,68,68,0.55)';
+        btnVid.innerText = customLabel || '🛑 正在合成视频... (点击停止)';
+      }
+      if (btnImg) {
+        btnImg.setAttribute('data-running', '0');
+        btnImg.style.opacity = '0.45';
+      }
+    }
     setStopButtonsVisible(true);
   } else {
-    btn.setAttribute('data-running', '0');
-    btn.style.background = '';
-    btn.style.boxShadow = '0 6px 16px -4px rgba(59,130,246,0.5)';
-    btn.innerText = currentMiniMaxMode === 'avatar'
-      ? '🎬 开始生成数字人视频'
-      : (currentMiniMaxMode === 'image' ? '📸 开始生成 4K 写真 / 换装大图' : '🎬 开始生成音视频');
+    if (btnImg) {
+      btnImg.setAttribute('data-running', '0');
+      btnImg.style.opacity = '1';
+      btnImg.style.background = 'linear-gradient(135deg, #ec4899, #9333ea)';
+      btnImg.style.boxShadow = '0 6px 16px -4px rgba(236,72,153,0.45)';
+      btnImg.innerText = currentMiniMaxMode === 'image' ? '📸 仅生成 4K 写真图片' : '📸 仅生成 4K 图片';
+    }
+    if (btnVid) {
+      btnVid.setAttribute('data-running', '0');
+      btnVid.style.opacity = '1';
+      btnVid.style.background = '';
+      btnVid.style.boxShadow = '0 6px 16px -4px rgba(59,130,246,0.5)';
+      btnVid.innerText = currentMiniMaxMode === 'avatar' ? '🎬 生成数字人视频' : '🎬 生成有声视频';
+    }
     if (!upscalePollTimer) setStopButtonsVisible(false);
   }
 }
@@ -5104,17 +5166,30 @@ async function stopActiveVideoTask(targetMode = 'auto') {
   }
 }
 
-async function startVideoGenerate() {
-  const btn = document.getElementById('btnVideoGen');
-  if (btn && btn.getAttribute('data-running') === '1') {
+async function startVideoGenerate(forceTarget = '') {
+  const btnVid = document.getElementById('btnVideoGen');
+  const btnImg = document.getElementById('btnImageOnlyGen');
+  if ((btnVid && btnVid.getAttribute('data-running') === '1') || (btnImg && btnImg.getAttribute('data-running') === '1')) {
     await stopActiveVideoTask('video');
     return;
+  }
+  const savedUserPrompt = (document.getElementById('videoPrompt') || {}).value || '';
+  if (forceTarget === 'image' && currentMiniMaxMode !== 'image') {
+    switchMiniMaxMode('image');
+    if (savedUserPrompt.trim() && !savedUserPrompt.includes('Makoto Shinkai anime style')) {
+      document.getElementById('videoPrompt').value = savedUserPrompt;
+    }
+  } else if (forceTarget === 'video' && currentMiniMaxMode === 'image') {
+    switchMiniMaxMode('t2va');
+    if (savedUserPrompt.trim() && !savedUserPrompt.includes('Suzhou courtyard at dusk')) {
+      document.getElementById('videoPrompt').value = savedUserPrompt;
+    }
   }
   if (currentMiniMaxMode === 'avatar') {
     autoSplitAvatarPromptAndTts(document.getElementById('videoPrompt'));
   }
   const prompt = document.getElementById('videoPrompt').value.trim();
-  const isImgMode = currentMiniMaxMode === 'image';
+  const isImgMode = (forceTarget === 'image') || (currentMiniMaxMode === 'image');
   if (!prompt && !isImgMode) {
     alert('请输入画面提示词');
     return;
@@ -5332,7 +5407,10 @@ async function pollVideoStatus() {
         }
       }
       if (dState) {
-        dState.innerText = d.running ? '⏳ 视频正在生成中...' : '✅ 视频生成已完成';
+        const isImgDoneOrRun = (currentMiniMaxMode === 'image') || /MiniMax-H3-Image|写真|大图|\.png/i.test(d.message || '');
+        dState.innerText = d.running
+          ? (isImgDoneOrRun ? '⏳ 4K 写真图片正在生成中...' : '⏳ 视频正在生成中...')
+          : (isImgDoneOrRun ? '✅ 4K 写真图片生成已完成' : '✅ 视频生成已完成');
         dState.style.color = d.running ? '#f59e0b' : '#10b981';
       }
     }
@@ -5765,6 +5843,9 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             try:
                 with urllib.request.urlopen(req, timeout=12) as resp:
                     d = json.loads(resp.read().decode("utf-8"))
+                    is_img_eng = str(cfg.get("model_folder") or "") == "MiniMax-H3-Image"
+                    gen_tag = "图片生成" if is_img_eng else "视频生成"
+                    done_log_tag = "图片完成" if is_img_eng else "视频完成"
                     if d.get("running"):
                         try:
                             cfg["last_activity_ts"] = time.time()
@@ -5772,7 +5853,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                         except Exception:
                             pass
                         if d.get("message"):
-                            _append_panel_log(f"[视频生成] {d.get('message')}")
+                            _append_panel_log(f"[{gen_tag}] {d.get('message')}")
                         timing_info = _compute_video_timing_from_logs(int(d.get("pct") or 8))
                         d["elapsed_sec"] = timing_info["elapsed_sec"]
                         d["eta_sec"] = timing_info["eta_sec"]
@@ -5801,7 +5882,8 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                             d["running"] = True
                             d["downloading_local"] = True
                             d["pct"] = max(95, min(99, 95 + int(dl_pct * 0.04)))
-                            d["message"] = f"⬇️ 云端合成已完成！正在回传保存至本机 ~/Movies/EasyColab/ ({done_m:.1f}/{tot_m:.1f} MB, {dl_pct}%)"
+                            media_noun = "4K 写真图片" if is_img_eng else "视频"
+                            d["message"] = f"⬇️ 云端{media_noun}已生成！正在回传保存至本机 ~/Movies/EasyColab/ ({done_m:.1f}/{tot_m:.1f} MB, {dl_pct}%)"
                             timing_info = _compute_video_timing_from_logs(int(d["pct"]))
                             d["elapsed_sec"] = timing_info["elapsed_sec"]
                             d["eta_sec"] = max(1, int(round(max(0.0, tot_m - done_m) / max(0.15, spd_mbs))))
@@ -5811,7 +5893,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                             d["pct"] = 100
                             if d.get("message") and not str(d.get("message")).startswith("就绪") and latest_fn not in _LOGGED_COMPLETED_VIDEOS:
                                 _LOGGED_COMPLETED_VIDEOS.add(latest_fn)
-                                _append_panel_log(f"[视频完成] {d.get('message')}")
+                                _append_panel_log(f"[{done_log_tag}] {d.get('message')}")
                     self._send_json(d)
             except Exception as e:
                 err_s = str(e)
@@ -6628,7 +6710,8 @@ p.wait()
                                 with urllib.request.urlopen(r2, timeout=20) as resp2:
                                     res2 = json.loads(resp2.read().decode("utf-8"))
                                     if res2.get("ok"):
-                                        _append_panel_log(f"✅ [自动切换完成] {target_label} 已就绪并自动开始采样生成有声视频！")
+                                        done_act_txt = "4K 写真图片" if want_image else ("数字人视频" if want_avatar else "有声视频")
+                                        _append_panel_log(f"✅ [自动切换完成] {target_label} 已就绪并自动开始采样生成{done_act_txt}！")
                                         _PENDING_VIDEO_JOB["active"] = False
                                         return
                             except Exception:
@@ -6813,8 +6896,8 @@ p.wait()
                         pass
                 except Exception:
                     pass
-            _append_panel_log("🛑 [手动停止] 已发送中断信号停止当前有声视频生成任务 (134GB 模型继续常驻显存)")
-            self._send_json({"ok": True, "message": "🛑 已手动停止有声视频生成任务 (134GB 模型继续常驻显存)"})
+            _append_panel_log("🛑 [手动停止] 已发送中断信号停止当前生成任务 (模型继续常驻显存)")
+            self._send_json({"ok": True, "message": "🛑 已手动停止当前生成任务 (模型继续常驻显存)"})
             return
 
         if self.path == "/api/video_upscale_cancel":
