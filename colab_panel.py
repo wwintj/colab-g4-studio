@@ -1209,10 +1209,7 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
     g4_only_folders = {
         "Huihui-Qwen3.8-27B-abliterated-GGUF",
         "MiniMax-H3",
-        "MiniMax-H3-Turbo",
-        "Qwen3.8-27B-GGUF",
-        "Qwen-Image-2.1",
-        "Z-Image-Turbo",
+        "MiniMax-H3-Image",
     }
     auto_switched_note = ""
     if not download_only:
@@ -1812,34 +1809,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_minimax_turbo" onclick="selectPresetModel('preset_minimax_turbo', 'Comfy-Org/MiniMax-H3', 'MiniMax-H3-Turbo', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
+      <div class="folder-tag preset-card" id="preset_minimax_image" onclick="selectPresetModel('preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
         <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">⚡ MiniMax-H3 Turbo</div>
-          <div style="color:var(--muted);font-size:11px;">INT8+FP4 · 37.3 GB (8步极速)</div>
-        </div>
-        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_qwen_q4" onclick="selectPresetModel('preset_qwen_q4', 'unsloth/Qwen3.8-27B-GGUF', 'Qwen3.8-27B-GGUF', 'Qwen3.8-27B-UD-Q4_K_M.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">🚀 Qwen3.8-27B-GGUF</div>
-          <div style="color:var(--muted);font-size:11px;">UD-Q4_K_M + MTP · 18.7 GB</div>
-        </div>
-        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_qwen_img" onclick="selectPresetModel('preset_qwen_img', 'Qwen/Qwen-Image-2.1', 'Qwen-Image-2.1', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">🎨 Qwen-Image-2.1</div>
-          <div style="color:var(--muted);font-size:11px;">BF16 原生 · 30.9 GB (文生图/修图)</div>
-        </div>
-        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_z_img" onclick="selectPresetModel('preset_z_img', 'Tongyi-MAI/Z-Image-Turbo', 'Z-Image-Turbo', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">⚡ Z-Image-Turbo</div>
-          <div style="color:var(--muted);font-size:11px;">8步极速生图 · 30.6 GB</div>
+          <div style="font-weight:700;color:#f8fafc;font-size:13px;">📸 MiniMax-H3-Image (4K无审查)</div>
+          <div style="color:var(--muted);font-size:11px;">INT8 + Heretic破限编码器 · 45.2 GB (4K生图/免Mask换装)</div>
         </div>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
       </div>
@@ -1968,7 +1941,80 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <button type="button" id="tabBtnT2va" class="btn-primary" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('t2va')">✨ 文生音视频 (T2VA)</button>
       <button type="button" id="tabBtnFl2va" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fl2va')">🖼️ 首尾帧生音视频 (FL2VA)</button>
+      <button type="button" id="tabBtnImage" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('image')">📸 4K无审查写真 / 免Mask换装 (H3-Image)</button>
       <button type="button" id="tabBtnAvatar" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('avatar')">🎭 数字人音频驱动 (LongCat-Avatar)</button>
+    </div>
+  </div>
+
+  <!-- MiniMax-H3-Image 4K无审查写真与免Mask锁脸换装操作区 (切换至 image 模式自动显示) -->
+  <div id="h3ImageControlRow" style="display:none;grid-template-columns:1.1fr 1.1fr;gap:12px;padding:14px;margin-bottom:16px;background:#0f172a;border:1.5px dashed #ec4899;border-radius:12px;">
+    <div style="display:flex;flex-direction:column;justify-content:space-between;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <label style="font-size:12.5px;font-weight:700;color:#f472b6;margin:0;">🖼️ 1. 参考图上传 (不传=纯文生4K写真；上传=免涂Mask锁脸换装/多图融合)</label>
+          <button type="button" onclick="clearAllH3RefImages()" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空参考图 (纯文生4K)</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;">
+          <div style="padding:8px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+            <div style="font-size:11px;font-weight:700;color:#fbcfe8;margin-bottom:4px;">👩 &lt;Picture 1&gt; 主人物/底图</div>
+            <input type="file" id="inpH3ImgRef1" accept="image/*" onchange="handleH3RefImageSelect(0, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
+            <img id="h3ImgRef1Preview" style="display:none;margin-top:6px;width:100%;height:88px;object-fit:contain;border-radius:5px;background:#020617;">
+          </div>
+          <div style="padding:8px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:4px;">👗 &lt;Picture 2&gt; 服饰/道具(可选)</div>
+            <input type="file" id="inpH3ImgRef2" accept="image/*" onchange="handleH3RefImageSelect(1, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
+            <img id="h3ImgRef2Preview" style="display:none;margin-top:6px;width:100%;height:88px;object-fit:contain;border-radius:5px;background:#020617;">
+          </div>
+          <div style="padding:8px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:4px;">🏞️ &lt;Picture 3&gt; 新场景(可选)</div>
+            <input type="file" id="inpH3ImgRef3" accept="image/*" onchange="handleH3RefImageSelect(2, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
+            <img id="h3ImgRef3Preview" style="display:none;margin-top:6px;width:100%;height:88px;object-fit:contain;border-radius:5px;background:#020617;">
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;">
+        <span id="h3ImgRefStatus" style="color:#f472b6;font-weight:600;">✨ 当前为「纯文生 4K 超清写真」模式（上传 &lt;Picture 1&gt; 即自动切换为免涂 Mask 锁脸换装）</span>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;justify-content:space-between;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+          <label style="font-size:12.5px;font-weight:700;color:#fcd34d;margin:0;">🪄 2. 免Mask锁脸换装生成器 &amp; 4K去磨砂黄金模板</label>
+          <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="padding:3px 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11px;font-weight:700;max-width:255px;">
+            <option value="">✨ 一键套用 4K 写真 / 锁脸换装模板...</option>
+            <optgroup label="👗 免涂 Mask 锁脸换装模板 (需上传 Picture 1)">
+              <option value="edit_qipao">👘 锁脸换装：黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
+              <option value="edit_silk">🍷 锁脸换装：酒红真丝滑落肩头吊带睡袍 + 黑色蕾丝花边</option>
+              <option value="edit_lace">🤍 锁脸换装：纯白镂空蕾丝吊带短裙 + 柔光私房质感</option>
+              <option value="edit_ol">🖤 锁脸换装：修身黑丝绒高开叉晚礼服 + 璀璨钻石颈链</option>
+            </optgroup>
+            <optgroup label="📸 纯文生 4K 原生超清写真模板 (无需传图 · 去磨砂真皮)">
+              <option value="t2i_courtyard">🏮 4K江南少女：苏州庭院黄昏白玉簪中国少女 (单反真皮)</option>
+              <option value="t2i_boudoir">🥂 4K私房写真：午后百叶窗暖光酒红真丝蕾丝写真 (Heretic无审查)</option>
+              <option value="t2i_white_lace">🦢 4K纯白蕾丝：晨光落地窗纯白蕾丝吊带少女特写 (通透真皮)</option>
+              <option value="t2i_chongqing">🌃 4K雨夜街拍：重庆洪崖洞透明伞回眸姑娘 + 中英双语招牌</option>
+            </optgroup>
+          </select>
+        </div>
+        <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
+          <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">上传 &lt;Picture 1&gt; 后，只需填写下方任意一项，后台自动合成 <code style="color:#f472b6;">Picture + Subject</code> 三段式像素级锁脸语法：</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <div>
+              <label style="font-size:11px;color:#fbcfe8;display:block;margin-bottom:2px;">👗 换成什么新衣服/穿搭 (&lt;Subject 2&gt;)</label>
+              <input id="inpH3EditOutfit" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="例如: a white lace camisole dress / 黑色真丝旗袍" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#93c5fd;display:block;margin-bottom:2px;">🏞️ 换成什么新场景 (留空则100%保留原背景)</label>
+              <input id="inpH3EditScene" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="留空保留原背景；或填 sunlit bedroom" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
+            </div>
+          </div>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11.5px;color:#6ee7b7;cursor:pointer;user-select:none;">
+        <input type="checkbox" id="chkCleanMatteWords" checked style="width:13.5px;height:13.5px;accent-color:#10b981;">
+        <span>🛡️ 自动开启「去磨砂真皮过滤」（自动剔除 <code style="color:#cbd5e1;">matte skin / fine pores / film grain</code> 等导致砂纸脸的旧词）</span>
+      </label>
     </div>
   </div>
 
@@ -2258,6 +2304,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
       <div id="videoResultWrap" style="display:none;">
         <video id="mmVideoPlayer" controls autoplay loop style="width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;display:block;"></video>
+        <img id="mmImagePreview" alt="Generated Image" style="display:none;width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;">
       </div>
 
       <!-- 底部文件信息栏：单行紧凑对齐 -->
@@ -2268,7 +2315,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <span id="previewBottomShortBadge" style="display:none;background:#1e293b;color:#94a3b8;border:1px solid var(--border);padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;flex-shrink:0;">--</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
-          <div style="display:inline-flex;align-items:center;gap:4px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:8px;padding:2px 5px;">
+          <div id="imageActionBtns" style="display:none;align-items:center;gap:6px;">
+            <button type="button" onclick="sendCurrentImageToAvatar()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(16,185,129,0.55);background:rgba(16,185,129,0.2);color:#6ee7b7;cursor:pointer;" title="将当前图片直接设为 LongCat-Avatar-1.6 数字人参考图，驱动她开口说话">🎭 送入数字人说话</button>
+            <button type="button" onclick="sendCurrentImageToH3Edit()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(236,72,153,0.55);background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;" title="将当前图片设为 &lt;Picture 1&gt;，免涂 Mask 像素级锁脸换装">👗 设为&lt;Picture 1&gt;换装</button>
+          </div>
+          <div id="videoUpscaleActionWrap" style="display:inline-flex;align-items:center;gap:4px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:8px;padding:2px 5px;">
             <select id="upscalePresetSelect" class="cu-select" style="border:none;background:transparent;color:#ddd6fe;font-size:11.5px;font-weight:700;padding:2px 3px;cursor:pointer;" onchange="onUpscalePresetChange(this.value)">
               <option value="2k" selected>2K (1440P)</option>
               <option value="1080p">1080P</option>
@@ -2279,8 +2330,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
             </button>
           </div>
           <input type="file" id="inpExternalVideo" accept="video/*,.mp4,.mov,.webm,.mkv" style="display:none;" onchange="handleExternalVideoImport(this)">
-          <button type="button" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="padding:5px 10px;font-size:12px;font-weight:700;background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.45);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
-          <button type="button" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="replayCurrentVideo()">重播</button>
+          <button type="button" id="btnContinueLastFrame" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="padding:5px 10px;font-size:12px;font-weight:700;background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.45);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
+          <button type="button" id="btnReplayVideo" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="replayCurrentVideo()">重播</button>
           <button type="button" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="revealInFinder(false)">Finder</button>
           <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;padding:5px 10px;font-size:12px;text-decoration:none;border-color:#10b981;color:#10b981;">⬇️ 另存为</a>
         </div>
@@ -3350,10 +3401,7 @@ function syncDriveFolderHighlight(folderName, rerenderList = true) {
   const shortMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B',
     'MiniMax-H3': 'MiniMax-H3',
-    'MiniMax-H3-Turbo': 'MiniMax-H3 Turbo',
-    'Qwen3.8-27B-GGUF': 'Qwen3.8-27B-Q4',
-    'Qwen-Image-2.1': 'Qwen-Image-2.1',
-    'Z-Image-Turbo': 'Z-Image-Turbo',
+    'MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
     'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
     'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar(INT8)',
     'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4)',
@@ -3404,7 +3452,9 @@ function selectPresetModel(cardId, repo, folder, pattern) {
   });
   if (folder.startsWith('LongCat-Video-Avatar')) {
     switchMiniMaxMode('avatar');
-  } else if (folder.startsWith('MiniMax-H3') && currentMiniMaxMode === 'avatar') {
+  } else if (folder === 'MiniMax-H3-Image') {
+    switchMiniMaxMode('image');
+  } else if (folder.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image')) {
     switchMiniMaxMode('t2va');
   }
   syncDriveFolderHighlight(folder);
@@ -3419,10 +3469,7 @@ function selectDriveFolder(folderName, firstFile) {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
     'MiniMax-H3': 'MiniMaxAI/MiniMax-H3',
     'MiniMaxAI': 'MiniMaxAI/MiniMax-H3',
-    'MiniMax-H3-Turbo': 'Comfy-Org/MiniMax-H3',
-    'Qwen3.8-27B-GGUF': 'unsloth/Qwen3.8-27B-GGUF',
-    'Qwen-Image-2.1': 'Qwen/Qwen-Image-2.1',
-    'Z-Image-Turbo': 'Tongyi-MAI/Z-Image-Turbo',
+    'MiniMax-H3-Image': 'Comfy-Org/MiniMax-H3-Image',
     'LongCat-Video-Avatar-1.6': 'meituan-longcat/LongCat-Video-Avatar-1.6',
     'LongCat-Video-Avatar-1.6-INT8': 'meituan-longcat/LongCat-Video-Avatar-1.6',
     'Qwen3.8-27B-T4-Q3': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
@@ -3436,10 +3483,7 @@ function selectDriveFolder(folderName, firstFile) {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'preset_qwen_bf16',
     'MiniMax-H3': 'preset_minimax_h3',
     'MiniMaxAI': 'preset_minimax_h3',
-    'MiniMax-H3-Turbo': 'preset_minimax_turbo',
-    'Qwen3.8-27B-GGUF': 'preset_qwen_q4',
-    'Qwen-Image-2.1': 'preset_qwen_img',
-    'Z-Image-Turbo': 'preset_z_img',
+    'MiniMax-H3-Image': 'preset_minimax_image',
     'LongCat-Video-Avatar-1.6': 'preset_longcat_avatar',
     'LongCat-Video-Avatar-1.6-INT8': 'preset_t4_longcat_int8',
     'Qwen3.8-27B-T4-Q3': 'preset_t4_qwen38_q3',
@@ -3452,6 +3496,7 @@ function selectDriveFolder(folderName, firstFile) {
   const patternMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf',
     'MiniMax-H3': 'FL2VA/*.safetensors',
+    'MiniMax-H3-Image': '*.safetensors',
     'LongCat-Video-Avatar-1.6': 'base_model/*.safetensors',
     'LongCat-Video-Avatar-1.6-INT8': 'base_model_int8/*.safetensors',
     'Qwen3.8-27B-T4-Q3': 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf',
@@ -3480,7 +3525,9 @@ function selectDriveFolder(folderName, firstFile) {
   }
   if (folderName.startsWith('LongCat-Video-Avatar')) {
     switchMiniMaxMode('avatar');
-  } else if (folderName.startsWith('MiniMax-H3') && currentMiniMaxMode === 'avatar') {
+  } else if (folderName === 'MiniMax-H3-Image') {
+    switchMiniMaxMode('image');
+  } else if (folderName.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image')) {
     switchMiniMaxMode('t2va');
   }
   syncDriveFolderHighlight(folderName);
@@ -3502,6 +3549,9 @@ async function refreshStatus(force = false) {
       const mf = String(d.endpoint_cfg.model_folder);
       if (mf.startsWith('LongCat-Video-Avatar')) {
         switchMiniMaxMode('avatar');
+        selectDriveFolder(mf);
+      } else if (mf === 'MiniMax-H3-Image') {
+        switchMiniMaxMode('image');
         selectDriveFolder(mf);
       }
     }
@@ -3556,7 +3606,7 @@ async function refreshStatus(force = false) {
             hrsEl.innerText = '🟢 今日配额可用 · 单次约 3~5 小时';
           }
           const curF = (document.getElementById('inpFolder') || {}).value || '';
-          const g4OnlySet = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'MiniMax-H3-Turbo', 'Qwen3.8-27B-GGUF', 'Qwen-Image-2.1', 'Z-Image-Turbo']);
+          const g4OnlySet = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'MiniMax-H3-Image']);
           if (g4OnlySet.has(curF)) {
             switchPresetTierTab('t4', true);
           }
@@ -3586,16 +3636,10 @@ async function refreshStatus(force = false) {
       'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4)',
       'unsloth/MiniMax-H3-GGUF': 'MiniMax-H3(T4)',
       'ReCaVSR': 'ReCaVSR',
-      'Qwen3.8-27B-GGUF': 'Qwen3.8-27B(极速版)',
-      'unsloth/Qwen3.8-27B-GGUF': 'Qwen3.8-27B(极速版)',
       'MiniMax-H3': 'MiniMax-H3(33B)',
       'MiniMaxAI/MiniMax-H3': 'MiniMax-H3(33B)',
-      'MiniMax-H3-Turbo': 'MiniMax-H3-Turbo',
-      'Comfy-Org/MiniMax-H3': 'MiniMax-H3-Turbo',
-      'Qwen-Image-2.1': 'Qwen-Image-2.1',
-      'Qwen/Qwen-Image-2.1': 'Qwen-Image-2.1',
-      'Z-Image-Turbo': 'Z-Image-Turbo',
-      'Tongyi-MAI/Z-Image-Turbo': 'Z-Image-Turbo',
+      'MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
+      'Comfy-Org/MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
       'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
       'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar(INT8)',
       'meituan-longcat/LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
@@ -4114,20 +4158,46 @@ let lastFrameB64 = '';
 let avatarAudioB64 = '';
 let avatarAudioExt = '.mp3';
 let avatarUseBuiltinSample = true;
+let h3ImgRefList = ['', '', ''];
+
+const VIDEO_RES_OPTIONS_HTML = `
+  <option value="832x480" selected>832×480 (16:9 横屏·推荐)</option>
+  <option value="480x832">480×832 (9:16 竖屏)</option>
+  <option value="1280x720">1280×720 (720P 横屏)</option>
+  <option value="720x1280">720×1280 (720P 竖屏)</option>
+  <option value="640x640">640×640 (1:1 方形)</option>
+`;
+
+const H3_IMAGE_RES_OPTIONS_HTML = `
+  <option value="3552x4736" selected>3552×4736 (3:4 竖版4K人像 · 1682万像素·推荐)</option>
+  <option value="3360x5024">3360×5024 (2:3 写真4K竖幅 · 1688万像素)</option>
+  <option value="3072x5472">3072×5472 (9:16 全屏4K竖屏 · 1681万像素)</option>
+  <option value="4096x4096">4096×4096 (1:1 方形4K海报 · 1677万像素)</option>
+  <option value="5472x3072">5472×3072 (16:9 宽幅4K夜景 · 1681万像素)</option>
+  <option value="4736x3552">4736×3552 (4:3 横版4K展板 · 1682万像素)</option>
+  <option value="1536x2048">1536×2048 (3:4 极速2K人像 · ~2.5s · 适合作数字人底图)</option>
+  <option value="1152x2048">1152×2048 (9:16 极速2K竖屏 · ~2.3s · 适合作数字人底图)</option>
+`;
 
 function switchMiniMaxMode(mode) {
+  const prevMode = currentMiniMaxMode;
   currentMiniMaxMode = mode;
   const isFl = mode === 'fl2va';
   const isAv = mode === 'avatar';
+  const isImg = mode === 'image';
   const flRow = document.getElementById('fl2vaImageRow');
   const avRow = document.getElementById('avatarControlRow');
+  const imgRow = document.getElementById('h3ImageControlRow');
   if (flRow) flRow.style.display = isFl ? 'grid' : 'none';
   if (avRow) avRow.style.display = isAv ? 'grid' : 'none';
+  if (imgRow) imgRow.style.display = isImg ? 'grid' : 'none';
   const bT2 = document.getElementById('tabBtnT2va');
   const bFl = document.getElementById('tabBtnFl2va');
+  const bImg = document.getElementById('tabBtnImage');
   const bAv = document.getElementById('tabBtnAvatar');
-  if (bT2) bT2.className = (!isFl && !isAv) ? 'btn-primary' : 'btn-outline';
+  if (bT2) bT2.className = (!isFl && !isAv && !isImg) ? 'btn-primary' : 'btn-outline';
   if (bFl) bFl.className = isFl ? 'btn-primary' : 'btn-outline';
+  if (bImg) bImg.className = isImg ? 'btn-primary' : 'btn-outline';
   if (bAv) bAv.className = isAv ? 'btn-primary' : 'btn-outline';
   const titleEl = document.getElementById('videoStudioTitle');
   const badgeEl = document.getElementById('videoStudioBadge');
@@ -4145,7 +4215,44 @@ function switchMiniMaxMode(mode) {
   const framesInner = document.getElementById('framesSliderInner');
   const avSpecHint = document.getElementById('avatarSpecHint');
   const btnGen = document.getElementById('btnVideoGen');
-  if (isAv) {
+  const resSel = document.getElementById('videoRes');
+  if (resSel) {
+    if (isImg && prevMode !== 'image') {
+      resSel.innerHTML = H3_IMAGE_RES_OPTIONS_HTML;
+    } else if (!isImg && prevMode === 'image') {
+      resSel.innerHTML = VIDEO_RES_OPTIONS_HTML;
+      if (isAv) resSel.value = '480x832';
+    }
+  }
+  if (isImg) {
+    if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 原生 4K 无审查写真 & 免Mask锁脸换装工作台';
+    if (badgeEl) badgeEl.innerText = '11.6秒原生1680万像素4K直出 + Heretic 32B无审查编码器 + Picture+Subject免Mask锁脸换装';
+    if (pSecTitle) pSecTitle.innerText = '3. 4K 写真画面提示词 / Picture + Subject 免Mask锁脸换装指令';
+    if (fourBtns) fourBtns.style.display = 'none';
+    if (box1Wrap) box1Wrap.style.marginBottom = '0';
+    if (box1Lbl) box1Lbl.innerText = '画面描述或改图指令（已自动开启去磨砂真皮过滤；若上方上传了 <Picture 1> 并填写了换装栏，将自动合成三段式锁脸语法）';
+    if (box2Wrap) box2Wrap.style.display = 'none';
+    if (box3Wrap) box3Wrap.style.display = 'none';
+    if (box4Wrap) box4Wrap.style.display = 'none';
+    if (stepsWrap) stepsWrap.style.display = 'none';
+    if (batchWrap) batchWrap.style.display = 'none';
+    if (specRow1) specRow1.style.gridTemplateColumns = '1.4fr 1fr';
+    if (framesInner) framesInner.style.display = 'none';
+    if (avSpecHint) {
+      avSpecHint.style.display = 'block';
+      avSpecHint.innerText = '⚡ MiniMax-H3-Image：固定 6 步蒸馏 (CFG=1.0 · 免负面词) · 生成的照片可一键送入 LongCat 数字人开口说话！';
+    }
+    if (btnGen && btnGen.getAttribute('data-running') !== '1') {
+      btnGen.innerText = '📸 开始生成 4K 写真 / 换装大图';
+    }
+    if (pEl) {
+      pEl.rows = 4;
+      pEl.style.minHeight = '95px';
+      if (pEl.value.includes('Makoto Shinkai anime style') || pEl.value.includes('固定镜头，近景居中构图')) {
+        pEl.value = 'A high-resolution, real-life portrait photograph of an elegant 20-year-old Chinese young woman with a classic East Asian oval face, smooth fair skin, expressive dark brown almond eyes, and a serene, natural expression, standing beneath the carved wooden eaves of a traditional Suzhou courtyard at dusk. Her long, sleek black hair is styled in a graceful half-up bun secured with a carved white jade hairpin. She wears a pale moonlight-white silk Chinese stand-collar jacket with subtle woven floral patterns and holds a warm glowing bamboo paper lantern near her chest. Behind her, soft out-of-focus red lanterns and grey tiled roofs glow warmly in the evening twilight, captured on a Canon EOS R5 with an 85mm f/1.4 lens, clean natural lighting, and shallow depth of field.';
+      }
+    }
+  } else if (isAv) {
     if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
     if (badgeEl) badgeEl.innerText = 'Whisper-v3 唇形同步 + DMD/OPSD 8步双LoRA蒸馏 + Kim_Vocal_2 人声分离';
     if (pSecTitle) pSecTitle.innerText = '3. 纯画面与人物神态描述 Prompt（仅写镜头/表情/眼神/光影，不要把台词写在这里）';
@@ -4159,14 +4266,17 @@ function switchMiniMaxMode(mode) {
     if (batchWrap) batchWrap.style.display = 'none';
     if (specRow1) specRow1.style.gridTemplateColumns = '1.3fr 1fr';
     if (framesInner) framesInner.style.display = 'none';
-    if (avSpecHint) avSpecHint.style.display = 'block';
+    if (avSpecHint) {
+      avSpecHint.style.display = 'block';
+      avSpecHint.innerText = '⚡ LongCat-Avatar-1.6：固定 8 步双蒸馏 (DMD + OPSD) · 声音与口型由上方驱动音频决定 · 视频时长由上方「生成段数」控制';
+    }
     if (btnGen && btnGen.getAttribute('data-running') !== '1') {
       btnGen.innerText = '🎬 开始生成数字人视频';
     }
     if (pEl) {
       pEl.rows = 3;
       pEl.style.minHeight = '76px';
-      if (pEl.value.includes('Makoto Shinkai anime style')) {
+      if (pEl.value.includes('Makoto Shinkai anime style') || pEl.value.includes('Suzhou courtyard at dusk')) {
         pEl.value = '固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、轻轻点头和呼吸起伏，嘴型与语音高度同步，面部柔和暖光，五官清晰稳定，过渡丝滑真实。';
       }
       autoSplitAvatarPromptAndTts(pEl);
@@ -4197,6 +4307,109 @@ function switchMiniMaxMode(mode) {
       }
     }
   }
+}
+
+function handleH3RefImageSelect(slotIdx, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  const prevEl = document.getElementById(`h3ImgRef${slotIdx + 1}Preview`);
+  const stEl = document.getElementById('h3ImgRefStatus');
+  if (!file) {
+    h3ImgRefList[slotIdx] = '';
+    if (prevEl) prevEl.style.display = 'none';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    h3ImgRefList[slotIdx] = ev.target.result;
+    if (prevEl) {
+      prevEl.src = ev.target.result;
+      prevEl.style.display = 'block';
+    }
+    const cnt = h3ImgRefList.filter(Boolean).length;
+    if (stEl) {
+      stEl.innerText = `👗 已载入 ${cnt} 张参考图 (<Picture 1>..${cnt}) · 已激活「免涂 Mask 像素级锁脸换装/多图融合」模式！`;
+    }
+    syncH3EditPreviewPrompt();
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearAllH3RefImages() {
+  h3ImgRefList = ['', '', ''];
+  for (let i = 1; i <= 3; i++) {
+    const inp = document.getElementById(`inpH3ImgRef${i}`);
+    const img = document.getElementById(`h3ImgRef${i}Preview`);
+    if (inp) inp.value = '';
+    if (img) { img.src = ''; img.style.display = 'none'; }
+  }
+  const stEl = document.getElementById('h3ImgRefStatus');
+  if (stEl) stEl.innerText = '✨ 当前为「纯文生 4K 超清写真」模式（上传 <Picture 1> 即自动切换为免涂 Mask 锁脸换装）';
+}
+
+function syncH3EditPreviewPrompt() {
+  const outfit = ((document.getElementById('inpH3EditOutfit') || {}).value || '').trim();
+  const scene = ((document.getElementById('inpH3EditScene') || {}).value || '').trim();
+  if (!outfit && !scene) return;
+  const pEl = document.getElementById('videoPrompt');
+  if (!pEl) return;
+  const tgtOutfit = outfit || 'a tailored black silk modern qipao with gold phoenix embroidery';
+  if (scene) {
+    pEl.value = `The young woman in <Picture 1> is <Subject 1>. The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. The target image shows <Subject 1> wearing ${tgtOutfit} in ${scene}, captured as a high-resolution real-life portrait photograph with clean natural lighting. <Subject 1> is partially preserved; her exact East Asian facial features, oval face shape, smooth fair skin, serene gaze, and hairstyle remain completely unchanged, while <Subject 2> is replaced by ${tgtOutfit}, and the surrounding environment is ${scene}.`;
+  } else {
+    pEl.value = `The young woman in <Picture 1> is <Subject 1>. The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. The background and lighting environment in <Picture 1> is <Subject 3>. The target image shows <Subject 1> wearing ${tgtOutfit} in <Subject 3>. <Subject 1> is partially preserved; her exact East Asian facial features, oval face shape, smooth fair skin, serene gaze, and hairstyle remain completely unchanged, while <Subject 2> is replaced by ${tgtOutfit}. <Subject 3> is fully preserved.`;
+  }
+}
+
+function applyH3ImagePresetTemplate(tplKey) {
+  if (!tplKey) return;
+  const pEl = document.getElementById('videoPrompt');
+  const outEl = document.getElementById('inpH3EditOutfit');
+  const scEl = document.getElementById('inpH3EditScene');
+  const resEl = document.getElementById('videoRes');
+  const templates = {
+    edit_qipao: {
+      outfit: 'a luxurious black-and-gold phoenix embroidered royal silk qipao with a high mandarin collar and imperial emerald jadeite teardrop earrings',
+      scene: '',
+      prompt: 'The young Chinese woman in <Picture 1> is <Subject 1>. The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. The background in <Picture 1> is <Subject 3>. The target image shows <Subject 1> wearing a luxurious black-and-gold phoenix embroidered royal silk qipao and imperial emerald jadeite earrings in <Subject 3>. <Subject 1> is partially preserved; her exact Chinese East Asian facial features, oval face, smooth fair skin, serene gaze, and hairstyle remain completely unchanged, while <Subject 2> is replaced by a tailored black silk modern qipao with a high mandarin collar and gold phoenix embroidery across the chest, plus a pair of glowing imperial green jadeite teardrop earrings. <Subject 3> is fully preserved.'
+    },
+    edit_silk: {
+      outfit: 'a deep burgundy silk slip robe gracefully sliding off one shoulder with delicate black Chantilly lace trim',
+      scene: '',
+      prompt: 'The young woman in <Picture 1> is <Subject 1>. The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. The background in <Picture 1> is <Subject 3>. The target image shows <Subject 1> wearing a deep burgundy pure silk slip robe with delicate black Chantilly lace trim along the neckline in <Subject 3>. <Subject 1> is partially preserved; her exact East Asian facial features, face shape, smooth fair skin, and hairstyle remain completely unchanged, while <Subject 2> is replaced by a burgundy silk slip robe with subtle black lace trim and natural silk drape folds. <Subject 3> is fully preserved.'
+    },
+    edit_lace: {
+      outfit: 'an elegant pure white floral hollow-out lace camisole dress with a delicate pearl collarbone necklace',
+      scene: '',
+      prompt: 'The young woman in <Picture 1> is <Subject 1>. The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. The background in <Picture 1> is <Subject 3>. The target image shows <Subject 1> wearing an elegant pure white floral lace camisole dress and a delicate pearl necklace in <Subject 3>. <Subject 1> is partially preserved; her exact East Asian facial features, face shape, smooth fair skin, and hairstyle remain completely unchanged, while <Subject 2> is replaced by a white floral hollow-out lace camisole dress with soft translucent lace straps. <Subject 3> is fully preserved.'
+    },
+    edit_ol: {
+      outfit: 'a sleek fitted black velvet off-shoulder evening gown with a sparkling diamond choker necklace',
+      scene: '',
+      prompt: 'The young woman in <Picture 1> is <Subject 1>. The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. The background in <Picture 1> is <Subject 3>. The target image shows <Subject 1> wearing a sleek fitted black velvet off-shoulder evening gown and a diamond choker in <Subject 3>. <Subject 1> is partially preserved; her exact East Asian facial features, face shape, smooth fair skin, and hairstyle remain completely unchanged, while <Subject 2> is replaced by a tailored black velvet off-shoulder evening dress and a diamond choker. <Subject 3> is fully preserved.'
+    },
+    t2i_courtyard: {
+      res: '3552x4736',
+      prompt: 'A high-resolution, real-life portrait photograph of an elegant 20-year-old Chinese young woman with a classic East Asian oval face, smooth fair skin, expressive dark brown almond eyes, and a serene, natural expression, standing beneath the carved wooden eaves of a traditional Suzhou courtyard at dusk. Her long, sleek black hair is styled in a graceful half-up bun secured with a carved white jade hairpin. She wears a pale moonlight-white silk Chinese stand-collar jacket with subtle woven floral patterns and holds a warm glowing bamboo paper lantern near her chest. Behind her, soft out-of-focus red lanterns and grey tiled roofs glow warmly in the evening twilight, captured on a Canon EOS R5 with an 85mm f/1.4 lens, clean natural lighting, and shallow depth of field.'
+    },
+    t2i_boudoir: {
+      res: '3360x5024',
+      prompt: 'A high-resolution, real-life portrait photograph of a graceful 21-year-old Chinese young woman with a delicate East Asian face, smooth fair skin, soft expressive eyes, and wavy dark hair resting over her shoulder, seated in a sunlit room beside wooden Venetian blinds in late afternoon. She wears a burgundy pure silk slip robe trimmed with fine black Chantilly lace that drapes naturally across her collarbone. Warm golden sunlight filters through the blinds, casting soft natural stripes of light and warm diffuse reflections across her smooth skin and silk fabric, captured on a Hasselblad X2D 100C with a 90mm f/2.5 lens, clean natural lighting, shallow depth of field.'
+    },
+    t2i_white_lace: {
+      res: '3552x4736',
+      prompt: 'A high-resolution, real-life close-up portrait photograph of a sweet 20-year-old East Asian young woman with a soft oval face, smooth fair porcelain skin, bright clear dark eyes, and a gentle smile, with shoulder-length layered black hair, wearing a pure white floral lace camisole top with delicate straps in front of a softly lit studio backdrop. Clean natural window lighting illuminates her face and collarbone with soft, natural optical depth, captured on a Canon EOS R5 with an 85mm f/1.4 lens.'
+    },
+    t2i_chongqing: {
+      res: '5472x3072',
+      prompt: 'A high-resolution, real-life documentary street photograph taken at Chongqing Hongyadong at night in light rain, captured on a Sony A7R V with a 35mm f/1.4 lens. In the foreground, a beautiful young Chinese woman with smooth fair skin and long dark hair holds a clear transparent umbrella, looking back over her shoulder with a gentle smile. Behind her, traditional wooden stilt buildings glow with warm lanterns and crisp Chinese neon signs reading "重庆老火锅", "洪崖洞码头", and a street stall sign reading "正宗重庆小面 24H" with steaming bowls and warm reflections on the wet stone pavement.'
+    },
+  };
+  const t = templates[tplKey];
+  if (!t) return;
+  if (outEl) outEl.value = t.outfit || '';
+  if (scEl) scEl.value = t.scene || '';
+  if (t.res && resEl) resEl.value = t.res;
+  if (pEl && t.prompt) pEl.value = t.prompt;
 }
 
 function getCombinedAvatarTtsSpec() {
@@ -4539,22 +4752,25 @@ function renderLocalHistoryList() {
   }
   hBox.innerHTML = localHistoryItems.map((it, idx) => {
     const active = it.name === currentSelectedVideoName;
+    const isImgFile = /\.(png|jpe?g|webp)$/i.test(it.name);
     const isSr = it.name.includes('_ReCaVSR_');
     const rowBg = active ? 'rgba(59,130,246,0.20)' : 'transparent';
     const rowBorder = active ? '1px solid rgba(59,130,246,0.5)' : '1px solid transparent';
-    const iconColor = active ? '#60a5fa' : (isSr ? '#a78bfa' : '#94a3b8');
+    const iconColor = active ? '#60a5fa' : (isImgFile ? '#f472b6' : (isSr ? '#a78bfa' : '#94a3b8'));
     const badgeBg = active ? 'rgba(59,130,246,0.28)' : '#1e293b';
     const badgeColor = active ? '#60a5fa' : '#94a3b8';
     const shortBadge = it.elapsed_short
       ? `<span style="background:${badgeBg};color:${badgeColor};padding:2px 7px;border-radius:999px;font-size:11px;font-weight:700;flex-shrink:0;">${escapeHtml(it.elapsed_short)}</span>`
       : '';
-    const srAction = isSr
-      ? `<span style="background:rgba(139,92,246,0.22);color:#c4b5fd;border:1px solid rgba(139,92,246,0.45);padding:1px 6px;border-radius:6px;font-size:10.5px;font-weight:800;flex-shrink:0;">✨超清</span>`
-      : `<button type="button" title="使用 ReCaVSR 将该视频超分至 2K 超清" onclick="event.stopPropagation();upscaleVideoByName('${escapeHtml(it.name)}')" style="background:rgba(139,92,246,0.16);color:#c4b5fd;border:1px solid rgba(139,92,246,0.42);padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;flex-shrink:0;">✨2K</button>`;
+    const srAction = isImgFile
+      ? `<button type="button" title="一键将该照片送入 LongCat 数字人开口说话" onclick="event.stopPropagation();selectLocalHistoryItem(${idx});sendCurrentImageToAvatar()" style="background:rgba(16,185,129,0.18);color:#6ee7b7;border:1px solid rgba(16,185,129,0.45);padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;flex-shrink:0;">🎭数字人</button>`
+      : (isSr
+        ? `<span style="background:rgba(139,92,246,0.22);color:#c4b5fd;border:1px solid rgba(139,92,246,0.45);padding:1px 6px;border-radius:6px;font-size:10.5px;font-weight:800;flex-shrink:0;">✨超清</span>`
+        : `<button type="button" title="使用 ReCaVSR 将该视频超分至 2K 超清" onclick="event.stopPropagation();upscaleVideoByName('${escapeHtml(it.name)}')" style="background:rgba(139,92,246,0.16);color:#c4b5fd;border:1px solid rgba(139,92,246,0.42);padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;flex-shrink:0;">✨2K</button>`);
     return `
       <div onclick="selectLocalHistoryItem(${idx})" style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:9px 10px;border-radius:10px;background:${rowBg};border:${rowBorder};cursor:pointer;transition:all 0.12s;">
         <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-          <span style="color:${iconColor};font-size:14px;flex-shrink:0;">🎞️</span>
+          <span style="color:${iconColor};font-size:14px;flex-shrink:0;">${isImgFile ? '🖼️' : '🎞️'}</span>
           <div style="min-width:0;">
             <div style="font-size:12.5px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}">${escapeHtml(it.short_name || it.name)}</div>
             <div style="font-size:11px;color:#94a3b8;margin-top:2px;">${escapeHtml(it.date_str || '')}</div>
@@ -4568,13 +4784,106 @@ function renderLocalHistoryList() {
   }).join('');
 }
 
+function _updatePreviewMediaMode(fname, url) {
+  const isImg = /\.(png|jpe?g|webp)$/i.test(fname || '');
+  const player = document.getElementById('mmVideoPlayer');
+  const imgPrev = document.getElementById('mmImagePreview');
+  const imgBtns = document.getElementById('imageActionBtns');
+  const srWrap = document.getElementById('videoUpscaleActionWrap');
+  const btnCont = document.getElementById('btnContinueLastFrame');
+  const btnRep = document.getElementById('btnReplayVideo');
+  if (isImg) {
+    if (player) { player.pause(); player.style.display = 'none'; }
+    if (imgPrev) { imgPrev.src = url; imgPrev.style.display = 'block'; }
+    if (imgBtns) imgBtns.style.display = 'inline-flex';
+    if (srWrap) srWrap.style.display = 'none';
+    if (btnCont) btnCont.style.display = 'none';
+    if (btnRep) btnRep.style.display = 'none';
+  } else {
+    if (imgPrev) { imgPrev.style.display = 'none'; }
+    if (player) {
+      player.style.display = 'block';
+      if (player.getAttribute('data-fname') !== fname) {
+        player.src = url;
+        player.setAttribute('data-fname', fname);
+      }
+    }
+    if (imgBtns) imgBtns.style.display = 'none';
+    if (srWrap) srWrap.style.display = 'inline-flex';
+    if (btnCont) btnCont.style.display = 'inline-flex';
+    if (btnRep) btnRep.style.display = 'inline-flex';
+  }
+}
+
+async function _fetchCurrentSelectedImageAsDataUrl() {
+  if (!currentSelectedVideoName) return '';
+  const url = `/api/local_video_file?name=${encodeURIComponent(currentSelectedVideoName)}`;
+  const r = await fetch(url);
+  const blob = await r.blob();
+  return await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result || '');
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function sendCurrentImageToAvatar() {
+  try {
+    const dataUrl = await _fetchCurrentSelectedImageAsDataUrl();
+    if (!dataUrl) {
+      alert('请先在本地历史中选择一张已生成的图片');
+      return;
+    }
+    firstFrameB64 = dataUrl;
+    avatarUseBuiltinSample = false;
+    const avImg = document.getElementById('avatarImagePreview');
+    const hintEl = document.getElementById('avatarImageHint');
+    if (avImg) {
+      avImg.src = dataUrl;
+      avImg.style.display = 'block';
+    }
+    if (hintEl) {
+      hintEl.innerText = `✅ 已载入刚生成的 4K 写真「${currentSelectedVideoName}」作为数字人参考照片！在左侧黄色框输入台词即可驱动她开口说话！`;
+    }
+    switchMiniMaxMode('avatar');
+    const avRow = document.getElementById('avatarControlRow');
+    if (avRow) avRow.scrollIntoView({behavior: 'smooth', block: 'center'});
+  } catch (e) {
+    alert('载入数字人参考照片失败: ' + e);
+  }
+}
+
+async function sendCurrentImageToH3Edit() {
+  try {
+    const dataUrl = await _fetchCurrentSelectedImageAsDataUrl();
+    if (!dataUrl) {
+      alert('请先在本地历史中选择一张已生成的图片');
+      return;
+    }
+    h3ImgRefList[0] = dataUrl;
+    const prevEl = document.getElementById('h3ImgRef1Preview');
+    const stEl = document.getElementById('h3ImgRefStatus');
+    if (prevEl) {
+      prevEl.src = dataUrl;
+      prevEl.style.display = 'block';
+    }
+    if (stEl) {
+      stEl.innerText = `👗 已将「${currentSelectedVideoName}」设为 <Picture 1> 主人物底图！在右侧填写新衣服或选择锁脸换装模板即可一键换装！`;
+    }
+    switchMiniMaxMode('image');
+    const imgRow = document.getElementById('h3ImageControlRow');
+    if (imgRow) imgRow.scrollIntoView({behavior: 'smooth', block: 'center'});
+  } catch (e) {
+    alert('设为 <Picture 1> 失败: ' + e);
+  }
+}
+
 function selectLocalHistoryItem(idx) {
   const it = localHistoryItems[idx];
   if (!it) return;
   currentSelectedVideoName = it.name;
   renderLocalHistoryList();
   const url = `/api/local_video_file?name=${encodeURIComponent(it.name)}`;
-  const player = document.getElementById('mmVideoPlayer');
   const dl = document.getElementById('mmVideoDownload');
   const emptyEl = document.getElementById('videoEmptyPlaceholder');
   const rWrap = document.getElementById('videoResultWrap');
@@ -4582,10 +4891,7 @@ function selectLocalHistoryItem(idx) {
   const botBadge = document.getElementById('previewBottomShortBadge');
   if (emptyEl) emptyEl.style.display = 'none';
   if (rWrap) rWrap.style.display = 'block';
-  if (player.getAttribute('data-fname') !== it.name) {
-    player.src = url;
-    player.setAttribute('data-fname', it.name);
-  }
+  _updatePreviewMediaMode(it.name, url);
   dl.href = url;
   dl.download = it.name;
   dl.style.display = 'inline-flex';
@@ -4640,14 +4946,12 @@ function playHistoryVideo(fname) {
   }
   currentSelectedVideoName = fname;
   const url = `http://127.0.0.1:30000/v1/video/file/${encodeURIComponent(fname)}`;
-  const player = document.getElementById('mmVideoPlayer');
   const dl = document.getElementById('mmVideoDownload');
   const emptyEl = document.getElementById('videoEmptyPlaceholder');
   const rWrap = document.getElementById('videoResultWrap');
   if (emptyEl) emptyEl.style.display = 'none';
   if (rWrap) rWrap.style.display = 'block';
-  player.src = url;
-  player.setAttribute('data-fname', fname);
+  _updatePreviewMediaMode(fname, url);
   dl.href = url;
   dl.download = fname;
   dl.style.display = 'inline-flex';
@@ -4717,13 +5021,15 @@ function setVideoBtnRunningState(running, customLabel) {
     btn.setAttribute('data-running', '1');
     btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
     btn.style.boxShadow = '0 6px 16px -4px rgba(239,68,68,0.55)';
-    btn.innerText = customLabel || '🛑 正在合成有声视频... (点击停止)';
+    btn.innerText = customLabel || '🛑 正在合成中... (点击停止)';
     setStopButtonsVisible(true);
   } else {
     btn.setAttribute('data-running', '0');
     btn.style.background = '';
     btn.style.boxShadow = '0 6px 16px -4px rgba(59,130,246,0.5)';
-    btn.innerText = currentMiniMaxMode === 'avatar' ? '🎬 开始生成数字人视频' : '🎬 开始生成音视频';
+    btn.innerText = currentMiniMaxMode === 'avatar'
+      ? '🎬 开始生成数字人视频'
+      : (currentMiniMaxMode === 'image' ? '📸 开始生成 4K 写真 / 换装大图' : '🎬 开始生成音视频');
     if (!upscalePollTimer) setStopButtonsVisible(false);
   }
 }
@@ -4753,10 +5059,10 @@ async function stopActiveVideoTask(targetMode = 'auto') {
   const dState = document.getElementById('deployStateText');
   const endpoint = isUpscaling ? '/api/video_upscale_cancel' : '/api/video_cancel';
   if (st) {
-    st.innerText = isUpscaling ? '🛑 正在停止 ReCaVSR 超分任务...' : '🛑 正在停止有声视频生成任务...';
+    st.innerText = isUpscaling ? '🛑 正在停止 ReCaVSR 超分任务...' : '🛑 正在停止当前生成任务...';
     st.style.color = '#f59e0b';
   }
-  if (tLabel) tLabel.innerText = isUpscaling ? '🛑 正在安全中断 ReCaVSR 超分任务...' : '🛑 正在安全中断有声视频采样 (保留 134GB 模型显存常驻)...';
+  if (tLabel) tLabel.innerText = isUpscaling ? '🛑 正在安全中断 ReCaVSR 超分任务...' : '🛑 正在安全中断当前生成任务 (保留模型显存常驻)...';
   try {
     const r = await fetch(endpoint, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
     const d = await r.json();
@@ -4792,11 +5098,12 @@ async function startVideoGenerate() {
     autoSplitAvatarPromptAndTts(document.getElementById('videoPrompt'));
   }
   const prompt = document.getElementById('videoPrompt').value.trim();
-  if (!prompt) {
-    alert('请输入有声视频画面提示词');
+  const isImgMode = currentMiniMaxMode === 'image';
+  if (!prompt && !isImgMode) {
+    alert('请输入画面提示词');
     return;
   }
-  const resVal = document.getElementById('videoRes').value || '832x480';
+  const resVal = document.getElementById('videoRes').value || (isImgMode ? '3552x4736' : '832x480');
   const [wStr, hStr] = resVal.split('x');
   const randSeed = document.getElementById('videoRandSeed').checked;
   const seedVal = randSeed ? -1 : (parseInt(document.getElementById('videoSeed').value || '42', 10) || 42);
@@ -4809,15 +5116,22 @@ async function startVideoGenerate() {
     width: parseInt(wStr, 10) || 832,
     height: parseInt(hStr, 10) || 480,
     num_frames: parseInt(document.getElementById('videoFrames').value || '124', 10),
-    steps: parseInt(document.getElementById('videoSteps').value || '30', 10),
+    steps: isImgMode ? 6 : parseInt(document.getElementById('videoSteps').value || '30', 10),
     fps: parseInt(document.getElementById('videoFps').value || '24', 10),
     seed: seedVal,
     randomize_seed: randSeed,
-    batch_count: selectedBatchCount,
+    batch_count: isImgMode ? 1 : selectedBatchCount,
   };
   if (currentMiniMaxMode === 'fl2va' && firstFrameB64) {
     payload.first_frame_b64 = firstFrameB64;
     if (lastFrameB64) payload.last_frame_b64 = lastFrameB64;
+  } else if (currentMiniMaxMode === 'image') {
+    payload.mode = 'image';
+    payload.ref_images_b64 = h3ImgRefList.filter(Boolean);
+    payload.edit_outfit = ((document.getElementById('inpH3EditOutfit') || {}).value || '').trim();
+    payload.edit_scene = ((document.getElementById('inpH3EditScene') || {}).value || '').trim();
+    const chkClean = document.getElementById('chkCleanMatteWords');
+    payload.clean_matte = chkClean ? Boolean(chkClean.checked) : true;
   } else if (currentMiniMaxMode === 'avatar') {
     payload.mode = 'avatar';
     payload.audio_b64 = avatarAudioB64;
@@ -4833,12 +5147,17 @@ async function startVideoGenerate() {
   const pWrap = document.getElementById('videoProgressWrap');
   const pBar = document.getElementById('videoProgressBar');
   const isAvMode = currentMiniMaxMode === 'avatar';
-  setVideoBtnRunningState(true, isAvMode ? '🛑 正在生成数字人视频... (点击停止)' : (selectedBatchCount > 1 ? `🛑 正在连抽 ${selectedBatchCount} 条... (点击停止)` : '🛑 正在合成有声视频... (点击停止)'));
+  const runningBtnText = isImgMode
+    ? '🛑 正在生成 4K 写真大图... (点击停止)'
+    : (isAvMode ? '🛑 正在生成数字人视频... (点击停止)' : (selectedBatchCount > 1 ? `🛑 正在连抽 ${selectedBatchCount} 条... (点击停止)` : '🛑 正在合成有声视频... (点击停止)'));
+  setVideoBtnRunningState(true, runningBtnText);
   pWrap.style.display = 'block';
   pBar.style.width = '8%';
-  st.innerText = isAvMode
-    ? '⏳ 已提交至 LongCat-Video-Avatar-1.6 引擎，正在分离人声并提取 Whisper-v3 唇形特征...'
-    : `⏳ 已提交至 MiniMax-H3 引擎 (连抽 ${selectedBatchCount} 条)，正在调用多模态编码器...`;
+  st.innerText = isImgMode
+    ? '⏳ 已提交至 MiniMax-H3-Image (33B · Heretic无审查) 引擎，正在进行 6 步极速扩散采样...'
+    : (isAvMode
+      ? '⏳ 已提交至 LongCat-Video-Avatar-1.6 引擎，正在分离人声并提取 Whisper-v3 唇形特征...'
+      : `⏳ 已提交至 MiniMax-H3 引擎 (连抽 ${selectedBatchCount} 条)，正在调用多模态编码器...`);
   st.style.color = '#f59e0b';
   try {
     const r = await fetch('/api/video_generate', {
@@ -4862,7 +5181,9 @@ async function startVideoGenerate() {
       return;
     }
     if (d.auto_switching) {
-      if (isAvMode) {
+      if (isImgMode) {
+        selectPresetModel('preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors');
+      } else if (isAvMode) {
         if (currentPresetTier === 't4') {
           selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors');
         } else {
@@ -4995,7 +5316,8 @@ async function pollVideoStatus() {
       }
       await loadLocalVideoHistory(true);
       const autoSrChk = document.getElementById('autoUpscale2kChk');
-      if (autoSrChk && autoSrChk.checked && d.latest_video && !d.latest_video.includes('_ReCaVSR_') && lastAutoUpscaledVideo !== d.latest_video) {
+      const isMp4Video = d.latest_video && /\.mp4$/i.test(d.latest_video);
+      if (autoSrChk && autoSrChk.checked && isMp4Video && !d.latest_video.includes('_ReCaVSR_') && lastAutoUpscaledVideo !== d.latest_video) {
         lastAutoUpscaledVideo = d.latest_video;
         const presetVal = (document.getElementById('upscalePresetSelect') || {}).value || '2k';
         upscaleVideoByName(d.latest_video, presetVal);
@@ -5334,6 +5656,11 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             fsize = fpath.stat().st_size
+            ext_low = fpath.suffix.lower()
+            mime_type = (
+                "image/png" if ext_low == ".png"
+                else ("image/jpeg" if ext_low in (".jpg", ".jpeg") else ("image/webp" if ext_low == ".webp" else "video/mp4"))
+            )
             range_hdr = self.headers.get("Range")
             if range_hdr and range_hdr.startswith("bytes="):
                 try:
@@ -5346,7 +5673,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                         f.seek(start)
                         chunk = f.read(length)
                     self.send_response(206)
-                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Content-Type", mime_type)
                     self.send_header("Accept-Ranges", "bytes")
                     self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
                     self.send_header("Content-Length", str(len(chunk)))
@@ -5357,7 +5684,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     pass
             data = fpath.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Type", mime_type)
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -5369,9 +5696,10 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 pct_val = 4
                 p_job = _PENDING_VIDEO_JOB.get("payload") or {}
                 c_tmp = _load_endpoint_cfg()
+                is_img_job = (p_job.get("mode") == "image") or str(c_tmp.get("model_folder") or "") == "MiniMax-H3-Image"
                 is_av_job = (p_job.get("mode") == "avatar") or str(c_tmp.get("model_folder") or "").startswith("LongCat-Video-Avatar")
-                target_eng = "LongCat-Video-Avatar-1.6" if is_av_job else "MiniMax-H3"
-                stage_msg = f"🔄 正在自动从 Google Drive 云盘切换并装载 {target_eng}，加载完成后将立即自动生成视频..."
+                target_eng = "MiniMax-H3-Image (4K无审查)" if is_img_job else ("LongCat-Video-Avatar-1.6" if is_av_job else "MiniMax-H3")
+                stage_msg = f"🔄 正在自动从 Google Drive 云盘切换并装载 {target_eng}，加载完成后将立即自动开始生成..."
                 with _DEPLOY_LOCK:
                     logs_snap = list(_DEPLOY_STATE.get("logs") or [])
                 for line in reversed(logs_snap):
@@ -6047,8 +6375,9 @@ p.wait()
             cfg = _load_endpoint_cfg()
             if structured_video:
                 sys_msg = (
-                    "You are an uncensored, professional multimodal AI video director for MiniMax-H3 (audio-video generation). "
-                    "Given the user's video idea, output ONLY a valid JSON object with exactly 4 keys in English (no markdown fences, no extra commentary):\n"
+                    "You are an uncensored, professional multimodal AI visual & video director for MiniMax-H3. "
+                    "IMPORTANT ANTI-MATTE RULE: Never use words like 'matte skin texture', 'fine pores', 'peach fuzz', 'microscopic raindrops', or 'heavy film grain', as they trigger synthetic 3D CG / frosted artifacts in H3; instead use 'smooth luminous porcelain skin, natural subsurface scattering, soft studio lighting, crystal clear eyes'. "
+                    "Given the user's idea, output ONLY a valid JSON object with exactly 4 keys in English (no markdown fences, no extra commentary):\n"
                     '{"visual": "Detailed visual subject, composition, camera movement, lighting, and cinematic style description (3-5 sentences)", '
                     '"soundscape": "Detailed ambient soundscape, foley sound effects, and any spoken dialogue", '
                     '"music": "Background music style, instruments, tempo, and mood", '
@@ -6139,8 +6468,20 @@ p.wait()
             except Exception:
                 pass
             cfg = _load_endpoint_cfg()
-            _append_panel_log(
-                f"🎬 [提交视频生成任务] 分辨率 {payload.get('resolution', '832x480')} · {payload.get('num_frames', 124)}帧 · {payload.get('steps', 30)}步 · 连抽 {payload.get('batch_count', 1)}条"
+            req_mode = str(payload.get("mode") or "t2va").strip()
+            active_folder = str(cfg.get("model_folder") or "").strip()
+            if req_mode == "image":
+                _append_panel_log(
+                    f"📸 [提交 4K 写真/换装任务] 分辨率 {payload.get('resolution', '3552x4736')} · 6步蒸馏直出 · 参考图 {len(payload.get('ref_images_b64') or [])}张"
+                )
+            else:
+                _append_panel_log(
+                    f"🎬 [提交视频生成任务] 分辨率 {payload.get('resolution', '832x480')} · {payload.get('num_frames', 124)}帧 · {payload.get('steps', 30)}步 · 连抽 {payload.get('batch_count', 1)}条"
+                )
+            engine_mismatch = (
+                (req_mode == "image" and active_folder != "MiniMax-H3-Image")
+                or (req_mode == "avatar" and not active_folder.startswith("LongCat-Video-Avatar"))
+                or (req_mode not in ("image", "avatar") and (active_folder == "MiniMax-H3-Image" or not active_folder.startswith("MiniMax-H3")))
             )
             req_data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
@@ -6152,41 +6493,54 @@ p.wait()
                 },
                 method="POST",
             )
-            need_auto_switch = False
-            try:
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    resp_obj = json.loads(resp.read().decode("utf-8"))
-                    if resp_obj.get("ok"):
-                        self._send_json(resp_obj)
-                        return
+            need_auto_switch = bool(engine_mismatch)
+            if not need_auto_switch:
+                try:
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        resp_obj = json.loads(resp.read().decode("utf-8"))
+                        if resp_obj.get("ok"):
+                            self._send_json(resp_obj)
+                            return
+                        need_auto_switch = True
+                except urllib.error.HTTPError as he:
+                    if he.code in (400, 409):
+                        try:
+                            err_obj = json.loads(he.read().decode("utf-8"))
+                            self._send_json(err_obj)
+                            return
+                        except Exception:
+                            pass
                     need_auto_switch = True
-            except urllib.error.HTTPError as he:
-                if he.code in (400, 409):
-                    try:
-                        err_obj = json.loads(he.read().decode("utf-8"))
-                        self._send_json(err_obj)
-                        return
-                    except Exception:
-                        pass
-                need_auto_switch = True
-            except Exception:
-                need_auto_switch = True
+                except Exception:
+                    need_auto_switch = True
 
             if need_auto_switch:
                 _PENDING_VIDEO_JOB["active"] = True
                 _PENDING_VIDEO_JOB["payload"] = payload
                 _PENDING_VIDEO_JOB["error"] = ""
                 _PENDING_VIDEO_JOB["started_at"] = time.time()
-                want_avatar = (payload.get("mode") == "avatar") or str(cfg.get("model_folder") or "").startswith("LongCat-Video-Avatar")
-                if want_avatar:
+                want_image = (req_mode == "image")
+                want_avatar = (req_mode == "avatar") or (not want_image and active_folder.startswith("LongCat-Video-Avatar") and req_mode not in ("t2va", "fl2va"))
+                if want_image:
+                    target_label = "MiniMax-H3-Image (4K无审查黄金铁三角)"
+                elif want_avatar:
                     target_label = "LongCat-Avatar-1.6 (INT8版)" if is_t4_account else "LongCat-Video-Avatar-1.6"
                 else:
                     target_label = "MiniMax-H3 (T4 量化版)" if is_t4_account else "MiniMax-H3"
-                _append_panel_log(f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即生成有声视频...")
+                _append_panel_log(f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即执行任务...")
                 with _DEPLOY_LOCK:
                     already_deploying = bool(_DEPLOY_STATE.get("running"))
                 if not already_deploying:
-                    if want_avatar:
+                    if want_image:
+                        _start_deploy_background(
+                            repo="Comfy-Org/MiniMax-H3-Image",
+                            folder="MiniMax-H3-Image",
+                            pattern="*.safetensors",
+                            ctx=262144,
+                            gpu="G4",
+                            download_only=False,
+                        )
+                    elif want_avatar:
                         _start_deploy_background(
                             repo="meituan-longcat/LongCat-Video-Avatar-1.6",
                             folder="LongCat-Video-Avatar-1.6-INT8" if is_t4_account else "LongCat-Video-Avatar-1.6",

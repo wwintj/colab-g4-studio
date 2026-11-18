@@ -179,11 +179,9 @@ PRESET_SAFETENSORS_FILES: Dict[str, List[str]] = {
             "FL2VA/audio_vae/model.safetensors",
         ]
     ),
-    "Comfy-Org/MiniMax-H3": [
-        "vae/minimax_h3_video_vae_int8_convrot.safetensors",
-        "vae/minimax_h3_audio_vae_fp32.safetensors",
-        "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
-        "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "Comfy-Org/MiniMax-H3-Image": [
+        "diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors",
+        "vae/minimax_h3_image_vae_fp16.safetensors",
     ],
     "unsloth/MiniMax-H3-GGUF": [
         "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf",
@@ -193,24 +191,6 @@ PRESET_SAFETENSORS_FILES: Dict[str, List[str]] = {
     ],
     "Decorator/ReCaVSR": [
         "recavsr_wan2.2_5B.pth",
-    ],
-    "Qwen/Qwen-Image-2.1": [
-        "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
-        "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
-        "text_encoder/model-00001-of-00004.safetensors",
-        "text_encoder/model-00002-of-00004.safetensors",
-        "text_encoder/model-00003-of-00004.safetensors",
-        "text_encoder/model-00004-of-00004.safetensors",
-        "vae/diffusion_pytorch_model.safetensors",
-    ],
-    "Tongyi-MAI/Z-Image-Turbo": [
-        "transformer/diffusion_pytorch_model-00001-of-00003.safetensors",
-        "transformer/diffusion_pytorch_model-00002-of-00003.safetensors",
-        "transformer/diffusion_pytorch_model-00003-of-00003.safetensors",
-        "text_encoder/model-00001-of-00003.safetensors",
-        "text_encoder/model-00002-of-00003.safetensors",
-        "text_encoder/model-00003-of-00003.safetensors",
-        "vae/diffusion_pytorch_model.safetensors",
     ],
     "meituan-longcat/LongCat-Video-Avatar-1.6": [
         *(f"base_model/diffusion_pytorch_model-{i:05d}-of-00006.safetensors" for i in range(1, 7)),
@@ -2375,6 +2355,7 @@ def _warmup_engine_bg():
         print(f"[Warmup Error] {e}", flush=True)
 
 
+@__import__("torch").inference_mode()
 def _run_avatar_job(payload: dict):
     global JOB_STATE
     t0 = time.time()
@@ -2955,6 +2936,556 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
                     log(f"[显存装载] {os.path.basename(target_dir)}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
                     log("✅ LongCat-Video-Avatar-1.6 数字人音频驱动视频服务已启动 (端口 30000)！")
                     __import__("threading").Thread(target=_ensure_recavsr_service_on_30002, daemon=True).start()
+                    return
+        except Exception:
+            pass
+        time.sleep(1)
+
+
+MINIMAX_H3_IMAGE_SERVER_CODE = r'''#!/usr/bin/env python3
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+import base64
+import gc
+import glob
+import io
+import json
+import math
+import random
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+MODEL_DIR = os.environ.get("MINIMAX_IMAGE_MODEL_DIR", "/content/local_models/MiniMax-H3-Image")
+COMFY_DIR = "/content/ComfyUI"
+OUTPUT_DIR = "/content/outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+if COMFY_DIR not in sys.path:
+    sys.path.insert(0, COMFY_DIR)
+
+ENGINE_READY = True
+ENGINE_ERROR = ""
+GPU_LOCK = threading.Lock()
+ENGINE_INIT_LOCK = threading.Lock()
+
+_IMG_ENGINE = {
+    "unet": None,
+    "clip": None,
+    "vae": None,
+}
+
+JOB_STATE = {
+    "running": False,
+    "pct": 0,
+    "step": 0,
+    "total_steps": 6,
+    "message": "就绪：MiniMax-H3-Image (33B · 4K无审查写真 & 免Mask换装引擎) 已待命...",
+    "elapsed_s": 0.0,
+    "latest_video": "",
+    "error": "",
+}
+
+
+def _list_history_files():
+    files = sorted(
+        glob.glob(os.path.join(OUTPUT_DIR, "*.png")) + glob.glob(os.path.join(OUTPUT_DIR, "*.mp4")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    return [os.path.basename(p) for p in files[:16]]
+
+
+def _sanitize_h3_image_prompt(prompt: str, clean_matte: bool = True) -> str:
+    """自动清除会导致 MiniMax-H3-Image 4K 人像出现粗砂纸磨砂感或 3D 假脸的旧时代胶片/微孔毒词"""
+    if not clean_matte or not prompt:
+        return prompt
+    bad_phrases = [
+        r"\bmatte\s+skin\s+texture\b",
+        r"\bfine\s+pores\b",
+        r"\bvisible\s+pores\b",
+        r"\bdelicate\s+peach\s+fuzz\b",
+        r"\bpeach\s+fuzz\b",
+        r"\btiny\s+microscopic\s+raindrops\b",
+        r"\bmicroscopic\s+raindrops\b",
+        r"\b35mm\s+Kodak\s+Portra\s+400\s+film\b",
+        r"\bKodak\s+Portra\s+400\b",
+        r"\bheavy\s+film\s+grain\b",
+        r"\bfilm\s+grain\b",
+    ]
+    cleaned = prompt
+    for pat in bad_phrases:
+        cleaned = re.sub(pat, "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r",\s*,+", ", ", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,")
+    return cleaned or prompt
+
+
+def _build_picture_subject_prompt(prompt: str, num_refs: int, edit_outfit: str = "", edit_scene: str = "", edit_props: str = "") -> str:
+    """
+    若上传了参考图 (<Picture 1>...) 且用户填写了换装/换景槽位或未手写 <Subject 1> 语法，
+    自动按照 MiniMax-H3-Image-PE 三段式 Picture + Subject 主语绑定语法生成免涂 Mask 锁脸指令
+    """
+    raw = (prompt or "").strip()
+    outfit = (edit_outfit or "").strip()
+    scene = (edit_scene or "").strip()
+    props = (edit_props or "").strip()
+
+    if num_refs <= 0:
+        return raw or (
+            "A high-resolution, real-life portrait photograph of an elegant 20-year-old Chinese young woman with a classic East Asian oval face, "
+            "smooth fair skin, expressive dark brown almond eyes, and a serene, natural expression, captured on a Canon EOS R5 with an 85mm f/1.4 lens, "
+            "clean natural lighting, and shallow depth of field."
+        )
+
+    # 若用户自己已经写了完整的 <Subject 1> 语法，直接原样使用
+    if "<subject 1>" in raw.lower() and "<picture 1>" in raw.lower():
+        return raw
+
+    if outfit or scene or props:
+        tgt_outfit = outfit or "an elegant, tailored silk outfit with refined details"
+        tgt_props = f" while holding {props}" if props else ""
+        if num_refs >= 2 and not outfit:
+            # 多图融合模式：<Picture 1> 人物 + <Picture 2> 服饰/物品 + (<Picture 3> 场景)
+            if num_refs >= 3:
+                return (
+                    "The person in <Picture 1> is <Subject 1>. "
+                    "The featured item or outfit in <Picture 2> is <Subject 2>. "
+                    "The environment and background in <Picture 3> is <Subject 3>. "
+                    f"The target image shows <Subject 1> with <Subject 2> integrated naturally inside <Subject 3>. {raw} "
+                    "<Subject 1> is partially preserved; exact East Asian facial features, face shape, smooth fair skin, eye spacing, and hairstyle remain completely unchanged, "
+                    "while lighting and pose naturally adapt to <Subject 3>. "
+                    "<Subject 2> is fully preserved. <Subject 3> is fully preserved."
+                ).strip()
+            return (
+                "The person in <Picture 1> is <Subject 1>. "
+                "The background environment in <Picture 1> is <Subject 3>. "
+                "The featured outfit or object in <Picture 2> is <Subject 2>. "
+                f"The target image shows <Subject 1> wearing or holding <Subject 2> in <Subject 3>. {raw} "
+                "<Subject 1> is partially preserved; exact East Asian facial features, face shape, smooth fair skin, eye spacing, and hairstyle remain completely unchanged. "
+                "<Subject 2> is fully preserved. <Subject 3> is fully preserved."
+            ).strip()
+
+        if scene:
+            return (
+                "The person in <Picture 1> is <Subject 1>. "
+                "The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. "
+                f"The target image shows <Subject 1> wearing {tgt_outfit}{tgt_props} in {scene}, captured as a high-resolution real-life portrait photograph with clean natural lighting. "
+                "<Subject 1> is partially preserved; her exact East Asian facial features, oval face shape, smooth fair skin, serene gaze, and hairstyle remain completely unchanged, "
+                f"while <Subject 2> is replaced by {tgt_outfit}{tgt_props}, and the surrounding environment is {scene}."
+            ).strip()
+        return (
+            "The person in <Picture 1> is <Subject 1>. "
+            "The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. "
+            "The background and lighting environment in <Picture 1> is <Subject 3>. "
+            f"The target image shows <Subject 1> wearing {tgt_outfit}{tgt_props} in <Subject 3>. "
+            "<Subject 1> is partially preserved; her exact East Asian facial features, oval face shape, smooth fair skin, serene gaze, and hairstyle remain completely unchanged, "
+            f"while <Subject 2> is replaced by {tgt_outfit}{tgt_props}. "
+            "<Subject 3> is fully preserved."
+        ).strip()
+
+    # 若用户只传了 <Picture 1> 并在主提示词框里写了自然语言改图指令，自动包裹为标准三段式锁脸语法
+    if raw:
+        return (
+            "The person in <Picture 1> is <Subject 1>. "
+            "The original clothing worn by <Subject 1> in <Picture 1> is <Subject 2>. "
+            "The background environment in <Picture 1> is <Subject 3>. "
+            f"The target image shows <Subject 1> in <Subject 3> with the following modification: {raw}. "
+            "<Subject 1> is partially preserved; exact facial features, face shape, smooth fair skin, and identity remain completely unchanged, "
+            f"while <Subject 2> is updated according to: {raw}. "
+            "<Subject 3> is fully preserved."
+        )
+
+    return "Edit <Picture 1>. Keep the exact facial features and identity of the person in <Picture 1> unchanged."
+
+
+def _ensure_minimax_image_engine(update_job_state: bool = True):
+    with ENGINE_INIT_LOCK:
+        if _IMG_ENGINE["unet"] is not None and _IMG_ENGINE["clip"] is not None and _IMG_ENGINE["vae"] is not None:
+            return _IMG_ENGINE["unet"], _IMG_ENGINE["clip"], _IMG_ENGINE["vae"]
+
+        import torch
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+
+        if update_job_state:
+            JOB_STATE.update({
+                "pct": 5,
+                "message": "🚀 [MiniMax-H3-Image] 正在将 33B INT8 主干 + Heretic 32B 无审查编码器 + 2D VAE 装载至 GPU 显存...",
+            })
+
+        # 将 MODEL_DIR 中的黄金三件套软链至 /content/ComfyUI/models 对应子目录
+        unet_fn = "minimax_h3_image_pruned_int8_convrot.safetensors"
+        clip_fn = "qwen3vl_32b_minimax_h3_ultra_uncensored_heretic_int8_convrot.safetensors"
+        vae_fn = "minimax_h3_image_vae_fp16.safetensors"
+
+        for sub, fn in [
+            ("diffusion_models", unet_fn),
+            ("text_encoders", clip_fn),
+            ("vae", vae_fn),
+        ]:
+            src_p = os.path.join(MODEL_DIR, sub, fn)
+            if not os.path.isfile(src_p):
+                alt_p = os.path.join(MODEL_DIR, fn)
+                if os.path.isfile(alt_p):
+                    src_p = alt_p
+            dst_dir = os.path.join(COMFY_DIR, "models", sub)
+            os.makedirs(dst_dir, exist_ok=True)
+            dst_p = os.path.join(dst_dir, fn)
+            if os.path.isfile(src_p) and not os.path.exists(dst_p):
+                try:
+                    os.symlink(src_p, dst_p)
+                except Exception:
+                    shutil.copy2(src_p, dst_p)
+
+        import comfy.utils
+        import nodes
+
+        def _progress_hook(value, total, preview_image=None, node_id=None):
+            if os.path.exists("/content/.cancel_minimax"):
+                try:
+                    os.unlink("/content/.cancel_minimax")
+                except Exception:
+                    pass
+                raise RuntimeError("🛑 已手动停止 MiniMax-H3-Image 生图任务")
+            if JOB_STATE.get("running") and total and total <= 20:
+                cur_s = max(0, min(int(total), int(value)))
+                tot_s = max(1, int(total))
+                ov_pct = min(94, max(12, 12 + int(round((cur_s / float(tot_s)) * 80))))
+                JOB_STATE["step"] = cur_s
+                JOB_STATE["total_steps"] = tot_s
+                JOB_STATE["pct"] = ov_pct
+                JOB_STATE["message"] = f"📸 [MiniMax-H3-Image] 正在 6 步极速扩散采样: 第 {cur_s}/{tot_s} 步 (总进度 {ov_pct}%)"
+
+        comfy.utils.set_progress_bar_global_hook(_progress_hook)
+
+        with torch.inference_mode():
+            unet = nodes.UNETLoader().load_unet(unet_fn, "default")[0]
+            clip = nodes.CLIPLoader().load_clip(clip_fn, "minimax", "default")[0]
+            vae = nodes.VAELoader().load_vae(vae_fn)[0]
+
+        _IMG_ENGINE["unet"] = unet
+        _IMG_ENGINE["clip"] = clip
+        _IMG_ENGINE["vae"] = vae
+        return unet, clip, vae
+
+
+def _warmup_image_engine_bg():
+    try:
+        with GPU_LOCK:
+            _ensure_minimax_image_engine(update_job_state=False)
+            if not JOB_STATE.get("running"):
+                JOB_STATE["message"] = "⚡ 就绪：MiniMax-H3-Image (33B · Heretic无审查 + 1680万像素4K直出 + 免Mask换装) 已常驻显存"
+    except Exception as e:
+        print(f"[MiniMax-H3-Image Warmup Error] {e}", flush=True)
+
+
+@__import__("torch").inference_mode()
+def _run_image_job(payload: dict):
+    global JOB_STATE
+    t0 = time.time()
+    try:
+        import numpy as np
+        import PIL.Image
+        import torch
+        import nodes
+        from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageConditioning
+
+        raw_prompt = str(payload.get("prompt") or "").strip()
+        clean_matte = bool(payload.get("clean_matte", True))
+        edit_outfit = str(payload.get("edit_outfit") or "").strip()
+        edit_scene = str(payload.get("edit_scene") or "").strip()
+        edit_props = str(payload.get("edit_props") or "").strip()
+        res_str = str(payload.get("resolution") or "3552x4736").strip().lower()
+        steps = max(4, min(12, int(payload.get("steps") or 6)))
+        base_seed = int(payload.get("seed") if payload.get("seed") is not None else -1)
+        rand_seed = bool(payload.get("randomize_seed")) or (base_seed < 0)
+        cur_seed = random.randint(1, 2**31 - 1) if rand_seed else base_seed
+
+        try:
+            w_s, h_s = res_str.split("x", 1)
+            width = max(512, min(6272, (int(w_s) // 32) * 32))
+            height = max(512, min(6272, (int(h_s) // 32) * 32))
+        except Exception:
+            width, height = 3552, 4736
+
+        ref_b64_list = payload.get("ref_images_b64") or []
+        if not ref_b64_list and payload.get("first_frame_b64"):
+            ref_b64_list = [payload["first_frame_b64"]]
+        ref_b64_list = [str(x).strip() for x in ref_b64_list if str(x).strip()]
+
+        final_prompt = _build_picture_subject_prompt(
+            raw_prompt,
+            num_refs=len(ref_b64_list),
+            edit_outfit=edit_outfit,
+            edit_scene=edit_scene,
+            edit_props=edit_props,
+        )
+        final_prompt = _sanitize_h3_image_prompt(final_prompt, clean_matte=clean_matte)
+
+        mode_tag = f"免Mask锁脸改图 ({len(ref_b64_list)}张参考图)" if ref_b64_list else "原生直出"
+        mp_val = round((width * height) / 1_000_000.0, 1)
+
+        JOB_STATE.update({
+            "running": True,
+            "pct": 6,
+            "step": 0,
+            "total_steps": steps,
+            "seed": cur_seed,
+            "final_prompt": final_prompt,
+            "message": f"📸 [MiniMax-H3-Image] 正在准备 Heretic 32B 无审查编码器 ({width}×{height} · {mp_val}MP · {mode_tag})...",
+            "error": "",
+        })
+
+        with GPU_LOCK:
+            unet, clip, vae = _ensure_minimax_image_engine(update_job_state=True)
+
+            ref_images_dict = {}
+            for idx, b64_str in enumerate(ref_b64_list[:4], start=1):
+                raw_b = b64_str.split(",", 1)[-1]
+                pil_im = PIL.Image.open(io.BytesIO(base64.b64decode(raw_b))).convert("RGB")
+                arr = np.asarray(pil_im, dtype=np.float32) / 255.0
+                t_im = torch.from_numpy(arr).unsqueeze(0)
+                ref_images_dict[f"image_{idx}"] = t_im
+
+            JOB_STATE.update({
+                "pct": 10,
+                "message": f"📸 [MiniMax-H3-Image] 正在使用 Heretic 32B 编码指令与参考图特征 ({width}×{height})...",
+            })
+
+            cond_out = MiniMaxH3ImageConditioning.execute(
+                clip=clip,
+                prompt=final_prompt,
+                width=width,
+                height=height,
+                vae=vae,
+                images=ref_images_dict if ref_images_dict else None,
+            )
+            positive = cond_out[0]
+            latent = cond_out[1]
+            negative = nodes.ConditioningZeroOut().zero_out(positive)[0]
+
+            sampled = nodes.KSampler().sample(
+                model=unet,
+                seed=cur_seed,
+                steps=steps,
+                cfg=1.0,
+                sampler_name="euler",
+                scheduler="simple",
+                positive=positive,
+                negative=negative,
+                latent_image=latent,
+                denoise=1.0,
+            )[0]
+
+            JOB_STATE.update({
+                "pct": 95,
+                "message": f"🖼️ [MiniMax-H3-Image] 正在通过 24 层 2D ViT VAE 解码 {width}×{height} ({mp_val}MP) 原生超清大图...",
+            })
+            decoded = nodes.VAEDecode().decode(vae, sampled)[0]
+            img_np = (decoded[0].detach().cpu().numpy().clip(0.0, 1.0) * 255.0).astype(np.uint8)
+            pil_out = PIL.Image.fromarray(img_np)
+
+            dt = round(time.time() - t0, 1)
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            kind = "edit" if ref_images_dict else "t2i"
+            fname = f"minimax_h3_image_{kind}_{width}x{height}_{ts}_dur{max(1, int(round(dt)))}s_seed{cur_seed}.png"
+            out_path = os.path.join(OUTPUT_DIR, fname)
+            pil_out.save(out_path, format="PNG", compress_level=3)
+
+            del decoded, sampled, latent, positive, negative, ref_images_dict
+            gc.collect()
+            torch.cuda.empty_cache()
+
+            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+            if os.path.exists(rc_conf) and shutil.which("rclone"):
+                subprocess.Popen(
+                    ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+        dt = round(time.time() - t0, 1)
+        JOB_STATE.update({
+            "running": False,
+            "pct": 100,
+            "step": steps,
+            "total_steps": steps,
+            "seed": cur_seed,
+            "elapsed_s": dt,
+            "latest_video": fname,
+            "completed_videos": [fname],
+            "final_prompt": final_prompt,
+            "message": f"✅ [MiniMax-H3-Image] {width}×{height} ({mp_val}MP · {mode_tag}) 超清大图生成完成！耗时 {dt}s (Seed: {cur_seed})",
+        })
+    except Exception as e:
+        JOB_STATE.update({
+            "running": False,
+            "error": str(e),
+            "message": f"❌ MiniMax-H3-Image 生成出错: {e}",
+        })
+
+
+class _MiniMaxImageHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _send_json(self, data: dict, status: int = 200):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.startswith("/health"):
+            self._send_json({"status": "ok", "engine": "minimax-h3-image"})
+            return
+        if self.path.startswith("/v1/models") or self.path.startswith("/models"):
+            self._send_json({
+                "object": "list",
+                "data": [{"id": "Comfy-Org/MiniMax-H3-Image", "object": "model", "owned_by": "MiniMaxAI"}],
+            })
+            return
+        if self.path.startswith("/v1/video/status"):
+            st = dict(JOB_STATE)
+            st["engine_ready"] = ENGINE_READY
+            st["history"] = _list_history_files()
+            self._send_json(st)
+            return
+        if self.path.startswith("/v1/video/file/"):
+            fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
+            fpath = os.path.join(OUTPUT_DIR, fname)
+            if not os.path.isfile(fpath):
+                self._send_json({"error": "File not found"}, status=404)
+                return
+            fsize = os.path.getsize(fpath)
+            ctype = "image/png" if fname.lower().endswith(".png") else ("image/jpeg" if fname.lower().endswith((".jpg", ".jpeg")) else "video/mp4")
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(fsize))
+            self.send_header("Content-Disposition", f'inline; filename="{fname}"')
+            self.end_headers()
+            with open(fpath, "rb") as rf:
+                while True:
+                    buf = rf.read(65536)
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+            return
+        self._send_json({"status": "ok", "engine": "minimax-h3-image"})
+
+    def do_POST(self):
+        cl = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(cl).decode("utf-8") if cl > 0 else "{}"
+        try:
+            payload = json.loads(raw) if raw else {}
+        except Exception:
+            payload = {}
+
+        if self.path.startswith("/v1/video/cancel"):
+            open("/content/.cancel_minimax", "w").write("1")
+            self._send_json({"ok": True, "message": "🛑 正在停止 MiniMax-H3-Image 生成任务..."})
+            return
+
+        if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations") or self.path.startswith("/v1/images/generations"):
+            if os.path.exists("/content/.cancel_minimax"):
+                try:
+                    os.unlink("/content/.cancel_minimax")
+                except Exception:
+                    pass
+            if JOB_STATE["running"]:
+                self._send_json({"ok": True, "already_running": True, "message": JOB_STATE.get("message") or "当前已有 MiniMax-H3-Image 任务正在运行，已自动接管实时进度"})
+                return
+            threading.Thread(target=_run_image_job, args=(payload,), daemon=True).start()
+            self._send_json({"ok": True, "message": "已开始生成 MiniMax-H3-Image 4K 超清大图"})
+            return
+
+        if "chat/completions" in self.path:
+            reply_txt = (
+                "📸 当前运行的是【MiniMax-H3-Image (33B · Heretic无审查 + 11秒原生4K直出 + 免Mask锁脸换装) 图像引擎】！\n"
+                "请在下方工作台切换至「📸 4K写真/免Mask换装 (MiniMax-H3-Image)」直接生图或上传人物照锁脸换装，生成后可一键送入 LongCat 数字人开口说话！"
+            )
+            self._send_json({
+                "id": "chatcmpl-minimax-img",
+                "object": "chat.completion",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": reply_txt}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 42, "total_tokens": 52},
+                "timings": {"predicted_per_second": 100.0},
+            })
+            return
+
+        self._send_json({"ok": True})
+
+
+if __name__ == "__main__":
+    threading.Thread(target=_warmup_image_engine_bg, daemon=True).start()
+    srv = ThreadingHTTPServer(("0.0.0.0", 30000), _MiniMaxImageHandler)
+    srv.serve_forever()
+'''
+
+
+def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 45.2):
+    """在远端 Colab G4 实例上启动 MiniMax-H3-Image (33B · INT8 ConvRot + Heretic 32B 无审查) 推理网关 (端口 30000)"""
+    if not shutil.which("cloudflared"):
+        log("正在安装 cloudflared 隧道客户端...")
+        subprocess.run(
+            "curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 "
+            "-o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared",
+            shell=True,
+            check=True,
+        )
+
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true", shell=True)
+    time.sleep(1)
+
+    if not os.path.isdir("/content/ComfyUI/.git"):
+        log("正在拉取最新 ComfyUI 主干框架 (原生支持 MiniMax-H3-Image 6步蒸馏与免Mask改图)...")
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/comfyanonymous/ComfyUI.git", "/content/ComfyUI"], check=False)
+    else:
+        subprocess.run(["git", "-C", "/content/ComfyUI", "pull", "--ff-only"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    log("正在检查 ComfyUI 运行依赖 (保留 Colab 原生 PyTorch 环境)...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", "/content/ComfyUI/requirements.txt"], check=False)
+
+    server_py = "/content/minimax_image_server.py"
+    with open(server_py, "w", encoding="utf-8") as wf:
+        wf.write(MINIMAX_H3_IMAGE_SERVER_CODE)
+
+    env = os.environ.copy()
+    env["MINIMAX_IMAGE_MODEL_DIR"] = target_dir
+    with open("/content/minimax_server.log", "w") as lf:
+        subprocess.Popen(
+            [sys.executable, "-u", server_py],
+            env=env,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for _ in range(30):
+        try:
+            with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
+                if resp.status == 200:
+                    log(f"[显存装载] MiniMax-H3-Image(33B·无审查4K): 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
+                    log("✅ MiniMax-H3-Image (11秒4K无审查写真 + 免Mask锁脸换装) 服务已启动 (端口 30000)！")
                     return
         except Exception:
             pass
@@ -3887,6 +4418,18 @@ def run_remote_vm_main():
             except Exception as e_lc:
                 log(f"⚠️ 解析 LongCat-Video 底座组件提示: {e_lc}")
 
+        if "minimax-h3-image" in HF_REPO.lower() or MODEL_FOLDER == "MiniMax-H3-Image":
+            heretic_repo = "OTMFLY/Qwen3-VL-32B-Ultra-Heretic-MiniMax-H3-ComfyUI-INT8-ConvRot"
+            heretic_fn = "qwen3vl_32b_minimax_h3_ultra_uncensored_heretic_int8_convrot.safetensors"
+            log(f"🔓 已启用 [MiniMax-H3-Image 4K无审查黄金三件套]：自动挂载 Heretic 32B 破限编码器 ({heretic_repo})！")
+            resolved_plan.append((
+                f"text_encoders/{heretic_fn}",
+                heretic_repo,
+                heretic_fn,
+                os.path.join(target_dir, "text_encoders"),
+                26363476151,
+            ))
+
         batch_total_bytes = sum(x[4] for x in resolved_plan)
         total_gb = batch_total_bytes / (1024 ** 3)
         log(f"共解析到 {len(resolved_plan)} 个模型文件 (总计约 {total_gb:.2f} GB)，目标目录: {target_dir}")
@@ -3901,7 +4444,7 @@ def run_remote_vm_main():
                 ov_pct = min(100, cum_done_bytes * 100 // max(1, batch_total_bytes)) if batch_total_bytes > 0 else 100
                 log(f"  [{st_stage_tag}] {lbl_str}: {ov_pct}% ({cum_done_bytes/(1024**3):.2f}/{total_gb:.2f} GB, 本地缓存复用)")
                 continue
-            tag_prefix = "🔓 [破限编码器] " if dl_repo == uncensored_te_repo else ""
+            tag_prefix = "🔓 [破限编码器] " if (dl_repo == uncensored_te_repo or "heretic" in dl_repo.lower()) else ""
             log(f"{tag_prefix}正在 16 线程极速预热 [{idx}/{len(resolved_plan)}] {rel_fn} ({sz/(1024**3):.2f} GB)...")
             try:
                 dl_p = fast_parallel_hf_download(
@@ -3935,6 +4478,8 @@ def run_remote_vm_main():
             _start_minimax_t4_gguf_server_on_30000(target_dir)
         elif "longcat-video-avatar" in HF_REPO.lower() or MODEL_FOLDER.startswith("LongCat-Video-Avatar"):
             _start_longcat_avatar_server_on_30000(target_dir, total_gb=total_gb)
+        elif "minimax-h3-image" in HF_REPO.lower() or MODEL_FOLDER == "MiniMax-H3-Image":
+            _start_minimax_h3_image_server_on_30000(target_dir, total_gb=total_gb)
         else:
             _start_minimax_h3_server_on_30000(target_dir)
         _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
