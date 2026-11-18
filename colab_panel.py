@@ -5019,6 +5019,10 @@ async function sendCurrentImageToAvatar() {
       hintEl.innerText = `✅ 已载入刚生成的 4K 写真「${currentSelectedVideoName}」作为数字人参考照片！在左侧黄色框输入台词即可驱动她开口说话！`;
     }
     switchMiniMaxMode('avatar');
+    const pEl = document.getElementById('videoPrompt');
+    if (pEl) {
+      pEl.value = '固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、轻轻点头和呼吸起伏，嘴型与语音高度同步，面部柔和暖光，五官清晰稳定，过渡丝滑真实。';
+    }
     const avRow = document.getElementById('avatarControlRow');
     if (avRow) avRow.scrollIntoView({behavior: 'smooth', block: 'center'});
   } catch (e) {
