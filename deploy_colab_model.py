@@ -2426,6 +2426,7 @@ def _ensure_ming_talker(update_job_state: bool = True):
         # 确保依赖就绪 (Python 3.13 跳过 C++ 源码编译的 pynini/fasttext，使用内置纯 Python TalkerRE 文本正则归一化)
         missing_deps = []
         for pkg, mod in [
+            ("diffusers", "diffusers"),
             ("x-transformers", "x_transformers"),
             ("inflect", "inflect"),
             ("onnxruntime", "onnxruntime"),
@@ -2439,11 +2440,24 @@ def _ensure_ming_talker(update_job_state: bool = True):
         if missing_deps:
             subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_deps, check=False)
 
-        # 若云盘中尚未缓存 ming_talker (2.78 GB)，自动按需拉取 talker/ 子目录并异步备份到 Google Drive
+        # 若本地尚未缓存 ming_talker (2.78 GB)，优先从 Google Drive 云盘拉取，再按需从 HuggingFace 拉取并异步备份到云盘
+        rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
         need_weights = (
             not os.path.isfile(os.path.join(talker_dir, "model.safetensors"))
             or not os.path.isfile(os.path.join(talker_dir, "vae/model.safetensors"))
         )
+        if need_weights and os.path.exists(rc_conf) and shutil.which("rclone"):
+            folder_name = os.path.basename(MODEL_DIR.rstrip("/"))
+            for r_src in (f"gdrive:models/{folder_name}/ming_talker", "gdrive:models/LongCat-Video-Avatar-1.6/ming_talker"):
+                subprocess.run(
+                    ["rclone", "copy", r_src, ming_root, "--transfers=8", "--config", rc_conf],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                if os.path.isfile(os.path.join(talker_dir, "model.safetensors")) and os.path.isfile(os.path.join(talker_dir, "vae/model.safetensors")):
+                    need_weights = False
+                    break
         need_code = not os.path.isfile(os.path.join(talker_dir, "inference.py"))
         if need_weights or need_code:
             if update_job_state:
@@ -2460,8 +2474,7 @@ def _ensure_ming_talker(update_job_state: bool = True):
                 ignore_patterns=ignore_pats,
                 local_dir=ming_root,
             )
-            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
-            if need_weights and os.path.exists(rc_conf) and shutil.which("rclone"):
+            if os.path.exists(rc_conf) and shutil.which("rclone"):
                 folder_name = os.path.basename(MODEL_DIR.rstrip("/"))
                 subprocess.Popen(
                     ["rclone", "copy", ming_root, f"gdrive:models/{folder_name}/ming_talker", "--transfers=8", "--config", rc_conf],
@@ -2469,7 +2482,7 @@ def _ensure_ming_talker(update_job_state: bool = True):
                     stderr=subprocess.DEVNULL,
                 )
 
-        # 为 Python 3.13 环境注入无 pynini C++ 依赖的 Normalizer 兼容补丁 (TalkerRE 已完成纯 Python 数字/日期/符号转换)
+        # 1. 为 Python 3.13 环境注入无 pynini C++ 依赖的 Normalizer 兼容补丁 (TalkerRE 已完成纯 Python 数字/日期/符号转换)
         norm_py = os.path.join(talker_dir, "talker_tn/normalizer.py")
         if os.path.isfile(norm_py):
             try:
@@ -2499,6 +2512,88 @@ def _ensure_ming_talker(update_job_state: bool = True):
                         "        lattice2 = escape(output) @ self.verbalizer\n"
                         "        return shortestpath(lattice2, nshortest=1, unique=True).string()\n"
                     )
+            except Exception:
+                pass
+
+        # 2. 修复 talker_module/modules.py 对单文件 flash_attn.py 兼容层的 bert_padding 导入异常
+        mod_py = os.path.join(talker_dir, "talker_module/modules.py")
+        if os.path.isfile(mod_py):
+            try:
+                mod_txt = open(mod_py, "r", encoding="utf-8").read()
+                if 'if is_package_available("flash_attn"):' in mod_txt:
+                    mod_txt = mod_txt.replace(
+                        'if is_package_available("flash_attn"):\n    from flash_attn.bert_padding import pad_input, unpad_input\n    from flash_attn import flash_attn_varlen_func, flash_attn_func',
+                        'try:\n    from flash_attn.bert_padding import pad_input, unpad_input\n    from flash_attn import flash_attn_varlen_func, flash_attn_func\nexcept Exception:\n    pass',
+                    )
+                    open(mod_py, "w", encoding="utf-8").write(mod_txt)
+            except Exception:
+                pass
+
+        # 3. 修复 AudioVAE 在 transformers 5.x 下 post_init() 访问 all_tied_weights_keys 报错
+        avae_py = os.path.join(talker_dir, "AudioVAE/modeling_audio_vae.py")
+        if os.path.isfile(avae_py):
+            try:
+                avae_txt = open(avae_py, "r", encoding="utf-8").read()
+                if "        self.post_init()\n" in avae_txt and "try:\n            self.post_init()" not in avae_txt:
+                    avae_txt = avae_txt.replace(
+                        "        self.post_init()\n",
+                        "        try:\n            self.post_init()\n        except Exception:\n            pass\n",
+                    )
+                    open(avae_py, "w", encoding="utf-8").write(avae_txt)
+            except Exception:
+                pass
+
+        # 4. 修复 inference.py：
+        #    (a) 避免 text_fragments 在 12 token 处过早切句导致句尾副语言气口 (如 [Sigh] [Uhm]) 被拆成无汉字孤立片段而失效
+        #    (b) 兼容 transformers 5.x state_dict 加载与 inference_mode 下 embeddings 原位赋值
+        inf_py = os.path.join(talker_dir, "inference.py")
+        if os.path.isfile(inf_py):
+            try:
+                inf_txt = open(inf_py, "r", encoding="utf-8").read()
+                changed_inf = False
+                if "model.load_state_dict(weights, strict=True)" in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "model.load_state_dict(weights, strict=True)",
+                        "model.load_state_dict(weights, strict=False)",
+                    ).replace(
+                        '        model.audio_vae.load_state_dict(\n            load_file(str(path / "vae/model.safetensors")), strict=True\n        )',
+                        '        _vw = load_file(str(path / "vae/model.safetensors"))\n        _vk = model.audio_vae.state_dict().keys()\n        _vw = {k: v for k, v in _vw.items() if not (k.endswith("inv_freq") and k not in _vk)}\n        model.audio_vae.load_state_dict(_vw, strict=False)',
+                    )
+                    changed_inf = True
+                if "embeddings = self.model.get_input_embeddings()(ids)\n" in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "embeddings = self.model.get_input_embeddings()(ids)\n",
+                        "embeddings = self.model.get_input_embeddings()(ids).clone()\n",
+                    )
+                    changed_inf = True
+                if "def text_fragments(self, value, max_length=50):" in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "def text_fragments(self, value, max_length=50):",
+                        "def text_fragments(self, value, max_length=140):",
+                    ).replace(
+                        "len(streaming_text) >= 12 or (count > 0 and len(streaming_text) >= 8)",
+                        "len(streaming_text) >= 140",
+                    ).replace(
+                        "elif ele[-1] in \"，,\" and len(streaming_text) >= 36:",
+                        "elif ele[-1] in \"，,\" and len(streaming_text) >= 160:",
+                    )
+                    changed_inf = True
+                if "for fragment in self.text_fragments(text):" in inf_txt and "_merged_frags" not in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "            for fragment in self.text_fragments(text):",
+                        "            _raw_frags = list(self.text_fragments(text))\n"
+                        "            _merged_frags = []\n"
+                        "            for _fg in _raw_frags:\n"
+                        "                _stripped_no_tags = re.sub(r'\\[[A-Za-z-]+\\]', '', _fg)\n"
+                        "                if _merged_frags and not re.search(r'[\\u4e00-\\u9fffA-Za-z0-9]', _stripped_no_tags):\n"
+                        "                    _merged_frags[-1] = _merged_frags[-1].rstrip() + ' ' + _fg.lstrip()\n"
+                        "                else:\n"
+                        "                    _merged_frags.append(_fg)\n"
+                        "            for fragment in (_merged_frags or [text]):",
+                    )
+                    changed_inf = True
+                if changed_inf:
+                    open(inf_py, "w", encoding="utf-8").write(inf_txt)
             except Exception:
                 pass
 
@@ -2752,14 +2847,25 @@ def _run_avatar_job(payload: dict):
                 "many people in the background, walking backwards"
             )
 
-            JOB_STATE.update({
-                "pct": 6,
-                "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
-            })
-
             generate_duration = num_frames / save_fps + (num_segments - 1) * (num_frames - num_cond_frames) / save_fps
             audio_process_duration = generate_duration + 1.0
-            speech_array, sr = separate_vocals(vocal_separator, audio_path, duration=audio_process_duration)
+            is_clean_tts_audio = (not audio_b64 and bool(tts_text)) or bool(payload.get("is_tts_audio"))
+            if is_clean_tts_audio:
+                JOB_STATE.update({
+                    "pct": 6,
+                    "message": f"🎭 [LongCat-Avatar-1.6] 正在直接提取无损 TTS 气口与 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
+                })
+                try:
+                    import librosa
+                    speech_array, sr = librosa.load(audio_path, sr=16000, mono=True, duration=audio_process_duration)
+                except Exception:
+                    speech_array, sr = separate_vocals(vocal_separator, audio_path, duration=audio_process_duration)
+            else:
+                JOB_STATE.update({
+                    "pct": 6,
+                    "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
+                })
+                speech_array, sr = separate_vocals(vocal_separator, audio_path, duration=audio_process_duration)
             if speech_array.size == 0:
                 raise RuntimeError("未能从音频中检测到有效人声 (No vocal detected)")
 
@@ -3249,13 +3355,20 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
         except Exception as e_mt:
             log(f"⚠️ 同步 MingTalker 脚本提示: {e_mt}")
 
-    # 若当前环境未预装编译版 flash_attn，自动注入基于 PyTorch 原生 CUDA SDPA 的零同步兼容层
+    # 若当前环境未预装编译版 flash_attn，自动注入基于 PyTorch 原生 CUDA SDPA 的零同步兼容包 (含 bert_padding 子模块以兼容 Ming-3.0-Talker)
+    legacy_flash_file = "/content/LongCat-Video/flash_attn.py"
+    if os.path.isfile(legacy_flash_file):
+        try:
+            os.remove(legacy_flash_file)
+        except Exception:
+            pass
     try:
         __import__("flash_attn")
+        __import__("flash_attn.bert_padding")
     except ImportError:
-        flash_shim_path = "/content/LongCat-Video/flash_attn.py"
-        os.makedirs("/content/LongCat-Video", exist_ok=True)
-        with open(flash_shim_path, "w", encoding="utf-8") as sf:
+        flash_pkg_dir = "/content/LongCat-Video/flash_attn"
+        os.makedirs(flash_pkg_dir, exist_ok=True)
+        with open(os.path.join(flash_pkg_dir, "__init__.py"), "w", encoding="utf-8") as sf:
             sf.write(
                 "import torch\n"
                 "import torch.nn.functional as F\n\n"
@@ -3278,10 +3391,25 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
                 "    for i in range(len(q_bounds) - 1):\n"
                 "        qi = q[q_bounds[i]:q_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
                 "        ki = k[k_bounds[i]:k_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
-                "        vi = v[k_bounds[i]:k_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
+                "        vi = v[k_bounds[i]:k_bounds[i+1]].unsqueeze(0).transpose(0, 1).transpose(1, 2) if v.ndim == 2 else v[k_bounds[i]:k_bounds[i+1]].unsqueeze(0).transpose(1, 2)\n"
                 "        oi = F.scaled_dot_product_attention(qi, ki, vi, dropout_p=dropout_p, is_causal=causal, scale=softmax_scale)\n"
                 "        outs.append(oi.transpose(1, 2).squeeze(0))\n"
                 "    return torch.cat(outs, dim=0)\n"
+            )
+        with open(os.path.join(flash_pkg_dir, "bert_padding.py"), "w", encoding="utf-8") as bpf:
+            bpf.write(
+                "import torch\n"
+                "import torch.nn.functional as F\n\n"
+                "def unpad_input(hidden_states, attention_mask):\n"
+                "    seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)\n"
+                "    indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()\n"
+                "    max_seqlen_in_batch = int(seqlens_in_batch.max().item())\n"
+                "    cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.int32), (1, 0))\n"
+                "    return hidden_states.reshape(-1, *hidden_states.shape[2:])[indices], indices, cu_seqlens, max_seqlen_in_batch\n\n"
+                "def pad_input(hidden_states, indices, batch, seqlen):\n"
+                "    out = torch.zeros((batch * seqlen, *hidden_states.shape[1:]), device=hidden_states.device, dtype=hidden_states.dtype)\n"
+                "    out[indices] = hidden_states\n"
+                "    return out.reshape(batch, seqlen, *hidden_states.shape[1:])\n"
             )
 
     server_py = "/content/longcat_avatar_server.py"
@@ -3590,6 +3718,7 @@ def _ensure_img_ming_talker():
 
         missing_deps = []
         for pkg, mod in [
+            ("diffusers", "diffusers"),
             ("x-transformers", "x_transformers"),
             ("inflect", "inflect"),
             ("onnxruntime", "onnxruntime"),
@@ -3603,10 +3732,20 @@ def _ensure_img_ming_talker():
         if missing_deps:
             subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_deps, check=False)
 
+        rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
         need_weights = (
             not os.path.isfile(os.path.join(talker_dir, "model.safetensors"))
             or not os.path.isfile(os.path.join(talker_dir, "vae/model.safetensors"))
         )
+        if need_weights and os.path.exists(rc_conf) and shutil.which("rclone"):
+            subprocess.run(
+                ["rclone", "copy", "gdrive:models/LongCat-Video-Avatar-1.6/ming_talker", ming_root, "--transfers=8", "--config", rc_conf],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if os.path.isfile(os.path.join(talker_dir, "model.safetensors")) and os.path.isfile(os.path.join(talker_dir, "vae/model.safetensors")):
+                need_weights = False
         need_code = not os.path.isfile(os.path.join(talker_dir, "inference.py"))
         if need_weights or need_code:
             from huggingface_hub import snapshot_download
@@ -3617,6 +3756,12 @@ def _ensure_img_ming_talker():
                 ignore_patterns=ignore_pats,
                 local_dir=ming_root,
             )
+            if os.path.exists(rc_conf) and shutil.which("rclone"):
+                subprocess.Popen(
+                    ["rclone", "copy", ming_root, "gdrive:models/LongCat-Video-Avatar-1.6/ming_talker", "--transfers=8", "--config", rc_conf],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
 
         norm_py = os.path.join(talker_dir, "talker_tn/normalizer.py")
         if os.path.isfile(norm_py):
@@ -3647,6 +3792,83 @@ def _ensure_img_ming_talker():
                         "        lattice2 = escape(output) @ self.verbalizer\n"
                         "        return shortestpath(lattice2, nshortest=1, unique=True).string()\n"
                     )
+            except Exception:
+                pass
+
+        mod_py = os.path.join(talker_dir, "talker_module/modules.py")
+        if os.path.isfile(mod_py):
+            try:
+                mod_txt = open(mod_py, "r", encoding="utf-8").read()
+                if 'if is_package_available("flash_attn"):' in mod_txt:
+                    mod_txt = mod_txt.replace(
+                        'if is_package_available("flash_attn"):\n    from flash_attn.bert_padding import pad_input, unpad_input\n    from flash_attn import flash_attn_varlen_func, flash_attn_func',
+                        'try:\n    from flash_attn.bert_padding import pad_input, unpad_input\n    from flash_attn import flash_attn_varlen_func, flash_attn_func\nexcept Exception:\n    pass',
+                    )
+                    open(mod_py, "w", encoding="utf-8").write(mod_txt)
+            except Exception:
+                pass
+
+        avae_py = os.path.join(talker_dir, "AudioVAE/modeling_audio_vae.py")
+        if os.path.isfile(avae_py):
+            try:
+                avae_txt = open(avae_py, "r", encoding="utf-8").read()
+                if "        self.post_init()\n" in avae_txt and "try:\n            self.post_init()" not in avae_txt:
+                    avae_txt = avae_txt.replace(
+                        "        self.post_init()\n",
+                        "        try:\n            self.post_init()\n        except Exception:\n            pass\n",
+                    )
+                    open(avae_py, "w", encoding="utf-8").write(avae_txt)
+            except Exception:
+                pass
+
+        inf_py = os.path.join(talker_dir, "inference.py")
+        if os.path.isfile(inf_py):
+            try:
+                inf_txt = open(inf_py, "r", encoding="utf-8").read()
+                changed_inf = False
+                if "model.load_state_dict(weights, strict=True)" in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "model.load_state_dict(weights, strict=True)",
+                        "model.load_state_dict(weights, strict=False)",
+                    ).replace(
+                        '        model.audio_vae.load_state_dict(\n            load_file(str(path / "vae/model.safetensors")), strict=True\n        )',
+                        '        _vw = load_file(str(path / "vae/model.safetensors"))\n        _vk = model.audio_vae.state_dict().keys()\n        _vw = {k: v for k, v in _vw.items() if not (k.endswith("inv_freq") and k not in _vk)}\n        model.audio_vae.load_state_dict(_vw, strict=False)',
+                    )
+                    changed_inf = True
+                if "embeddings = self.model.get_input_embeddings()(ids)\n" in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "embeddings = self.model.get_input_embeddings()(ids)\n",
+                        "embeddings = self.model.get_input_embeddings()(ids).clone()\n",
+                    )
+                    changed_inf = True
+                if "def text_fragments(self, value, max_length=50):" in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "def text_fragments(self, value, max_length=50):",
+                        "def text_fragments(self, value, max_length=140):",
+                    ).replace(
+                        "len(streaming_text) >= 12 or (count > 0 and len(streaming_text) >= 8)",
+                        "len(streaming_text) >= 140",
+                    ).replace(
+                        "elif ele[-1] in \"，,\" and len(streaming_text) >= 36:",
+                        "elif ele[-1] in \"，,\" and len(streaming_text) >= 160:",
+                    )
+                    changed_inf = True
+                if "for fragment in self.text_fragments(text):" in inf_txt and "_merged_frags" not in inf_txt:
+                    inf_txt = inf_txt.replace(
+                        "            for fragment in self.text_fragments(text):",
+                        "            _raw_frags = list(self.text_fragments(text))\n"
+                        "            _merged_frags = []\n"
+                        "            for _fg in _raw_frags:\n"
+                        "                _stripped_no_tags = re.sub(r'\\[[A-Za-z-]+\\]', '', _fg)\n"
+                        "                if _merged_frags and not re.search(r'[\\u4e00-\\u9fffA-Za-z0-9]', _stripped_no_tags):\n"
+                        "                    _merged_frags[-1] = _merged_frags[-1].rstrip() + ' ' + _fg.lstrip()\n"
+                        "                else:\n"
+                        "                    _merged_frags.append(_fg)\n"
+                        "            for fragment in (_merged_frags or [text]):",
+                    )
+                    changed_inf = True
+                if changed_inf:
+                    open(inf_py, "w", encoding="utf-8").write(inf_txt)
             except Exception:
                 pass
 
@@ -4127,6 +4349,7 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
                     if h_data.get("engine") == "minimax-h3-image":
                         log(f"[显存装载] MiniMax-H3-Image(33B·无审查4K): 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
                         log("✅ MiniMax-H3-Image (11秒4K无审查写真 + 免Mask锁脸换装) 服务已启动 (端口 30000)！")
+                        _ensure_recavsr_service_on_30002()
                         return
         except Exception:
             pass
@@ -4616,8 +4839,36 @@ class _ReCaVSRHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "File not found"}, status=404)
                 return
             fsize = fpath.stat().st_size
+            range_hdr = self.headers.get("Range")
+            if range_hdr and range_hdr.startswith("bytes="):
+                try:
+                    parts = range_hdr.replace("bytes=", "").split("-")
+                    start = int(parts[0]) if parts[0] else 0
+                    end = int(parts[1]) if (len(parts) > 1 and parts[1]) else (fsize - 1)
+                    end = min(end, fsize - 1)
+                    length = max(0, end - start + 1)
+                    self.send_response(206)
+                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(length))
+                    self.end_headers()
+                    with open(fpath, "rb") as rf:
+                        rf.seek(start)
+                        rem = length
+                        while rem > 0:
+                            buf = rf.read(min(262144, rem))
+                            if not buf:
+                                break
+                            self.wfile.write(buf)
+                            rem -= len(buf)
+                    return
+                except Exception:
+                    pass
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Content-Length", str(fsize))
             self.end_headers()
@@ -5112,6 +5363,20 @@ def run_remote_vm_main():
                     _pull_from_rclone_drive_if_exists(MODEL_FOLDER, target_dir)
                     break
                 raise
+        if HF_REPO.lower() == "meituan-longcat/longcat-video-avatar-1.6":
+            ming_talker_root = os.path.join(target_dir, "ming_talker")
+            if not os.path.isfile(os.path.join(ming_talker_root, "talker/inference.py")):
+                log("🎭 正在同步 Ming-3.0-Audio-Flash Talker 戏剧人设与零样本声音克隆推理脚本及配置...")
+                try:
+                    from huggingface_hub import snapshot_download
+                    snapshot_download(
+                        repo_id="inclusionAI/Ming-3.0-audio-flash",
+                        allow_patterns=["talker/*", "voice_presets/*"],
+                        ignore_patterns=["*.safetensors", "*.onnx", "*__pycache__*"],
+                        local_dir=ming_talker_root,
+                    )
+                except Exception as e_mt:
+                    log(f"⚠️ 同步 MingTalker 脚本提示: {e_mt}")
         expected_core_count = max(
             1,
             sum(1 for x in resolved_plan if x[0].lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))),

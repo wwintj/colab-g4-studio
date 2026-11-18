@@ -4407,6 +4407,7 @@ let firstFrameB64 = '';
 let lastFrameB64 = '';
 let avatarAudioB64 = '';
 let avatarAudioExt = '.mp3';
+let avatarAudioIsTts = false;
 let avatarUseBuiltinSample = true;
 let h3ImgRefList = ['', '', ''];
 
@@ -4843,6 +4844,7 @@ async function previewAvatarTts() {
     }
     avatarAudioB64 = d.used_edge_fallback ? '' : d.audio_b64;
     avatarAudioExt = d.audio_ext || '.mp3';
+    avatarAudioIsTts = !d.used_edge_fallback;
     avatarUseBuiltinSample = false;
     if (audEl) {
       audEl.src = d.audio_b64;
@@ -4877,6 +4879,7 @@ function handleAvatarAudioSelect(inputEl) {
   }
   const mExt = file.name.match(/\.[a-zA-Z0-9]+$/);
   avatarAudioExt = mExt ? mExt[0].toLowerCase() : '.mp3';
+  avatarAudioIsTts = false;
   avatarUseBuiltinSample = false;
   const reader = new FileReader();
   reader.onload = function(ev) {
@@ -5529,6 +5532,7 @@ async function startVideoGenerate(forceTarget = '') {
     payload.mode = 'avatar';
     payload.audio_b64 = avatarAudioB64;
     payload.audio_ext = avatarAudioExt;
+    payload.is_tts_audio = Boolean(avatarAudioIsTts);
     payload.tts_text = ((document.getElementById('inpAvatarTtsText') || {}).value || '').trim();
     payload.tts_voice = getCombinedAvatarTtsSpec();
     payload.clone_ref_b64 = mingCloneAudioB64;
