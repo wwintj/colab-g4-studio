@@ -2149,6 +2149,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;transition:all 0.2s;">📋 一键复制【发给外部 AI 的编剧指令】</button>
       </div>
 
+      <!-- 中部：🎭 剧组多角色 (A / B / C / D / E...) 定妆照上传 + 5条黄金标准生图词复制 + 专属固定音色绑定 -->
+      <div style="margin-bottom:10px;padding:9px 11px;border-radius:8px;background:rgba(15,23,42,0.9);border:1px solid rgba(244,114,182,0.4);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:12.5px;font-weight:800;color:#fbcfe8;">🎭 剧组角色定妆与音色卡槽 (支持 A / B / C / D / E… 多角色)</span>
+            <span style="font-size:11px;color:#94a3b8;">点「📋 定妆生图词」发给 ChatGPT/Gemini 生成标准半身照 → 点「📤 传定妆照」即可 100% 锁死该演员长相与穿搭（跳过云端捏脸）</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button type="button" onclick="copyCharacterGoldenPrompt('', this)" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #f472b6;background:rgba(244,114,182,0.15);color:#fbcfe8;cursor:pointer;">📋 复制【通用5条黄金标准·定妆照生图词】</button>
+            <button type="button" onclick="addDramaCastRole()" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;">+ 新增角色 (C/D/E...)</button>
+          </div>
+        </div>
+        <div id="dramaCastCardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(295px, 1fr));gap:8px;max-height:210px;overflow-y:auto;padding-right:2px;"></div>
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:12px;">
         <!-- 左栏：既可输入原著故事与台词点上方复制给外部 AI，也可粘贴外部 AI 生成好的分镜剧本直接解析 -->
         <div style="display:flex;flex-direction:column;gap:8px;padding-right:10px;border-right:1px solid rgba(148,163,184,0.2);">
@@ -6086,6 +6101,221 @@ async function pollUpscaleStatus() {
 let dramaPollTimer = null;
 let currentDramaWorkflow = null;
 let currentDramaWfTab = 'img';
+let dramaCastPhotoCacheBust = Date.now();
+let dramaCastState = [
+  {id: 'A', name: '林晚', voice: 'ming:灵小柔', desc: '27岁江南修伞铺女老板，鹅蛋脸，左眉尾小痣，低髻插素银玉兰簪，月白立领盘扣短衫配浅灰蓝围裙', has_photo: true, user_uploaded: false},
+  {id: 'B', name: '沈砚', voice: 'ming:灵孤影_悲伤', desc: '30岁青年，剑眉丹凤眼，右侧颧骨下浅淡旧疤，炭黑色羊毛长大衣内搭米白高领，左腕系褪色红绳', has_photo: true, user_uploaded: false},
+];
+
+const CAST_VOICE_OPTIONS = [
+  {val: 'ming:灵小柔', lbl: '🌸 灵小柔 (清亮甜美女主)'},
+  {val: 'ming:灵雨汐_中性', lbl: '☁️ 灵雨汐·温柔 (贴耳软妹)'},
+  {val: 'ming:灵黛嗔_生气', lbl: '👑 灵黛嗔·傲娇 (大小姐娇嗔)'},
+  {val: 'ming:灵采薇_悲伤', lbl: '🌙 灵采薇·凄美 (深情破碎女声)'},
+  {val: 'ming:灵梦', lbl: '💕 灵梦 (撒娇粘人女友)'},
+  {val: 'ming:妩媚妲己', lbl: '🔥 妩媚妲己 (酥麻魅惑女声)'},
+  {val: 'ming:灵惜梦_中性', lbl: '💎 灵惜梦·御姐 (干练都市姐姐)'},
+  {val: 'ming:灵心澜_厌恶', lbl: '👠 灵心澜·女王 (高贵冷艳女声)'},
+  {val: 'ming:灵信远_中性', lbl: '☀️ 灵信远·暖男 (温润公子/男友)'},
+  {val: 'ming:灵朗', lbl: '🥂 灵朗 (深情沉稳霸总男主)'},
+  {val: 'ming:灵宇', lbl: '🌹 灵宇 (自信含笑撩人学长)'},
+  {val: 'ming:灵楷', lbl: '📻 灵楷 (温润磁性百灵官方男主)'},
+  {val: 'ming:灵空', lbl: '🎧 灵空 (低音炮哄睡男神)'},
+  {val: 'ming:灵孤影_悲伤', lbl: '🌧️ 灵孤影·心碎 (深情虐恋男主)'},
+  {val: 'ming:灵孤影_厌恶', lbl: '❄️ 灵孤影·高冷 (禁欲系冷漠霸总)'},
+  {val: 'ming:灵孤影_生气', lbl: '🔥 灵孤影·震怒 (低沉压迫感霸总)'},
+  {val: 'ming:甄嬛传_四郎', lbl: '🎬 甄嬛传·四郎 (沉稳帝王原声)'},
+  {val: 'ming:康熙王朝_康熙', lbl: '🎬 康熙大帝 (霸气帝王原声)'},
+  {val: 'ming:水浒传_武松', lbl: '🎬 水浒传·武松 (豪迈硬汉原声)'},
+  {val: 'ming:西游记_唐僧', lbl: '🎬 西游记·唐僧 (温润慈悲原声)'},
+];
+
+function renderDramaCastCards() {
+  const grid = document.getElementById('dramaCastCardsGrid');
+  if (!grid) return;
+  grid.innerHTML = dramaCastState.map((c, idx) => {
+    const imgUrl = `/api/drama_work_file?name=char_${encodeURIComponent(c.id)}_half.jpg&t=${dramaCastPhotoCacheBust}`;
+    const voiceOpts = CAST_VOICE_OPTIONS.map(o => `<option value="${o.val}" ${c.voice === o.val ? 'selected' : ''}>${o.lbl}</option>`).join('');
+    const badgeHtml = c.user_uploaded
+      ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;">📌已锁定上传照</span>`
+      : `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#7dd3fc;font-weight:600;">🎨AI定妆/可传照</span>`;
+    return `
+      <div style="padding:7px 9px;border-radius:8px;background:#020617;border:1px solid ${c.user_uploaded ? '#10b981' : '#334155'};display:flex;gap:8px;align-items:stretch;">
+        <!-- 左：16:9 定妆缩略图 + 上传/复制生图词按钮 -->
+        <div style="width:92px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+          <div style="position:relative;width:92px;height:52px;border-radius:5px;overflow:hidden;background:#0f172a;border:1px solid #475569;display:flex;align-items:center;justify-content:center;">
+            <img src="${imgUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" onload="this.style.display='block';this.nextElementSibling.style.display='none';" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <div style="display:none;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;line-height:1.2;">📷<br>角色${escapeHtmlAttr(c.id)}</div>
+          </div>
+          <div style="display:flex;gap:3px;">
+            <label style="flex:1;text-align:center;padding:2px 0;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="上传您在 ChatGPT/Gemini 生成好的角色${escapeHtmlAttr(c.id)}定妆照（直接锁脸，跳过云端捏脸）">
+              📤传照
+              <input type="file" accept="image/*" style="display:none;" onchange="uploadDramaCharPhoto('${escapeHtmlAttr(c.id)}', this)">
+            </label>
+            <button type="button" onclick="copyCharacterGoldenPrompt('${escapeHtmlAttr(c.id)}', this)" style="flex:1;padding:2px 0;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #f472b6;background:rgba(244,114,182,0.16);color:#fbcfe8;cursor:pointer;" title="一键复制角色${escapeHtmlAttr(c.id)}的【5条黄金标准·定妆照生图提示词】，去 ChatGPT/Gemini 生成标准半身照">📋生图词</button>
+          </div>
+        </div>
+        <!-- 右：角色代号、姓名、专属音色、外貌与服装描述 -->
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:11px;font-weight:900;padding:1px 6px;border-radius:4px;background:#f472b6;color:#020617;">角色${escapeHtmlAttr(c.id)}</span>
+              <input type="text" value="${escapeHtmlAttr(c.name || '')}" onchange="dramaCastState[${idx}].name=this.value.trim();syncCastToWorkflow();" placeholder="姓名(如:林晚)" style="width:68px;padding:2px 5px;font-size:11px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+              ${badgeHtml}
+            </div>
+            <div style="display:flex;align-items:center;gap:3px;">
+              ${c.user_uploaded ? `<button type="button" onclick="deleteDramaCharPhoto('${escapeHtmlAttr(c.id)}')" style="padding:1px 5px;font-size:9.5px;border-radius:3px;border:1px solid #f59e0b;background:transparent;color:#fcd34d;cursor:pointer;" title="取消上传的照片，改由云端 AI 生成定妆照">↺改AI生</button>` : ''}
+              ${dramaCastState.length > 1 ? `<button type="button" onclick="removeDramaCastRole('${escapeHtmlAttr(c.id)}')" style="padding:1px 5px;font-size:10px;border-radius:3px;border:1px solid #ef4444;background:transparent;color:#fca5a5;cursor:pointer;" title="移除角色${escapeHtmlAttr(c.id)}">✕</button>` : ''}
+            </div>
+          </div>
+          <select onchange="dramaCastState[${idx}].voice=this.value;syncCastToWorkflow();" style="width:100%;padding:2px 5px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#fde68a;font-weight:600;">
+            ${voiceOpts}
+          </select>
+          <input type="text" value="${escapeHtmlAttr(c.desc || '')}" onchange="dramaCastState[${idx}].desc=this.value.trim();syncCastToWorkflow();" placeholder="填写角色${escapeHtmlAttr(c.id)}年龄、五官特征、发型发饰、上衣穿搭..." style="width:100%;padding:3px 6px;font-size:10.5px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;">
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function syncCastToWorkflow() {
+  if (currentDramaWorkflow) {
+    currentDramaWorkflow.cast_list = dramaCastState;
+  }
+}
+
+function addDramaCastRole() {
+  const usedIds = new Set(dramaCastState.map(c => c.id));
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let nextId = 'C';
+  for (let i = 0; i < letters.length; i++) {
+    if (!usedIds.has(letters[i])) {
+      nextId = letters[i];
+      break;
+    }
+  }
+  const isMaleDefault = (dramaCastState.length % 2 === 1);
+  dramaCastState.push({
+    id: nextId,
+    name: `角色${nextId}`,
+    voice: isMaleDefault ? 'ming:灵朗' : 'ming:灵雨汐_中性',
+    desc: isMaleDefault ? '28岁青年男性，五官立体轮廓分明，沉稳干练穿搭' : '23岁青年女性，五官精致灵动，气质温婉穿搭',
+    has_photo: false,
+    user_uploaded: false,
+  });
+  syncCastToWorkflow();
+  renderDramaCastCards();
+  showGlobalCopyToast(`🎭 已新增「角色${nextId}」定妆卡槽！可为其上传照片、复制生图词或绑定专属音色`);
+}
+
+function removeDramaCastRole(roleId) {
+  dramaCastState = dramaCastState.filter(c => c.id !== roleId);
+  syncCastToWorkflow();
+  renderDramaCastCards();
+}
+
+async function uploadDramaCharPhoto(roleId, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const b64 = reader.result;
+    try {
+      const r = await fetch('/api/drama_upload_char_photo', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role_id: roleId, image_b64: b64}),
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        alert('上传定妆照失败: ' + (d.error || '未知错误'));
+        return;
+      }
+      dramaCastPhotoCacheBust = Date.now();
+      const item = dramaCastState.find(c => c.id === roleId);
+      if (item) {
+        item.has_photo = true;
+        item.user_uploaded = true;
+      }
+      syncCastToWorkflow();
+      renderDramaCastCards();
+      await pollAutoDramaStatus();
+      showGlobalCopyToast(`✅ 角色${roleId} 定妆照已上传并锁定为 16:9 基准图！开拍时将跳过AI捏脸，100%使用此照片锁脸`);
+    } catch (e) {
+      alert('上传定妆照异常: ' + e);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function deleteDramaCharPhoto(roleId) {
+  try {
+    await fetch('/api/drama_delete_char_photo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({role_id: roleId}),
+    });
+    dramaCastPhotoCacheBust = Date.now();
+    const item = dramaCastState.find(c => c.id === roleId);
+    if (item) {
+      item.user_uploaded = false;
+    }
+    syncCastToWorkflow();
+    renderDramaCastCards();
+    await pollAutoDramaStatus();
+    showGlobalCopyToast(`↺ 已解除角色${roleId} 的上传照片锁定，开拍时将由云端 MiniMax-H3-Image 自动生成定妆照`);
+  } catch (e) {}
+}
+
+async function copyCharacterGoldenPrompt(roleId, btnEl) {
+  const item = roleId ? dramaCastState.find(c => c.id === roleId) : null;
+  const roleTitle = item ? `角色${item.id}${item.name ? '（' + item.name + '）' : ''}` : '剧集主角';
+  const roleDesc = (item && item.desc && item.desc.trim())
+    ? item.desc.trim()
+    : '（在此填写角色造型与穿搭，例如：25岁中国古装侠女，乌黑高马尾系绯红发带，身穿正红色织金劲装长衫 / 或：28岁现代豪门男总裁，黑色短发，身穿炭黑色双排扣羊毛西装内搭白衬衫）';
+  const visStyle = ((document.getElementById('selAiVisualStyle') || {}).value || '写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影').trim();
+
+  const goldenPrompt = `请为我生成一张用于影视分镜锁脸与数字人驱动的【16:9 横屏电影级标准半身定妆照】（如果我同时上传了参考人脸照片，请严格保持参考图中人物的面部五官、脸型轮廓、骨相与身份特征 100% 一致，不要改变长相，仅按以下设定为其换上对应造型与场景）：
+
+【角色名称】：${roleTitle}
+【整体画风】：${visStyle}
+【角色外貌与服装造型设定】：
+${roleDesc}
+
+【必须严格遵守的 5 条摄影与构图黄金标准】：
+1. 画幅与景别：16:9 宽屏横幅（Landscape 16:9），正面居中半身胸像构图（Medium Close-up / Waist-up Shot），画面上方完整保留头顶与发饰（严禁切头顶），下方拍至胸口与腰部上方，完整展示上衣领口、肩膀与服装材质细节。
+2. 朝向与机位：85mm f/1.4 定焦电影人像镜头，平视机位（Eye-level），人物正对镜头或极轻微侧身（10度以内），双眼清澈有神地直视镜头。
+3. 面部布光与无遮挡：采用柔和均匀的电影级正面主光（Soft even key lighting），面部两侧受光均衡，严禁出现大面积阴影、阴阳脸或强逆光黑脸；额头、眉毛、眼睛、鼻梁、脸颊与下巴完整清晰，无碎发挡眼、无手部或道具遮挡面部。
+4. 表情与闭合唇形基线：神情自然沉静（或带极轻微的温和浅笑），双唇必须自然闭合（Mouth naturally closed，严禁张嘴或露齿大笑），下颌线清晰自然，真实细腻的皮肤纹理。
+5. 纯净单人浅景深背景：画面中严格只有该角色 1 人，背景为柔和虚化的电影级浅景深环境光斑（绝不允许背景中出现任何其他路人、多余人脸、相框边线、字幕或水印）。`;
+
+  let copiedOk = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(goldenPrompt);
+      copiedOk = true;
+    }
+  } catch (e) {}
+  if (!copiedOk) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = goldenPrompt;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e2) {}
+  }
+  showGlobalCopyToast(`✅ 已复制【${roleTitle} · 5条黄金标准定妆照生图词】到剪贴板！可直接连同人脸照发给 ChatGPT / Gemini 生图`);
+  if (btnEl) {
+    const oldTxt = btnEl.innerText;
+    btnEl.innerText = '✅已复制';
+    setTimeout(() => { btnEl.innerText = oldTxt; }, 2500);
+  }
+}
 
 function toggleAutoDramaDirector() {
   switchMiniMaxMode('drama');
@@ -6196,22 +6426,24 @@ ${storySection}
 【目标总时长与分镜规模】：${targetDur}（单镜时长可在 1.5秒 ~ 10.0秒 之间根据戏剧节奏自由设定，总时长不限死）
 【全局视觉画风】：${visStyle}
 
-请严格按照以下结构化格式输出（不要省略标签，以便工作流引擎 100% 自动拆解为锁脸定妆卡、首尾关键帧、数字人配音与环境音视频节点）：
+【剧组已锁定的角色阵容（共 ${dramaCastState.length} 位角色，请在剧本中严格使用以下角色代号与设定）】：
+${dramaCastState.map(c => `- 角色${c.id}${c.name ? '（' + c.name + '）' : ''}：${c.desc || '请根据剧情补充外貌与穿搭'} 【绑定音色】${c.voice || 'ming:灵小柔'}`).join('\n')}
+
+请严格按照以下结构化格式输出（不要省略标签，以便工作流引擎 100% 自动拆解为多角色锁脸定妆卡、首尾关键帧、数字人配音与环境音视频节点）：
 
 【剧名】《在此填写剧名》
 【全局设定】
 画风：${visStyle}
-女主A：（详细描述女主A的姓名、年龄、脸型五官、发型发饰、服装颜色与材质，确保跨镜头锁脸一致）
-男主B：（详细描述男主B的姓名、年龄、脸型五官、发型发饰、服装颜色与材质，若无男主可写无）
-配角C：（可选，若有第三位角色请描述，无则省略）
+${dramaCastState.map(c => `角色${c.id}：${c.name ? c.name + '，' : ''}${c.desc || '（详细描述年龄、脸型五官、发型发饰、服装颜色与材质）'}`).join('\n')}
 
 【分镜】
 镜头01【时长】2.5秒
+【出场角色】A（请填该镜头画面中实际出现的角色代号，如 A 或 A, B 或 B, C, D；纯空镜填“无”；注意单镜头同框人物尽量控制在 1~3 人以内以保证最高锁脸精度）
 【运镜】固定镜头 / 缓慢推镜 / 倒退跟拍 / 越肩正反打（写清机位与景别，如全景/中近景/面部特写）
 【画面】（详细描述画面中人物的位置、动作起止、表情神态变化、光影与环境细节；若该镜需要明显的前后焦点转移或大跨度连续动作，可用“起幅...；随后...”描述，系统会自动生成首尾双关键帧）
 【环境音】（描述该镜头的纯自然环境音效，如雨声、溪水声、市集人群声、脚步声等）
-【对白】无（若有角色开口说话，请严格保留用户原稿台词，写如 A："台词内容" 或 B："台词内容"；支持在台词开头或中间加入 [Dissatisfaction-hnn] 傲娇哼声、[Sigh] 叹气、[Laughter] 轻笑、[Breathing] 呼吸、[Surprise-ah] 惊呼 等真人气口标签）
-【音色】（若有对白，可从以下官方音色中选填一个：ming:灵小柔 / ming:灵雨汐_中性 / ming:灵黛嗔_生气 / ming:灵采薇_悲伤 / ming:灵梦 / ming:妩媚妲己 / ming:灵信远_中性 / ming:灵朗 / ming:灵宇 / ming:灵孤影_厌恶 / ming:灵孤影_悲伤 / ming:灵孤影_生气 / ming:甄嬛传_四郎）
+【对白】无（若有角色开口说话，请严格保留用户原稿台词，写如 A："台词内容" 或 B："台词内容" 或 C："台词内容"；支持在台词开头或中间加入 [Dissatisfaction-hnn] 傲娇哼声、[Sigh] 叹气、[Laughter] 轻笑、[Breathing] 呼吸、[Surprise-ah] 惊呼 等真人气口标签）
+【音色】（若有对白，请优先使用该角色上方绑定的音色，或从以下官方音色中选填：ming:灵小柔 / ming:灵雨汐_中性 / ming:灵黛嗔_生气 / ming:灵采薇_悲伤 / ming:灵梦 / ming:妩媚妲己 / ming:灵信远_中性 / ming:灵朗 / ming:灵宇 / ming:灵楷 / ming:灵孤影_厌恶 / ming:灵孤影_悲伤 / ming:灵孤影_生气 / ming:甄嬛传_四郎）
 
 镜头02【时长】3.5秒
 ...（请按原著故事与台词自然展开所有分镜，镜头数量与总秒数不设硬性上限）`;
@@ -6380,10 +6612,11 @@ async function loadDramaWorkflowEditor() {
     const d = await r.json();
     if (d && d.ok && d.workflow) {
       currentDramaWorkflow = d.workflow;
-      const rawEl = document.getElementById('inpDramaRawScript');
-      if (rawEl && !rawEl.value.trim() && d.workflow.raw_script) {
-        rawEl.value = d.workflow.raw_script;
+      if (Array.isArray(d.workflow.cast_list) && d.workflow.cast_list.length > 0) {
+        dramaCastState = d.workflow.cast_list;
       }
+      dramaCastPhotoCacheBust = Date.now();
+      renderDramaCastCards();
       renderDramaWfEditorTables();
     }
   } catch (e) {}
@@ -6474,6 +6707,7 @@ async function parseRawScriptToWorkflow() {
         raw_script: rawScript,
         title: (titleInp ? titleInp.value : '').trim(),
         clear_old_assets: clearOld,
+        cast_list: dramaCastState,
       }),
     });
     const d = await r.json();
@@ -6485,6 +6719,10 @@ async function parseRawScriptToWorkflow() {
       return;
     }
     currentDramaWorkflow = d.workflow;
+    if (Array.isArray(d.workflow.cast_list) && d.workflow.cast_list.length > 0) {
+      dramaCastState = d.workflow.cast_list;
+    }
+    renderDramaCastCards();
     renderDramaWfEditorTables();
     await pollAutoDramaStatus();
     if (stEl) {
@@ -6910,6 +7148,28 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mime_type)
             self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if self.path.startswith("/api/drama_work_file"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            fname = os.path.basename((qs.get("name", [""])[0] or "").strip())
+            fpath = DRAMA_WORK_DIR / fname
+            if not fname or not fpath.is_file():
+                self.send_error(404)
+                return
+            ext_low = fpath.suffix.lower()
+            mime_type = (
+                "image/png" if ext_low == ".png"
+                else ("image/jpeg" if ext_low in (".jpg", ".jpeg") else ("image/webp" if ext_low == ".webp" else "video/mp4"))
+            )
+            data = fpath.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mime_type)
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -8211,6 +8471,87 @@ p.wait()
             self._send_json({"ok": True, "workflow": _load_drama_workflow()})
             return
 
+        if self.path == "/api/drama_upload_char_photo":
+            role_id = re.sub(r"[^A-Z0-9]", "", str(payload.get("role_id") or "A").strip().upper()) or "A"
+            img_b64 = str(payload.get("image_b64") or "").strip()
+            if not img_b64:
+                self._send_json({"ok": False, "error": "未收到图片数据"})
+                return
+            try:
+                if "," in img_b64:
+                    img_b64 = img_b64.split(",", 1)[1]
+                raw_bytes = base64.b64decode(img_b64)
+                DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+                target_fn = f"char_{role_id}_half.jpg"
+                target_path = DRAMA_WORK_DIR / target_fn
+                try:
+                    import io
+                    from PIL import Image, ImageOps
+                    im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+                    im_half = ImageOps.fit(im, (2048, 1152), method=Image.Resampling.LANCZOS, centering=(0.5, 0.22))
+                    im_half.save(target_path, format="JPEG", quality=95)
+                    if role_id == "A":
+                        im_close = ImageOps.fit(im, (2048, 1152), method=Image.Resampling.LANCZOS, centering=(0.5, 0.16))
+                        im_close.save(DRAMA_WORK_DIR / "char_A_closeup.jpg", format="JPEG", quality=95)
+                except Exception:
+                    target_path.write_bytes(raw_bytes)
+                    if role_id == "A":
+                        (DRAMA_WORK_DIR / "char_A_closeup.jpg").write_bytes(raw_bytes)
+
+                wf = _load_drama_workflow()
+                uploaded_set = set(wf.get("user_uploaded_chars") or [])
+                uploaded_set.add(role_id)
+                wf["user_uploaded_chars"] = sorted(list(uploaded_set))
+                cast_list = wf.get("cast_list") or []
+                found_role = False
+                for c_item in cast_list:
+                    if str(c_item.get("id") or "").upper() == role_id:
+                        c_item["user_uploaded"] = True
+                        found_role = True
+                if not found_role:
+                    cast_list.append({
+                        "id": role_id,
+                        "name": f"角色{role_id}",
+                        "voice": "ming:灵小柔" if role_id == "A" else "ming:灵信远_中性",
+                        "desc": "",
+                        "file": target_fn,
+                        "user_uploaded": True,
+                    })
+                wf["cast_list"] = cast_list
+                if not any(it.get("file") == target_fn for it in (wf.get("image_tasks") or [])):
+                    wf.setdefault("image_tasks", []).insert(0, {
+                        "file": target_fn,
+                        "label": f"🎭 角色{role_id}指定定妆照",
+                        "refs": [],
+                        "prompt": f"用户指定角色{role_id}定妆照 ({target_fn})",
+                    })
+                _save_drama_workflow(wf)
+                _append_panel_log(f"📸 [角色定妆锁定] 已上传并归一化 16:9 (2048x1152) 角色{role_id}定妆照 -> {target_fn}")
+                self._send_json({"ok": True, "file": target_fn, "role_id": role_id})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/drama_delete_char_photo":
+            role_id = re.sub(r"[^A-Z0-9]", "", str(payload.get("role_id") or "A").strip().upper()) or "A"
+            try:
+                for fn in (f"char_{role_id}_half.jpg", f"char_{role_id}_closeup.jpg" if role_id == "A" else ""):
+                    if fn and (DRAMA_WORK_DIR / fn).is_file():
+                        (DRAMA_WORK_DIR / fn).unlink()
+                wf = _load_drama_workflow()
+                uploaded_set = set(wf.get("user_uploaded_chars") or [])
+                uploaded_set.discard(role_id)
+                wf["user_uploaded_chars"] = sorted(list(uploaded_set))
+                for c_item in (wf.get("cast_list") or []):
+                    if str(c_item.get("id") or "").upper() == role_id:
+                        c_item["user_uploaded"] = False
+                _save_drama_workflow(wf)
+                _append_panel_log(f"🗑️ [角色定妆解除] 已移除角色{role_id}的上传照片，将恢复由 AI 自动生图定妆")
+                self._send_json({"ok": True, "role_id": role_id})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
         if self.path == "/api/drama_workflow_parse":
             if payload.get("reset_default"):
                 wf_def = _get_default_drama_workflow()
@@ -8220,14 +8561,33 @@ p.wait()
             raw_script = str(payload.get("raw_script") or "").strip()
             title_in = str(payload.get("title") or "").strip()
             clear_old = bool(payload.get("clear_old_assets", True))
+            cast_list_in = payload.get("cast_list")
             if not raw_script:
                 self._send_json({"ok": False, "error": "剧本内容不能为空"})
                 return
             try:
-                wf_parsed = _parse_raw_script_to_workflow(raw_script, title=title_in)
+                old_wf = _load_drama_workflow()
+                locked_char_ids = set(old_wf.get("user_uploaded_chars") or [])
+                if isinstance(cast_list_in, list):
+                    for c_item in cast_list_in:
+                        if isinstance(c_item, dict) and c_item.get("user_uploaded"):
+                            locked_char_ids.add(str(c_item.get("id") or "").upper())
+                protected_files = {"workflow.json"}
+                for cid in locked_char_ids:
+                    if (DRAMA_WORK_DIR / f"char_{cid}_half.jpg").is_file():
+                        protected_files.add(f"char_{cid}_half.jpg")
+                    if cid == "A" and (DRAMA_WORK_DIR / "char_A_closeup.jpg").is_file():
+                        protected_files.add("char_A_closeup.jpg")
+
+                wf_parsed = _parse_raw_script_to_workflow(
+                    raw_script,
+                    title=title_in,
+                    cast_list=cast_list_in if isinstance(cast_list_in, list) else (old_wf.get("cast_list") or None),
+                    user_uploaded_chars=sorted(list(locked_char_ids)),
+                )
                 if clear_old and DRAMA_WORK_DIR.is_dir():
                     for old_f in DRAMA_WORK_DIR.glob("*"):
-                        if old_f.is_file() and old_f.name != "workflow.json":
+                        if old_f.is_file() and old_f.name not in protected_files:
                             try:
                                 old_f.unlink()
                             except Exception:
@@ -8235,8 +8595,9 @@ p.wait()
                 _save_drama_workflow(wf_parsed)
                 n_img = len(wf_parsed.get("image_tasks") or [])
                 n_vid = len(wf_parsed.get("video_tasks") or [])
+                n_cast = len(wf_parsed.get("cast_list") or [])
                 tot_dur = round(sum(float(x.get("duration") or 3.0) for x in (wf_parsed.get("video_tasks") or [])), 1)
-                msg = f"✅ 已成功解析新剧本「{wf_parsed.get('title')}」：{n_img} 个定妆/首尾帧图片节点 + {n_vid} 个分镜视频节点 (总长 {tot_dur}s)"
+                msg = f"✅ 已成功解析新剧本「{wf_parsed.get('title')}」：{n_cast} 位角色 + {n_img} 个图片节点 + {n_vid} 个分镜视频节点 (总长 {tot_dur}s)"
                 _DRAMA_STATE["message"] = msg
                 _DRAMA_STATE["error"] = ""
                 _append_panel_log(f"🔍 [剧本工作流解析] {msg}")
@@ -8544,14 +8905,20 @@ def _save_drama_workflow(wf: Dict[str, Any]):
     DRAMA_WORKFLOW_FILE.write_text(json.dumps(wf, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str, Any]:
+def _parse_raw_script_to_workflow(
+    raw_script: str,
+    title: str = "",
+    cast_list: Optional[List[Dict[str, Any]]] = None,
+    user_uploaded_chars: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
-    通用分镜剧本智能解析引擎 (不限分镜数量、不限总时长、兼容外部 AI 任意输出格式)：
+    通用分镜剧本智能解析引擎 (不限分镜数量、不限总时长、支持 A/B/C/D/E... 多角色定妆照锁定与音色绑定)：
     1. 支持直接粘贴 JSON 工作流或 ```json ... ``` 代码块；
     2. 支持解析 ChatGPT / Claude / DeepSeek / Gemini / Kimi 生成的【剧名】【全局设定】【分镜】镜头01... 结构化剧本；
-    3. 支持解析自由格式的分镜列表 (镜1 / Shot 1 / 第1镜 / 1. ...)，自动提取角色定妆基准卡、首尾关键帧、情绪音色与动态时长。
+    3. 支持解析自由格式的分镜列表 (镜1 / Shot 1 / 第1镜 / 1. ...)，自动提取 A/B/C/D/E 多角色定妆基准卡、首尾关键帧、情绪音色与动态时长。
     """
     txt = raw_script.strip()
+    locked_ids = set(str(x).upper() for x in (user_uploaded_chars or []))
 
     # 0. 若外部 AI 直接输出了 JSON 格式的工作流，优先直接解析 JSON
     json_cand = txt
@@ -8568,6 +8935,10 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
                     parsed_j["title"] = f"《AI分镜短剧·{len(parsed_j['video_tasks'])}镜》"
                 if not parsed_j.get("image_tasks"):
                     parsed_j["image_tasks"] = []
+                if cast_list:
+                    parsed_j["cast_list"] = cast_list
+                if locked_ids:
+                    parsed_j["user_uploaded_chars"] = sorted(list(locked_ids))
                 parsed_j["raw_script"] = raw_script
                 return parsed_j
         except Exception:
@@ -8592,25 +8963,104 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
     m_char_all = re.search(r"人物(?:锁定|设定)?\s*[:：]\s*([^\n【]+)", txt)
     char_desc_all = m_char_all.group(1).strip() if m_char_all else ""
 
-    m_char_a = re.search(r"(?:女主\s*A?|角色\s*A|人物\s*A)\s*[:：]\s*([^\n【]+)", txt)
-    m_char_b = re.search(r"(?:男主\s*B?|角色\s*B|人物\s*B)\s*[:：]\s*([^\n【]+)", txt)
-    m_char_c = re.search(r"(?:配角\s*C?|角色\s*C|人物\s*C)\s*[:：]\s*([^\n【]+)", txt)
-
-    desc_a = m_char_a.group(1).strip() if m_char_a else (char_desc_all or "年轻女性，五官精致立体，真实细腻皮肤纹理，眼神灵动有戏")
-    desc_b = m_char_b.group(1).strip() if m_char_b else (char_desc_all or "年轻男性，面容俊朗有气质，沉静内敛，真实细腻皮肤纹理与发丝光影")
-    desc_c = m_char_c.group(1).strip() if m_char_c else ""
-
     def _extract_char_name(desc_str: str) -> str:
         m_nm = re.match(r"^([\u4e00-\u9fff]{2,4})\s*[，,、\(（]", desc_str.strip())
         if m_nm:
             cand = m_nm.group(1)
-            if cand not in ("年轻", "古装", "现代", "女性", "男性", "少女", "青年", "身穿", "鹅蛋"):
+            if cand not in ("年轻", "古装", "现代", "女性", "男性", "少女", "青年", "身穿", "鹅蛋", "一位", "中年"):
                 return cand
         return ""
 
-    name_a = _extract_char_name(desc_a)
-    name_b = _extract_char_name(desc_b)
-    name_c = _extract_char_name(desc_c)
+    default_voices = {
+        "A": "ming:灵小柔",
+        "B": "ming:灵信远_中性",
+        "C": "ming:灵采薇_喜悦",
+        "D": "ming:灵朗",
+        "E": "ming:灵孤影_悲伤",
+        "F": "ming:灵楷",
+    }
+
+    # 构建 A..Z 多角色花名册 (合并前端卡槽 cast_list 与剧本中的 角色X/女主A/男主B/配角C 行)
+    roles_dict: Dict[str, Dict[str, Any]] = {}
+    if isinstance(cast_list, list):
+        for c_item in cast_list:
+            if not isinstance(c_item, dict):
+                continue
+            cid = re.sub(r"[^A-Z0-9]", "", str(c_item.get("id") or "").upper())
+            if not cid:
+                continue
+            c_desc = str(c_item.get("desc") or "").strip()
+            c_name = str(c_item.get("name") or "").strip() or _extract_char_name(c_desc) or f"角色{cid}"
+            roles_dict[cid] = {
+                "id": cid,
+                "name": c_name,
+                "voice": str(c_item.get("voice") or default_voices.get(cid, "ming:灵小柔")),
+                "desc": c_desc,
+                "file": f"char_{cid}_half.jpg",
+                "user_uploaded": bool(c_item.get("user_uploaded")) or (cid in locked_ids),
+            }
+
+    # 扫描剧本正文中的角色设定行：支持 女主A / 男主B / 配角C / 角色A..Z / 人物A..Z
+    for m_role in re.finditer(r"(?m)^\s*(?:女主|男主|配角|反派|角色|人物)\s*([A-Z])?(?:\s*[（(]([^）)]+)[）)])?\s*[:：]\s*([^\n【]+)", txt):
+        raw_line = m_role.group(0)
+        rid = (m_role.group(1) or "").strip().upper()
+        if not rid:
+            if "女主" in raw_line:
+                rid = "A"
+            elif "男主" in raw_line:
+                rid = "B"
+            elif "配角" in raw_line:
+                rid = "C"
+            else:
+                continue
+        r_paren = (m_role.group(2) or "").strip()
+        r_desc = (m_role.group(3) or "").strip()
+        if r_desc in ("无", "暂无", "none", "None"):
+            continue
+        extracted_nm = _extract_char_name(r_desc) or (r_paren.split("·")[0].strip() if r_paren else "")
+        voice_in_paren = ""
+        if "ming:" in r_paren:
+            m_vp = re.search(r"(ming:[^\s）)]+)", r_paren)
+            if m_vp:
+                voice_in_paren = m_vp.group(1).strip()
+        if rid not in roles_dict:
+            roles_dict[rid] = {
+                "id": rid,
+                "name": extracted_nm or f"角色{rid}",
+                "voice": voice_in_paren or default_voices.get(rid, "ming:灵小柔"),
+                "desc": r_desc,
+                "file": f"char_{rid}_half.jpg",
+                "user_uploaded": (rid in locked_ids),
+            }
+        else:
+            if r_desc:
+                roles_dict[rid]["desc"] = r_desc
+            if extracted_nm and (roles_dict[rid]["name"].startswith(("角色", "女主", "男主", "配角"))):
+                roles_dict[rid]["name"] = extracted_nm
+            if voice_in_paren:
+                roles_dict[rid]["voice"] = voice_in_paren
+
+    if "A" not in roles_dict:
+        roles_dict["A"] = {
+            "id": "A",
+            "name": _extract_char_name(char_desc_all) or "女主A",
+            "voice": "ming:灵小柔",
+            "desc": char_desc_all or "年轻女性，五官精致立体，真实细腻皮肤纹理，眼神灵动有戏",
+            "file": "char_A_half.jpg",
+            "user_uploaded": ("A" in locked_ids),
+        }
+    if "B" not in roles_dict and re.search(r"(?:男主|角色B|人物B|\bB\s*[:：])", txt):
+        roles_dict["B"] = {
+            "id": "B",
+            "name": "男主B",
+            "voice": "ming:灵信远_中性",
+            "desc": char_desc_all or "年轻男性，面容俊朗有气质，沉静内敛，真实细腻皮肤纹理与发丝光影",
+            "file": "char_B_half.jpg",
+            "user_uploaded": ("B" in locked_ids),
+        }
+
+    sorted_role_ids = sorted(roles_dict.keys())
+    final_cast_list: List[Dict[str, Any]] = []
 
     # 判断题材与时代特征 (古装 vs 现代 vs 动漫)
     is_ancient = any(k in txt for k in ("古装", "古代", "市集", "发簪", "仙侠", "公子", "长袍", "衣袂", "汉服", "江湖", "宫廷"))
@@ -8622,37 +9072,34 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
     else:
         era_tag = "现代影视剧写真质感，自然时尚妆造"
 
-    # 1. 自动构建角色定妆基准图节点
-    image_tasks: List[Dict[str, Any]] = [
-        {
-            "file": "char_A_half.jpg",
-            "label": "① 图1:角色A半身定妆",
-            "refs": [],
-            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角A：{desc_a}。背景干净柔和虚化。",
-        },
-        {
-            "file": "char_A_closeup.jpg",
-            "label": "② 图2:角色A锁脸特写",
-            "refs": ["char_A_half.jpg"],
-            "prompt": f"Keep the exact facial identity, hairstyle, and accessories of the person in <Picture 1>. {global_style} 电影级面部特写镜头（Close-up），主角A直视镜头，五官与 <Picture 1> 完全一致：{desc_a}。",
-        },
-    ]
-    has_role_b = not (m_char_b and desc_b in ("无", "暂无", "none", "None"))
-    if has_role_b:
+    # 1. 自动构建多角色定妆基准图节点 (支持 A / B / C / D / E...)
+    image_tasks: List[Dict[str, Any]] = []
+    circle_nums = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"]
+    img_idx = 0
+    for rid in sorted_role_ids:
+        r_info = roles_dict[rid]
+        r_desc = r_info["desc"] or (
+            "年轻女性，五官精致立体，真实细腻皮肤纹理" if rid == "A" else "气质鲜明的人物角色，五官立体清晰，真实细腻皮肤纹理"
+        )
+        r_info["desc"] = r_desc
+        final_cast_list.append(r_info)
+        c_num = circle_nums[img_idx] if img_idx < len(circle_nums) else f"({img_idx + 1})"
+        img_idx += 1
         image_tasks.append({
-            "file": "char_B_half.jpg",
-            "label": "③ 图3:角色B半身定妆",
+            "file": f"char_{rid}_half.jpg",
+            "label": f"{c_num} 图{img_idx}:角色{rid}({r_info['name']})定妆",
             "refs": [],
-            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角B：{desc_b}。背景干净柔和虚化。",
+            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面至微侧15度中近景半身定妆照（胸口以上至头顶完整入画，平视镜头）。角色{rid}（{r_info['name']}）：{r_desc}。背景干净柔和虚化，无任何文字水印。",
         })
-    has_role_c = bool(desc_c and desc_c not in ("无", "暂无", "none", "None"))
-    if has_role_c:
-        image_tasks.append({
-            "file": "char_C_half.jpg",
-            "label": "④ 图4:角色C半身定妆",
-            "refs": [],
-            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。角色C：{desc_c}。背景干净柔和虚化。",
-        })
+        if rid == "A":
+            c_num2 = circle_nums[img_idx] if img_idx < len(circle_nums) else f"({img_idx + 1})"
+            img_idx += 1
+            image_tasks.append({
+                "file": "char_A_closeup.jpg",
+                "label": f"{c_num2} 图{img_idx}:角色A锁脸特写",
+                "refs": ["char_A_half.jpg"],
+                "prompt": f"Keep the exact facial identity, hairstyle, and accessories of the person in <Picture 1>. {global_style} 电影级面部特写镜头（Close-up），主角A直视镜头，五官与 <Picture 1> 完全一致：{r_desc}。",
+            })
 
     # 2. 切分所有镜头块 (仅匹配行首带【时长】或换行的真实镜头头，彻底避免说明文字中的“镜头 01”被误拆)
     shot_pat = r"(?m)(?=^\s*(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜)\s*(?:【|\(|（|:|：|\n))"
@@ -8679,6 +9126,9 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
         m_cam = re.search(r"(?:【运镜】|运镜\s*[:：])\s*([^\n【]+)", blk)
         cam_txt = m_cam.group(1).strip() if m_cam else "固定镜头，机位平稳。"
 
+        m_roles_line = re.search(r"(?:【出场角色】|出场角色\s*[:：])\s*([^\n【]+)", blk)
+        roles_line_txt = m_roles_line.group(1).strip() if m_roles_line else ""
+
         m_first_ov = re.search(r"(?:【首帧】|首帧\s*[:：]|起幅\s*[:：])\s*([^\n【]+)", blk)
         first_ov_txt = m_first_ov.group(1).strip() if m_first_ov else ""
 
@@ -8690,12 +9140,12 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
         if amb_txt in ("无", "暂无", "none"):
             amb_txt = ""
 
-        m_vis = re.search(r"(?:【画面】|画面\s*[:：])\s*([\s\S]*?)(?=【|(?:对白|台词|环境音|音效|音色|尾帧|首帧)\s*[:：]|$)", blk)
+        m_vis = re.search(r"(?:【画面】|画面\s*[:：])\s*([\s\S]*?)(?=【|(?:对白|台词|环境音|音效|音色|尾帧|首帧|出场角色)\s*[:：]|$)", blk)
         if m_vis:
             vis_txt = m_vis.group(1).strip().replace("\n", " ")
         else:
             cleaned_blk = re.sub(r"^(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+】?|第\s*\d+\s*镜)\s*(?:【时长】[^\n]+)?", "", blk, flags=re.IGNORECASE)
-            cleaned_blk = re.sub(r"【(?:时长|运镜|对白|台词|音色|环境音|音效|首帧|尾帧|引擎)】[^\n【]*", "", cleaned_blk)
+            cleaned_blk = re.sub(r"【(?:时长|运镜|对白|台词|音色|环境音|音效|首帧|尾帧|引擎|出场角色)】[^\n【]*", "", cleaned_blk)
             vis_txt = cleaned_blk.strip().replace("\n", " ") or "电影级精致画面，光影自然柔和。"
 
         m_dlg = re.search(r"(?:【对白】|【台词】|对白\s*[:：]|台词\s*[:：])\s*([^\n【]+)", blk)
@@ -8714,10 +9164,17 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
         speaker_role = "A"
         spoken_text = ""
         if dlg_raw:
-            if re.match(r"^\s*(?:男主|角色B|人物B|B|男)", dlg_raw, flags=re.IGNORECASE):
+            m_sp = re.match(r"^\s*(?:角色|人物|女主|男主|配角)?\s*([A-Z])\b", dlg_raw, flags=re.IGNORECASE)
+            if m_sp and m_sp.group(1).upper() in roles_dict:
+                speaker_role = m_sp.group(1).upper()
+            elif re.match(r"^\s*(?:男主|男)\b", dlg_raw) and "B" in roles_dict:
                 speaker_role = "B"
-            elif re.match(r"^\s*(?:配角C|角色C|人物C|C)", dlg_raw, flags=re.IGNORECASE):
-                speaker_role = "C"
+            else:
+                for rid, r_info in roles_dict.items():
+                    r_nm = r_info.get("name") or ""
+                    if r_nm and dlg_raw.startswith(r_nm):
+                        speaker_role = rid
+                        break
             m_q = re.search(r"[“\"「『]([^”\"」』]+)[”\"」』]", dlg_raw)
             spoken_text = m_q.group(1).strip() if m_q else re.sub(r"^[^:：]+[:：]\s*", "", dlg_raw).strip()
             # 自动将中文括号情绪词或语气词转换为 Ming-3.0 副语言气口标签
@@ -8730,36 +9187,68 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
             elif spoken_text.startswith(("（喘息）", "(喘息)", "（深呼吸）", "(深呼吸)")):
                 spoken_text = "[Breathing] " + re.sub(r"^(?:[（(][^）)]+[）)])\s*", "", spoken_text)
 
-        # 判断该镜出现的角色参考图与 Picture 锁脸指令 (支持识别角色真名如 林晚/沈砚，并区分单人特写中的“看着她/他”宾语)
+        # 判断该镜出现的角色参考图与 Picture 锁脸指令 (优先读取【出场角色】，否则自动检测 A/B/C/D/E 角色名与代号)
         check_span = f"{cam_txt} {vis_txt} {first_ov_txt}"
         span_no_look_obj = re.sub(r"(?:看着|望向|望着|看向|盯着|背对|指向)[她他]", "", check_span)
-        a_tokens = [t for t in (name_a, "女主", "角色A", "她", "少女", "女孩", "女子") if t]
-        b_tokens = [t for t in (name_b, "男主", "角色B", "他", "公子", "男人", "男子", "少侠", "总裁") if t]
-        c_tokens = [t for t in (name_c, "配角", "角色C") if t]
 
-        has_both_kw = any(k in check_span for k in ("两人", "二人", "双人", "越肩", "肩后", "一前一后", "共撑"))
-        has_a = has_both_kw or any(k in span_no_look_obj for k in a_tokens) or (speaker_role == "A" and bool(spoken_text))
-        has_b = has_role_b and (has_both_kw or any(k in span_no_look_obj for k in b_tokens) or (speaker_role == "B" and bool(spoken_text)))
-        has_c = has_role_c and any(k in span_no_look_obj for k in c_tokens)
-
-        # 纯空镜/景物全景镜头 (未出现任何角色名或人称代词) 不传人物锁脸图，避免空镜被强行画入大头人像
-        is_pure_scenery = (not has_a and not has_b and not has_c and not spoken_text and not any(k in check_span for k in ("手", "皮鞋", "脚步", "背影", "肩")))
-
-        if is_pure_scenery:
-            refs = []
-            ref_hint = ""
-        elif has_a and has_b:
-            refs = ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"]
-            ref_hint = "Keep the woman from <Picture 1> <Picture 2> and the man from <Picture 3>. "
-        elif has_b and not has_a:
-            refs = ["char_B_half.jpg"]
-            ref_hint = "Keep the exact facial identity of the man in <Picture 1>. "
-        elif has_c and not has_a and not has_b:
-            refs = ["char_C_half.jpg"]
-            ref_hint = "Keep the exact facial identity of the person in <Picture 1>. "
+        present_roles: List[str] = []
+        if roles_line_txt:
+            if not any(k in roles_line_txt for k in ("无", "空镜", "none", "None")):
+                for m_rl in re.finditer(r"([A-Z])", roles_line_txt.upper()):
+                    cand_r = m_rl.group(1)
+                    if cand_r in roles_dict and cand_r not in present_roles:
+                        present_roles.append(cand_r)
+                for rid, r_info in roles_dict.items():
+                    r_nm = r_info.get("name") or ""
+                    if r_nm and r_nm in roles_line_txt and rid not in present_roles:
+                        present_roles.append(rid)
         else:
-            refs = ["char_A_half.jpg", "char_A_closeup.jpg"]
-            ref_hint = "Keep the exact facial identity of the woman in <Picture 1> <Picture 2>. "
+            has_both_ab = any(k in check_span for k in ("两人", "二人", "双人", "越肩", "肩后", "一前一后", "共撑"))
+            for rid in sorted_role_ids:
+                r_info = roles_dict[rid]
+                r_nm = r_info.get("name") or ""
+                tokens = [f"角色{rid}", f"人物{rid}"]
+                if r_nm and not r_nm.startswith("角色"):
+                    tokens.append(r_nm)
+                if rid == "A":
+                    tokens.extend(["女主", "她", "少女", "女孩", "女子"])
+                elif rid == "B":
+                    tokens.extend(["男主", "他", "公子", "男人", "男子", "少侠", "总裁"])
+                elif rid == "C":
+                    tokens.extend(["配角C", "配角"])
+                is_present = (
+                    (has_both_ab and rid in ("A", "B"))
+                    or any(t in span_no_look_obj for t in tokens if t)
+                    or (bool(spoken_text) and speaker_role == rid)
+                    or bool(re.search(rf"(?<![A-Za-z]){rid}(?![A-Za-z])", span_no_look_obj))
+                )
+                if is_present and rid not in present_roles:
+                    present_roles.append(rid)
+
+        is_pure_scenery = (
+            (roles_line_txt and any(k in roles_line_txt for k in ("无", "空镜", "none", "None")))
+            or (not present_roles and not spoken_text and not any(k in check_span for k in ("手", "皮鞋", "脚步", "背影", "肩")))
+        )
+
+        refs: List[str] = []
+        ref_hint_parts: List[str] = []
+        if not is_pure_scenery:
+            if not present_roles:
+                present_roles = ["A"]
+            if present_roles == ["A"]:
+                refs = ["char_A_half.jpg", "char_A_closeup.jpg"]
+                ref_hint = "Keep the exact facial identity and outfit of character A from <Picture 1> <Picture 2>. "
+            elif present_roles == ["A", "B"] and len(roles_dict) <= 2:
+                refs = ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"]
+                ref_hint = "Keep the woman (A) from <Picture 1> <Picture 2> and the man (B) from <Picture 3>. "
+            else:
+                for p_idx, rid in enumerate(present_roles[:4], start=1):
+                    refs.append(f"char_{rid}_half.jpg")
+                    r_nm = roles_dict[rid].get("name") or f"角色{rid}"
+                    ref_hint_parts.append(f"character {rid} ({r_nm}) from <Picture {p_idx}>")
+                ref_hint = "Keep the exact facial identity and outfit of " + ", ".join(ref_hint_parts) + ". "
+        else:
+            ref_hint = ""
 
         # 若画面采用“起幅：...；随后：...”结构，首帧只取“起幅”段，尾帧取“随后”段，确保首尾关键帧画面精准分离
         has_split_transition = ("随后" in vis_txt or "接着" in vis_txt)
@@ -8814,33 +9303,13 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
         if not use_avatar and not ambience_src:
             ambience_src = f"{shot_id}_raw.mp4"
 
-        # 智能匹配 Ming-3.0 情绪与角色音色
+        # 优先使用剧本显式【音色】，其次使用角色卡槽绑定的固定音色
         if voice_ov:
             tts_voice = voice_ov if (voice_ov.startswith("ming:") or voice_ov.startswith("zh-")) else f"ming:{voice_ov}"
+        elif speaker_role in roles_dict and roles_dict[speaker_role].get("voice"):
+            tts_voice = str(roles_dict[speaker_role]["voice"])
         else:
-            mood_span = f"{vis_txt} {dlg_raw}"
-            if speaker_role == "B":
-                if any(k in mood_span for k in ("怒", "生气", "吼", "厉声", "暴怒")):
-                    tts_voice = "ming:灵孤影_生气"
-                elif any(k in mood_span for k in ("冷笑", "嘲讽", "高冷", "冷漠", "不屑")):
-                    tts_voice = "ming:灵孤影_厌恶"
-                elif any(k in mood_span for k in ("悲", "心碎", "痛苦", "泪", "哽咽")):
-                    tts_voice = "ming:灵孤影_悲伤"
-                elif any(k in mood_span for k in ("霸总", "深情", "低沉", "宠溺")):
-                    tts_voice = "ming:灵朗"
-                else:
-                    tts_voice = "ming:灵信远_中性"
-            else:
-                if any(k in mood_span for k in ("傲娇", "假装生气", "撇嘴", "瞪", "数落", "发脾气")):
-                    tts_voice = "ming:灵黛嗔_生气"
-                elif any(k in mood_span for k in ("悲", "哭", "泪", "委屈", "心碎")):
-                    tts_voice = "ming:灵采薇_悲伤"
-                elif any(k in mood_span for k in ("撒娇", "粘人", "求")):
-                    tts_voice = "ming:灵梦"
-                elif any(k in mood_span for k in ("妩媚", "撩", "魅惑")):
-                    tts_voice = "ming:妩媚妲己"
-                else:
-                    tts_voice = "ming:灵小柔"
+            tts_voice = default_voices.get(speaker_role, "ming:灵小柔")
 
         clean_spoken_preview = re.sub(r"\[[A-Za-z-]+\]", "", spoken_text).strip()[:7]
         vid_label = (
@@ -8872,6 +9341,8 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
         "global_style": global_style,
         "ambience_source_file": ambience_src or (video_tasks[0]["file"] if video_tasks else "shot01_raw.mp4"),
         "raw_script": raw_script,
+        "cast_list": final_cast_list,
+        "user_uploaded_chars": sorted(list(locked_ids)),
         "image_tasks": image_tasks,
         "video_tasks": video_tasks,
     }
@@ -9512,11 +9983,18 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
     tot_steps = len(img_tasks) + len(vid_tasks) + 1
     img_res = "1152x2048" if aspect == "9:16" else "2048x1152"
     vid_res = "480x832" if aspect == "9:16" else "832x480"
+    locked_char_ids = set(str(x).upper() for x in (wf.get("user_uploaded_chars") or []))
+    for c_item in (wf.get("cast_list") or []):
+        if isinstance(c_item, dict) and c_item.get("user_uploaded"):
+            locked_char_ids.add(str(c_item.get("id") or "").upper())
+    locked_char_files = {f"char_{cid}_half.jpg" for cid in locked_char_ids}
+    if "A" in locked_char_ids:
+        locked_char_files.add("char_A_closeup.jpg")
 
     try:
         # ==================== 阶段一 & 阶段二：MiniMax-H3-Image 生成所有定妆照 + 分镜首尾关键帧 ====================
         need_any_img = any(
-            not (resume and (DRAMA_WORK_DIR / it["file"]).is_file() and (DRAMA_WORK_DIR / it["file"]).stat().st_size > 8192)
+            not ((resume or it["file"] in locked_char_files) and (DRAMA_WORK_DIR / it["file"]).is_file() and (DRAMA_WORK_DIR / it["file"]).stat().st_size > 8192)
             for it in img_tasks
         )
         if need_any_img:
@@ -9530,13 +10008,14 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
 
         step_cursor = 1
         for it in img_tasks:
+            use_resume_for_img = resume or (it["file"] in locked_char_files)
             _drama_run_image_step(
                 it["file"],
                 it.get("label") or it["file"],
                 it.get("prompt") or "",
                 it.get("refs") or [],
                 img_res,
-                resume,
+                use_resume_for_img,
                 step_cursor,
                 tot_steps,
             )
