@@ -8537,7 +8537,7 @@ def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: 
                 raise RuntimeError(f"加载 {label} 失败，请查看下方实时日志")
             break
 
-    for _ in range(45):
+    for _ in range(180):
         _drama_check_cancel()
         try:
             with opener.open("http://127.0.0.1:30000/health", timeout=3) as r:

@@ -1308,12 +1308,18 @@ def _start_minimax_h3_server_on_30000(target_dir: str):
     subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(2)
 
-    if not os.path.exists("/content/DiffSynth-Studio"):
+    if not os.path.isdir("/content/DiffSynth-Studio/.git"):
+        shutil.rmtree("/content/DiffSynth-Studio", ignore_errors=True)
         log("正在安装 DiffSynth-Studio 音视频管线依赖 (首次约需 25 秒)...")
-        subprocess.run(
-            ["git", "clone", "--depth", "1", "https://github.com/modelscope/DiffSynth-Studio.git", "/content/DiffSynth-Studio"],
-            check=True,
-        )
+        for _clone_try in range(3):
+            r_cl = subprocess.run(
+                ["git", "clone", "--depth", "1", "https://github.com/modelscope/DiffSynth-Studio.git", "/content/DiffSynth-Studio"],
+                check=False,
+            )
+            if r_cl.returncode == 0 and os.path.isdir("/content/DiffSynth-Studio/.git"):
+                break
+            shutil.rmtree("/content/DiffSynth-Studio", ignore_errors=True)
+            time.sleep(2)
     missing_pkgs = []
     for pkg, mod in [
         ("av", "av"),
@@ -5472,6 +5478,27 @@ def run_remote_vm_main():
         batch_total_bytes = sum(x[4] for x in resolved_plan)
         total_gb = batch_total_bytes / (1024 ** 3)
         log(f"共解析到 {len(resolved_plan)} 个模型文件 (总计约 {total_gb:.2f} GB)，目标目录: {target_dir}")
+
+        # 防止三套大型模型 (MiniMax-H3-Image 45GB + LongCat-Avatar 48GB + MiniMax-H3 134GB = 227GB) 同时驻留撑爆 235GB NVMe 盘
+        if not fuse_mounted and os.path.isdir("/content/local_models"):
+            needed_new_bytes = 0
+            for rel_fn, _, _, _, sz in resolved_plan:
+                ep = os.path.join(target_dir, rel_fn)
+                if not (os.path.exists(ep) and (sz <= 0 or os.path.getsize(ep) == sz)):
+                    needed_new_bytes += max(0, sz)
+            free_nvme = shutil.disk_usage(target_dir).free
+            safety_margin = 18 * (1024 ** 3)  # 始终保留至少 18GB NVMe 余量，防止 git clone 或视频写出爆盘
+            if free_nvme < needed_new_bytes + safety_margin:
+                for other_name in sorted(os.listdir("/content/local_models")):
+                    if other_name == MODEL_FOLDER:
+                        continue
+                    other_p = os.path.join("/content/local_models", other_name)
+                    if os.path.isdir(other_p):
+                        log(f"🧹 [NVMe 防爆盘智能腾挪] 当前磁盘剩余 {free_nvme/(1024**3):.1f} GB，正在释放后台未激活的本地缓存 {other_name} (云盘已永久保存)...")
+                        shutil.rmtree(other_p, ignore_errors=True)
+                        free_nvme = shutil.disk_usage(target_dir).free
+                        if free_nvme >= needed_new_bytes + safety_margin:
+                            break
         cum_done_bytes = 0
         st_stage_tag = "云盘极速预热" if gdrive_saved_count > 0 else "HF 下载"
         for idx, (rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, sz) in enumerate(resolved_plan, start=1):
