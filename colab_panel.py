@@ -6438,15 +6438,16 @@ ${storySection}
 【目标总时长与分镜规模】：${targetDur}（单镜时长可在 1.5秒 ~ 10.0秒 之间根据戏剧节奏自由设定，总时长不限死）
 【全局视觉画风】：${visStyle}
 
-【剧组已锁定的角色阵容（共 ${dramaCastState.length} 位角色，请在剧本中严格使用以下角色代号与设定）】：
-${dramaCastState.map(c => `- 角色${c.id}${c.name ? '（' + c.name + '）' : ''}：${c.desc || '请根据剧情补充外貌与穿搭'} 【绑定音色】${c.voice || 'ming:灵小柔'}`).join('\n')}
+【剧组角色卡槽参考（若以下角色与上方【用户提供的原著故事】中的角色不一致且未标注“已上传照片锁定”，请直接以原著故事里的真实角色为准重新编号为 角色A、角色B、角色C...，切勿保留原著里不出场的旧角色！）】：
+${dramaCastState.map(c => `- 角色${c.id}${c.name ? '（' + c.name + (c.user_uploaded ? ' · 已上传照片锁定' : '') + '）' : ''}：${c.desc || '请根据剧情补充外貌与穿搭'} 【绑定音色】${c.voice || 'ming:灵小柔'}`).join('\n')}
 
 请严格按照以下结构化格式输出（不要省略标签，以便工作流引擎 100% 自动拆解为多角色锁脸定妆卡、首尾关键帧、数字人配音与环境音视频节点）：
 
 【剧名】《在此填写剧名》
 【全局设定】
 画风：${visStyle}
-${dramaCastState.map(c => `角色${c.id}：${c.name ? c.name + '，' : ''}${c.desc || '（详细描述年龄、脸型五官、发型发饰、服装颜色与材质）'}`).join('\n')}
+角色A：（填写第一位出场角色的名字、年龄、脸型五官、发型、服装颜色与材质）
+角色B：（填写第二位出场角色的名字、年龄、脸型五官、发型、服装颜色与材质，支持继续列出 角色C / 角色D / 角色E...）
 
 【分镜】
 镜头01【时长】2.5秒
@@ -9007,7 +9008,7 @@ def _parse_raw_script_to_workflow(
     char_desc_all = m_char_all.group(1).strip() if m_char_all else ""
 
     def _extract_char_name(desc_str: str) -> str:
-        m_nm = re.match(r"^([\u4e00-\u9fff]{2,4})\s*[，,、\(（]", desc_str.strip())
+        m_nm = re.match(r"^([\u4e00-\u9fffA-Za-z0-9]{2,12})\s*[，,、\(（]", desc_str.strip())
         if m_nm:
             cand = m_nm.group(1)
             if cand not in ("年轻", "古装", "现代", "女性", "男性", "少女", "青年", "身穿", "鹅蛋", "一位", "中年"):
@@ -9017,33 +9018,14 @@ def _parse_raw_script_to_workflow(
     default_voices = {
         "A": "ming:灵小柔",
         "B": "ming:灵信远_中性",
-        "C": "ming:灵采薇_喜悦",
-        "D": "ming:灵朗",
+        "C": "ming:灵朗",
+        "D": "ming:灵采薇_喜悦",
         "E": "ming:灵孤影_悲伤",
         "F": "ming:灵楷",
     }
 
-    # 构建 A..Z 多角色花名册 (合并前端卡槽 cast_list 与剧本中的 角色X/女主A/男主B/配角C 行)
-    roles_dict: Dict[str, Dict[str, Any]] = {}
-    if isinstance(cast_list, list):
-        for c_item in cast_list:
-            if not isinstance(c_item, dict):
-                continue
-            cid = re.sub(r"[^A-Z0-9]", "", str(c_item.get("id") or "").upper())
-            if not cid:
-                continue
-            c_desc = str(c_item.get("desc") or "").strip()
-            c_name = str(c_item.get("name") or "").strip() or _extract_char_name(c_desc) or f"角色{cid}"
-            roles_dict[cid] = {
-                "id": cid,
-                "name": c_name,
-                "voice": str(c_item.get("voice") or default_voices.get(cid, "ming:灵小柔")),
-                "desc": c_desc,
-                "file": f"char_{cid}_half.jpg",
-                "user_uploaded": bool(c_item.get("user_uploaded")) or (cid in locked_ids),
-            }
-
-    # 扫描剧本正文中的角色设定行：支持 女主A / 男主B / 配角C / 角色A..Z / 人物A..Z
+    # 先扫描剧本正文中的角色设定行：支持 女主A / 男主B / 配角C / 角色A..Z / 人物A..Z
+    script_roles: Dict[str, Dict[str, Any]] = {}
     for m_role in re.finditer(r"(?m)^\s*(?:女主|男主|配角|反派|角色|人物)\s*([A-Z])?(?:\s*[（(]([^）)]+)[）)])?\s*[:：]\s*([^\n【]+)", txt):
         raw_line = m_role.group(0)
         rid = (m_role.group(1) or "").strip().upper()
@@ -9058,7 +9040,7 @@ def _parse_raw_script_to_workflow(
                 continue
         r_paren = (m_role.group(2) or "").strip()
         r_desc = (m_role.group(3) or "").strip()
-        if r_desc in ("无", "暂无", "none", "None"):
+        if r_desc in ("无", "暂无", "none", "None") or "不出场" in r_desc or "无此角色" in r_desc:
             continue
         extracted_nm = _extract_char_name(r_desc) or (r_paren.split("·")[0].strip() if r_paren else "")
         voice_in_paren = ""
@@ -9066,40 +9048,56 @@ def _parse_raw_script_to_workflow(
             m_vp = re.search(r"(ming:[^\s）)]+)", r_paren)
             if m_vp:
                 voice_in_paren = m_vp.group(1).strip()
-        if rid not in roles_dict:
-            roles_dict[rid] = {
-                "id": rid,
-                "name": extracted_nm or f"角色{rid}",
-                "voice": voice_in_paren or default_voices.get(rid, "ming:灵小柔"),
-                "desc": r_desc,
-                "file": f"char_{rid}_half.jpg",
-                "user_uploaded": (rid in locked_ids),
-            }
-        else:
-            if r_desc:
-                roles_dict[rid]["desc"] = r_desc
-            if extracted_nm and (roles_dict[rid]["name"].startswith(("角色", "女主", "男主", "配角"))):
-                roles_dict[rid]["name"] = extracted_nm
-            if voice_in_paren:
-                roles_dict[rid]["voice"] = voice_in_paren
+        is_male_desc = any(k in r_desc for k in ("男", "哥", "叔", "爷", "胡茬", "板寸", "油头", "西装", "先生", "公子", "少侠", "总裁"))
+        fallback_v = "ming:灵信远_中性" if (is_male_desc and rid in ("A", "B")) else ("ming:灵朗" if is_male_desc else default_voices.get(rid, "ming:灵小柔"))
+        script_roles[rid] = {
+            "id": rid,
+            "name": extracted_nm or f"角色{rid}",
+            "voice": voice_in_paren or fallback_v,
+            "desc": r_desc,
+            "file": f"char_{rid}_half.jpg",
+            "user_uploaded": (rid in locked_ids),
+        }
 
-    if "A" not in roles_dict:
+    # 构建 A..Z 多角色花名册：若剧本明确定义了角色列表，以剧本定义为准（并合并前端卡槽的上传锁定状态）；否则使用前端卡槽
+    roles_dict: Dict[str, Dict[str, Any]] = {}
+    if script_roles:
+        roles_dict = dict(script_roles)
+        if isinstance(cast_list, list):
+            for c_item in cast_list:
+                if not isinstance(c_item, dict):
+                    continue
+                cid = re.sub(r"[^A-Z0-9]", "", str(c_item.get("id") or "").upper())
+                if cid in roles_dict and (bool(c_item.get("user_uploaded")) or cid in locked_ids):
+                    roles_dict[cid]["user_uploaded"] = True
+    elif isinstance(cast_list, list):
+        for c_item in cast_list:
+            if not isinstance(c_item, dict):
+                continue
+            cid = re.sub(r"[^A-Z0-9]", "", str(c_item.get("id") or "").upper())
+            if not cid:
+                continue
+            c_desc = str(c_item.get("desc") or "").strip()
+            if "不出场" in c_desc or "无此角色" in c_desc:
+                continue
+            c_name = str(c_item.get("name") or "").strip() or _extract_char_name(c_desc) or f"角色{cid}"
+            roles_dict[cid] = {
+                "id": cid,
+                "name": c_name,
+                "voice": str(c_item.get("voice") or default_voices.get(cid, "ming:灵小柔")),
+                "desc": c_desc,
+                "file": f"char_{cid}_half.jpg",
+                "user_uploaded": bool(c_item.get("user_uploaded")) or (cid in locked_ids),
+            }
+
+    if not roles_dict:
         roles_dict["A"] = {
             "id": "A",
-            "name": _extract_char_name(char_desc_all) or "女主A",
+            "name": _extract_char_name(char_desc_all) or "角色A",
             "voice": "ming:灵小柔",
             "desc": char_desc_all or "年轻女性，五官精致立体，真实细腻皮肤纹理，眼神灵动有戏",
             "file": "char_A_half.jpg",
             "user_uploaded": ("A" in locked_ids),
-        }
-    if "B" not in roles_dict and re.search(r"(?:男主|角色B|人物B|\bB\s*[:：])", txt):
-        roles_dict["B"] = {
-            "id": "B",
-            "name": "男主B",
-            "voice": "ming:灵信远_中性",
-            "desc": char_desc_all or "年轻男性，面容俊朗有气质，沉静内敛，真实细腻皮肤纹理与发丝光影",
-            "file": "char_B_half.jpg",
-            "user_uploaded": ("B" in locked_ids),
         }
 
     sorted_role_ids = sorted(roles_dict.keys())
@@ -9115,7 +9113,7 @@ def _parse_raw_script_to_workflow(
     else:
         era_tag = "现代影视剧写真质感，自然时尚妆造"
 
-    # 1. 自动构建多角色定妆基准图节点 (支持 A / B / C / D / E...)
+    # 1. 自动构建多角色定妆基准图节点 (每个角色仅生成 1 张干净暗调背景的胸口以上半身定妆卡，避免街道全身背景污染后续分镜)
     image_tasks: List[Dict[str, Any]] = []
     circle_nums = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"]
     img_idx = 0
@@ -9132,17 +9130,8 @@ def _parse_raw_script_to_workflow(
             "file": f"char_{rid}_half.jpg",
             "label": f"{c_num} 图{img_idx}:角色{rid}({r_info['name']})定妆",
             "refs": [],
-            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面至微侧15度中近景半身定妆照（胸口以上至头顶完整入画，平视镜头）。角色{rid}（{r_info['name']}）：{r_desc}。背景干净柔和虚化，无任何文字水印。",
+            "prompt": f"{global_style} {era_tag}，85mm f/1.4人像特写至中近景镜头（Medium Close-up Bust Portrait，仅取胸口以上至头顶，平视镜头）。角色{rid}（{r_info['name']}）：{r_desc}。背景为极简柔和的深暗色纯色大光圈虚化背景（无任何具体建筑或街景干扰），面部受光均匀立体，双唇自然放松闭合，电影摄影机实拍原片。",
         })
-        if rid == "A":
-            c_num2 = circle_nums[img_idx] if img_idx < len(circle_nums) else f"({img_idx + 1})"
-            img_idx += 1
-            image_tasks.append({
-                "file": "char_A_closeup.jpg",
-                "label": f"{c_num2} 图{img_idx}:角色A锁脸特写",
-                "refs": ["char_A_half.jpg"],
-                "prompt": f"Keep the exact facial identity, hairstyle, and accessories of the person in <Picture 1>. {global_style} 电影级面部特写镜头（Close-up），主角A直视镜头，五官与 <Picture 1> 完全一致：{r_desc}。",
-            })
 
     # 2. 切分所有镜头块 (仅匹配行首带【时长】或换行的真实镜头头，彻底避免说明文字中的“镜头 01”被误拆)
     shot_pat = r"(?m)(?=^\s*(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜)\s*(?:【|\(|（|:|：|\n))"
@@ -9230,12 +9219,25 @@ def _parse_raw_script_to_workflow(
             elif spoken_text.startswith(("（喘息）", "(喘息)", "（深呼吸）", "(深呼吸)")):
                 spoken_text = "[Breathing] " + re.sub(r"^(?:[（(][^）)]+[）)])\s*", "", spoken_text)
 
-        # 判断该镜出现的角色参考图与 Picture 锁脸指令 (优先读取【出场角色】，否则自动检测 A/B/C/D/E 角色名与代号)
+        # 判断该镜出现的角色参考图与 Picture 锁脸指令 (优先读取【出场角色】，并智能剔除越肩前景背影与无脸手脚特写)
+        spoken_words_only = re.sub(r"\[[A-Za-z-]+\]", "", spoken_text).strip()
         check_span = f"{cam_txt} {vis_txt} {first_ov_txt}"
-        span_no_look_obj = re.sub(r"(?:看着|望向|望着|看向|盯着|背对|指向)[她他]", "", check_span)
+        # 剔除“看着她/他”以及“从X肩后拍/前景是X模糊的肩”中的非正脸前景背景角色，防止正反打传错人脸
+        span_no_look_obj = re.sub(r"(?:看着|望向|望着|看向|盯着|背对|指向|冲着)[她他]|从[^，,）)]*肩后(?:拍|看|望)?|前景是[^，,；;。]*肩[^，,；;。]*", "", check_span)
+
+        is_no_face_closeup = (
+            not spoken_words_only
+            and any(k in check_span for k in ("手部特写", "贴地特写", "皮鞋踏入", "细针从她指间滑落", "剪刀剪断", "取下那把挂了七年", "指尖轻轻碰了碰"))
+            and not any(k in check_span for k in ("面部", "侧脸", "眼睫", "眼神", "抬头", "低头看"))
+        )
 
         present_roles: List[str] = []
-        if roles_line_txt:
+        if is_no_face_closeup:
+            present_roles = []
+        elif spoken_words_only and speaker_role in roles_dict and not any(k in cam_txt for k in ("双人", "两人", "全景")):
+            # 单人说话镜头 (LongCat-Avatar 数字人驱动)：只传当前开口说话角色的定妆照，严禁混入其他角色导致替身张嘴
+            present_roles = [speaker_role]
+        elif roles_line_txt:
             if not any(k in roles_line_txt for k in ("无", "空镜", "none", "None")):
                 for m_rl in re.finditer(r"([A-Z])", roles_line_txt.upper()):
                     cand_r = m_rl.group(1)
@@ -9246,19 +9248,17 @@ def _parse_raw_script_to_workflow(
                     if r_nm and r_nm in roles_line_txt and rid not in present_roles:
                         present_roles.append(rid)
         else:
-            has_both_ab = any(k in check_span for k in ("两人", "二人", "双人", "越肩", "肩后", "一前一后", "共撑"))
+            has_both_ab = any(k in span_no_look_obj for k in ("两人", "二人", "双人", "一前一后", "共撑"))
             for rid in sorted_role_ids:
                 r_info = roles_dict[rid]
                 r_nm = r_info.get("name") or ""
                 tokens = [f"角色{rid}", f"人物{rid}"]
                 if r_nm and not r_nm.startswith("角色"):
                     tokens.append(r_nm)
-                if rid == "A":
+                if rid == "A" and len(roles_dict) <= 2:
                     tokens.extend(["女主", "她", "少女", "女孩", "女子"])
-                elif rid == "B":
+                elif rid == "B" and len(roles_dict) <= 2:
                     tokens.extend(["男主", "他", "公子", "男人", "男子", "少侠", "总裁"])
-                elif rid == "C":
-                    tokens.extend(["配角C", "配角"])
                 is_present = (
                     (has_both_ab and rid in ("A", "B"))
                     or any(t in span_no_look_obj for t in tokens if t)
@@ -9269,27 +9269,26 @@ def _parse_raw_script_to_workflow(
                     present_roles.append(rid)
 
         is_pure_scenery = (
-            (roles_line_txt and any(k in roles_line_txt for k in ("无", "空镜", "none", "None")))
-            or (not present_roles and not spoken_text and not any(k in check_span for k in ("手", "皮鞋", "脚步", "背影", "肩")))
+            is_no_face_closeup
+            or (roles_line_txt and any(k in roles_line_txt for k in ("无", "空镜", "none", "None")))
+            or (not present_roles and not spoken_text)
         )
 
         refs: List[str] = []
-        ref_hint_parts: List[str] = []
-        if not is_pure_scenery:
-            if not present_roles:
-                present_roles = ["A"]
-            if present_roles == ["A"]:
-                refs = ["char_A_half.jpg", "char_A_closeup.jpg"]
-                ref_hint = "Keep the exact facial identity and outfit of character A from <Picture 1> <Picture 2>. "
-            elif present_roles == ["A", "B"] and len(roles_dict) <= 2:
-                refs = ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"]
-                ref_hint = "Keep the woman (A) from <Picture 1> <Picture 2> and the man (B) from <Picture 3>. "
-            else:
-                for p_idx, rid in enumerate(present_roles[:4], start=1):
-                    refs.append(f"char_{rid}_half.jpg")
-                    r_nm = roles_dict[rid].get("name") or f"角色{rid}"
-                    ref_hint_parts.append(f"character {rid} ({r_nm}) from <Picture {p_idx}>")
-                ref_hint = "Keep the exact facial identity and outfit of " + ", ".join(ref_hint_parts) + ". "
+        subj_defs: List[str] = []
+        subj_names: List[str] = []
+        if not is_pure_scenery and present_roles:
+            for p_idx, rid in enumerate(present_roles[:4], start=1):
+                refs.append(f"char_{rid}_half.jpg")
+                r_nm = roles_dict[rid].get("name") or f"角色{rid}"
+                subj_defs.append(f"The person in <Picture {p_idx}> is <Subject {p_idx}> ({r_nm}).")
+                subj_names.append(f"<Subject {p_idx}>")
+            joined_defs = " ".join(subj_defs)
+            joined_subjs = " and ".join(subj_names)
+            ref_hint = (
+                f"{joined_defs} Generate a brand-new cinematic shot and camera angle showing {joined_subjs} "
+                f"(keep only {joined_subjs}'s exact facial identity, hairstyle, and clothing, while completely changing the camera framing, shot scale, pose, action, and background environment to match this scene): "
+            )
         else:
             ref_hint = ""
 
@@ -9304,16 +9303,15 @@ def _parse_raw_script_to_workflow(
 
         first_img_fn = f"{shot_id}_first.jpg"
         short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", first_img_prompt)[:10] or f"分镜{idx:02d}"
-        scene_prefix = f"{scene_desc}。" if (scene_desc and idx in (1, 2, 14, 27)) else ""
+        scene_prefix = f"{scene_desc}。" if scene_desc else ""
         image_tasks.append({
             "file": first_img_fn,
             "label": f"📷 镜{idx:02d}首帧:{short_vis}",
             "refs": refs,
-            "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt} {first_img_prompt}",
+            "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{first_img_prompt}",
         })
 
         # 判断是否需要生成尾帧 (显式提供了【尾帧】，或画面包含“起幅...随后/接着...”)
-        spoken_words_only = re.sub(r"\[[A-Za-z-]+\]", "", spoken_text).strip()
         last_img_fn = ""
         if last_ov_txt and last_ov_txt not in ("无", "暂无", "none"):
             last_img_fn = f"{shot_id}_last.jpg"
@@ -9322,7 +9320,7 @@ def _parse_raw_script_to_workflow(
                 "file": last_img_fn,
                 "label": f"📷 镜{idx:02d}尾帧:{short_last}",
                 "refs": refs,
-                "prompt": f"{ref_hint}{global_style} {cam_txt} {last_ov_txt}",
+                "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{last_ov_txt}",
             })
         elif has_split_transition and (not spoken_words_only or dur_s >= 4.5):
             last_img_fn = f"{shot_id}_last.jpg"
@@ -9332,7 +9330,7 @@ def _parse_raw_script_to_workflow(
                 "file": last_img_fn,
                 "label": f"📷 镜{idx:02d}尾帧:{short_last}",
                 "refs": refs,
-                "prompt": f"{ref_hint}{global_style} {cam_txt} {after_part}",
+                "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{after_part}",
             })
 
         # 智能路由引擎：只有包含真实可发音文字台词 (非纯 [Breathing] / [Surprise-ah] 无字气口) 且无首尾双帧转场的镜头才走 LongCat-Avatar
@@ -9346,9 +9344,11 @@ def _parse_raw_script_to_workflow(
         if not use_avatar and not ambience_src:
             ambience_src = f"{shot_id}_raw.mp4"
 
-        # 优先使用剧本显式【音色】，其次使用角色卡槽绑定的固定音色
+        # 优先使用剧本显式【音色】（并自动回填到角色卡槽），其次使用角色卡槽绑定的固定音色
         if voice_ov:
             tts_voice = voice_ov if (voice_ov.startswith("ming:") or voice_ov.startswith("zh-")) else f"ming:{voice_ov}"
+            if speaker_role in roles_dict and spoken_words_only:
+                roles_dict[speaker_role]["voice"] = tts_voice
         elif speaker_role in roles_dict and roles_dict[speaker_role].get("voice"):
             tts_voice = str(roles_dict[speaker_role]["voice"])
         else:
@@ -9505,21 +9505,25 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
     }
     body = json.dumps(job_payload).encode("utf-8")
 
-    # 记录提交前的旧文件名，防止极速轮询在云端线程刚启动前误读上一张图的 latest_video
-    prev_latest = ""
+    # 记录提交前云端已存在的所有旧文件名 (completed_videos / latest_video / history)，彻底杜绝极速轮询误取上一镜或历史旧视频导致片段重复！
+    prev_known_files = set()
     try:
         st_req0 = urllib.request.Request("http://127.0.0.1:30000/v1/video/status", headers=headers, method="GET")
         with urllib.request.urlopen(st_req0, timeout=8) as sr0:
             sd0 = json.loads(sr0.read().decode("utf-8"))
-            v0 = sd0.get("completed_videos") or ([sd0["latest_video"]] if sd0.get("latest_video") else [])
-            if v0:
-                prev_latest = os.path.basename(str(v0[-1]))
+            for f_item in (sd0.get("completed_videos") or []):
+                if f_item:
+                    prev_known_files.add(os.path.basename(str(f_item)))
+            if sd0.get("latest_video"):
+                prev_known_files.add(os.path.basename(str(sd0["latest_video"])))
+            for f_item in (sd0.get("history") or []):
+                if f_item:
+                    prev_known_files.add(os.path.basename(str(f_item)))
     except Exception:
         pass
 
-    # 若云端当前正处于本镜的扩散生成中 (HTTP 409)，直接无缝接管并继续轮询进度，无需中断或重复提交
-    saw_running_or_new = False
-    for _ in range(60):
+    # 若云端上一任务尚未完全释放 GPU (HTTP 409 或 already_running)，等待其完成后再提交新任务（绝不把上一镜当成本镜！）
+    for _ in range(90):
         _drama_check_cancel()
         try:
             req = urllib.request.Request("http://127.0.0.1:30000/v1/video/generations", data=body, headers=headers, method="POST")
@@ -9527,18 +9531,29 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
                 res = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             if he.code == 409:
-                saw_running_or_new = True
-                break
+                time.sleep(2.5)
+                continue
             raise
         if not res.get("ok"):
             if "正在生成" in str(res.get("error") or "") or "busy" in str(res.get("error") or "").lower():
-                saw_running_or_new = True
-                break
+                time.sleep(2.5)
+                continue
             raise RuntimeError(f"{step_label} 提交失败: {res.get('error')}")
         if not res.get("already_running"):
             break
-        saw_running_or_new = True
-        break
+        # 若返回 already_running (例如 LongCat-Avatar 上一镜刚在收尾)，把当前 latest_video 加入 prev_known_files 并等待 2.5s 重新提交
+        try:
+            st_req_w = urllib.request.Request("http://127.0.0.1:30000/v1/video/status", headers=headers, method="GET")
+            with urllib.request.urlopen(st_req_w, timeout=8) as sr_w:
+                sd_w = json.loads(sr_w.read().decode("utf-8"))
+                for f_item in (sd_w.get("completed_videos") or []):
+                    if f_item:
+                        prev_known_files.add(os.path.basename(str(f_item)))
+                if sd_w.get("latest_video"):
+                    prev_known_files.add(os.path.basename(str(sd_w["latest_video"])))
+        except Exception:
+            pass
+        time.sleep(2.5)
 
     time.sleep(1.5)
     remote_fname = ""
@@ -9557,16 +9572,16 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
 
         msg = str(sd.get("message") or "").replace("总进度", "单镜进度")
         if sd.get("running"):
-            saw_running_or_new = True
             if msg:
                 _DRAMA_STATE["message"] = f"🎬 【总进度 {_DRAMA_STATE.get('pct', 0)}%】[{step_label}] {msg}"
                 _append_panel_log(f"[自动导演·总进度{_DRAMA_STATE.get('pct', 0)}%] {step_label}: {msg}")
             continue
 
-        vids = sd.get("completed_videos") or ([sd["latest_video"]] if sd.get("latest_video") else []) or (sd.get("history") or [])[:1]
+        # 仅从本次任务产出的 completed_videos / latest_video 读取（严禁回退到 history 历史旧列表，且文件名必须不在 prev_known_files 中！）
+        vids = sd.get("completed_videos") or ([sd["latest_video"]] if sd.get("latest_video") else [])
         if vids:
             cand_fname = os.path.basename(str(vids[-1]))
-            if cand_fname != prev_latest or saw_running_or_new or poll_i >= 4:
+            if cand_fname and cand_fname not in prev_known_files:
                 remote_fname = cand_fname
                 break
 
@@ -9693,7 +9708,7 @@ def _drama_run_avatar_step(
         raise RuntimeError(f"缺少首帧参考图 {ref_img_fn}")
     w_s, h_s = res_str.split("x")
     num_segs = 1 if dur_s <= 3.75 else max(1, min(20, 1 + int(math.ceil((dur_s - 3.72) / 3.20))))
-    clean_vis = visual_prompt.rstrip("。.,， ") + "。画面干净纯粹，底部无任何字幕、无台词文字、无水印 (clean raw camera footage without any subtitles, captions, or text on screen)。"
+    clean_vis = visual_prompt.rstrip("。.,， ") + "。电影摄影机实拍原片，纯洁干净画面 (raw unedited cinema camera footage, pure clean frame)。"
     _DRAMA_STATE["message"] = f"🗣️ [{step_idx}/{tot_steps}] 正在生成对白镜头 {step_label} ({dur_s}s · {num_segs}段)..."
     _append_panel_log(f"🗣️ [自动导演 {step_idx}/{tot_steps}] 开始生成数字人对白镜头 {step_label} (时长: {dur_s}s/{num_segs}段, 音色: {tts_voice}, 台词: {tts_text})...")
     payload = {
@@ -9758,7 +9773,7 @@ def _drama_run_fl2va_step(
         target_frames = 294
     else:
         target_frames = 362
-    clean_fl_prompt = prompt.rstrip("。.,， ") + "。画面干净纯粹，无任何字幕、无台词文字、无水印 (clean video frame without any subtitles, captions, or text on screen)。"
+    clean_fl_prompt = prompt.rstrip("。.,， ") + "。电影摄影机实拍原片，纯洁干净画面 (raw unedited cinema camera footage, pure clean frame)。"
     _DRAMA_STATE["message"] = f"🎞️ [{step_idx}/{tot_steps}] 正在生成动作与环境音镜头 {step_label} ({dur_s}s · {target_frames}帧)..."
     _append_panel_log(f"🎞️ [自动导演 {step_idx}/{tot_steps}] 开始生成首尾帧有声视频 {step_label} ({dur_s}s · {target_frames}帧)...")
     payload: Dict[str, Any] = {
@@ -9846,12 +9861,15 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
         amb_wav = Path("/nonexistent_amb.wav")
 
     norm_files: List[Path] = []
+    scale_w = ((int(round(out_w * 1.14)) + 1) // 2) * 2
+    scale_h = ((int(round(out_h * 1.14)) + 1) // 2) * 2
     for idx, (fn, dur_s, is_avatar_dlg, lbl) in enumerate(shot_specs, start=1):
         src_p = work_dir / fn
         dst_p = norm_dir / f"norm_{idx:02d}_{dur_s:.1f}s.mp4"
+        # 采用 1.14x 电影画幅上移裁切 (切除顶部 1.2% 与底部 11.1% 潜在字幕区)，物理级 100% 根除任何底部乱码字幕！
         vf_chain = (
-            f"fps=25,scale={out_w}:{out_h}:flags=lanczos:force_original_aspect_ratio=increase,"
-            f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})*0.22,setsar=1,format=yuv420p,"
+            f"fps=25,scale={scale_w}:{scale_h}:flags=lanczos:force_original_aspect_ratio=increase,"
+            f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})*0.10,setsar=1,format=yuv420p,"
             f"tpad=stop_mode=clone:stop_duration=0.8"
         )
         fade_out_st = max(0.05, round(dur_s - 0.05, 2))

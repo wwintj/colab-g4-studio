@@ -978,8 +978,8 @@ def _run_video_job(payload: dict):
         else:
             width, height = res_map.get(res_str, (832, 480))
 
-        if visual and "无任何字幕" not in visual and "without any subtitles" not in visual.lower():
-            visual = visual.rstrip("。.,， ") + "。画面干净纯粹，无任何字幕、无台词文字、无水印 (clean video frame without any subtitles, captions, or text on screen)。"
+        if visual and "实拍原片" not in visual and "raw unedited cinema camera footage" not in visual.lower():
+            visual = visual.rstrip("。.,， ") + "。电影摄影机实拍原片，纯洁干净画面 (raw unedited cinema camera footage, pure clean frame)。"
         parts = [visual]
         if sound:
             parts.append(f"Soundscape & Dialogue: {sound}")
@@ -1260,6 +1260,15 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
             if not prompt:
                 self._send_json({"ok": False, "error": "请输入画面描述提示词 (Prompt)"}, status=400)
                 return
+            JOB_STATE.update({
+                "running": True,
+                "pct": 2,
+                "step": 0,
+                "completed_videos": [],
+                "latest_video": "",
+                "error": "",
+                "message": "⏳ 任务已提交，正在进入 GPU 渲染队列...",
+            })
             threading.Thread(target=_run_video_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成有声视频"})
             return
@@ -2831,11 +2840,11 @@ def _run_avatar_job(payload: dict):
                 + "。画面中的人物直视镜头自然生动地开口说话，眼神灵动有神，伴随说话语流节奏有自然的微眨眼、挑眉与轻微头部摆动，口型与语音精准同步，牙齿与唇形自然清晰 "
                 "(speaking naturally and expressively toward the camera, natural eye contact, subtle blinks, expressive eyebrow and head movement matching speech cadence)。"
             )
-        if "无任何字幕" not in visual_prompt and "without any subtitles" not in visual_prompt.lower():
+        if "实拍原片" not in visual_prompt and "raw unedited cinema camera footage" not in visual_prompt.lower():
             visual_prompt = (
                 visual_prompt.rstrip("。.,， ")
-                + "。画面干净纯粹，画面底部无任何字幕、无台词文字、无水印 "
-                "(clean raw camera footage without any subtitles, captions, text on screen, or watermarks at the bottom)。"
+                + "。电影摄影机实拍原片，纯洁干净画面 "
+                "(raw unedited cinema camera footage, pure clean frame)。"
             )
 
         tts_note = ""
@@ -3470,6 +3479,15 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
             if JOB_STATE["running"]:
                 self._send_json({"ok": True, "already_running": True, "message": JOB_STATE.get("message") or "当前已有数字人视频正在生成中，已自动接管实时进度"})
                 return
+            JOB_STATE.update({
+                "running": True,
+                "pct": 2,
+                "step": 0,
+                "completed_videos": [],
+                "latest_video": "",
+                "error": "",
+                "message": "⏳ 数字人任务已提交，正在进入 GPU 渲染队列...",
+            })
             threading.Thread(target=_run_avatar_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成 LongCat-Video-Avatar-1.6 数字人视频"})
             return
@@ -3770,9 +3788,25 @@ def _build_picture_subject_prompt(prompt: str, num_refs: int, edit_outfit: str =
             "clean natural lighting, and shallow depth of field."
         )
 
-    # 若用户自己已经写了完整的 <Subject 1> 语法，直接原样使用
-    if "<subject 1>" in raw.lower() and "<picture 1>" in raw.lower():
+    # 若用户自己已经写了 <Subject 1> 或 <Picture 1> 锁脸分镜指令，直接原样使用（严禁在此强锁 <Subject 3> 背景，否则所有分镜都会复制参考图的站姿和街道背景！）
+    if "<picture 1>" in raw.lower() or "<subject 1>" in raw.lower():
         return raw
+
+    # 若主提示词是分镜画面描述（包含镜头景别/场景/动作），仅锁定 <Picture 1> 的面部五官与服装，完全按新分镜生成全新机位、景别、动作与场景
+    if any(k in raw for k in ("镜头", "特写", "近景", "中景", "全景", "远景", "越肩", "正反打", "俯瞰", "机位", "坐", "走")):
+        if num_refs >= 2:
+            return (
+                "The person in <Picture 1> is <Subject 1>. The person in <Picture 2> is <Subject 2>. "
+                f"Generate a brand-new cinematic scene and camera angle showing <Subject 1> and <Subject 2>: {raw} "
+                "Keep the facial identity, hairstyle, and clothing of <Subject 1> and <Subject 2> consistent with their reference pictures, "
+                "while completely changing the camera framing, shot scale, pose, action, and background environment to match the scene description."
+            )
+        return (
+            "The person in <Picture 1> is <Subject 1>. "
+            f"Generate a brand-new cinematic scene and camera angle showing <Subject 1>: {raw} "
+            "Keep the exact facial identity, hairstyle, and clothing of <Subject 1> consistent with <Picture 1>, "
+            "while completely changing the camera framing, shot scale, pose, action, and background environment to match the scene description."
+        )
 
     if outfit or scene or props:
         tgt_outfit = outfit or "an elegant, tailored silk outfit with refined details"
@@ -4530,6 +4564,15 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
             if JOB_STATE["running"]:
                 self._send_json({"ok": True, "already_running": True, "message": JOB_STATE.get("message") or "当前已有 MiniMax-H3-Image 任务正在运行，已自动接管实时进度"})
                 return
+            JOB_STATE.update({
+                "running": True,
+                "pct": 2,
+                "step": 0,
+                "completed_videos": [],
+                "latest_video": "",
+                "error": "",
+                "message": "⏳ 4K 生图任务已提交，正在进入 GPU 渲染队列...",
+            })
             threading.Thread(target=_run_image_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成 MiniMax-H3-Image 4K 超清大图"})
             return
