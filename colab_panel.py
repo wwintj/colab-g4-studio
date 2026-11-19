@@ -8534,13 +8534,21 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
         except Exception:
             pass
 
-    if not title:
-        m_title = re.search(r"(?:【剧名】|剧名\s*[:：])\s*([^\n【]+)", txt)
-        if m_title:
-            title = m_title.group(1).strip().strip("《》\"' ")
+    # 剥离外部 AI 可能包裹的 Markdown 代码块围栏 ``` 以及在末尾附加的总结段落 ("剧本共 27 个镜头..." / "几处我替你...")
+    txt = re.sub(r"```[a-zA-Z]*", "", txt)
+    txt = re.split(r"\n\s*(?:剧本共\s*\d+\s*个?镜头|几处我替你|说明\s*[:：]|设计说明\s*[:：])", txt, maxsplit=1)[0].strip()
+
+    m_title = re.search(r"(?:【剧名】|剧名\s*[:：]|^#\s*)\s*([^\n【]+)", txt)
+    if m_title:
+        extracted_t = m_title.group(1).strip().strip("《》\"' ")
+        if extracted_t:
+            title = extracted_t
 
     m_style = re.search(r"画风\s*[:：]\s*([^\n【]+)", txt)
     global_style = m_style.group(1).strip() if m_style else "写实真人电影级质感，85mm浅景深，自然柔和光影，细节清晰真实。"
+
+    m_scene = re.search(r"场景\s*[:：]\s*([^\n【]+)", txt)
+    scene_desc = m_scene.group(1).strip() if m_scene else ""
 
     m_char_all = re.search(r"人物(?:锁定|设定)?\s*[:：]\s*([^\n【]+)", txt)
     char_desc_all = m_char_all.group(1).strip() if m_char_all else ""
@@ -8552,6 +8560,18 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
     desc_a = m_char_a.group(1).strip() if m_char_a else (char_desc_all or "年轻女性，五官精致立体，真实细腻皮肤纹理，眼神灵动有戏")
     desc_b = m_char_b.group(1).strip() if m_char_b else (char_desc_all or "年轻男性，面容俊朗有气质，沉静内敛，真实细腻皮肤纹理与发丝光影")
     desc_c = m_char_c.group(1).strip() if m_char_c else ""
+
+    def _extract_char_name(desc_str: str) -> str:
+        m_nm = re.match(r"^([\u4e00-\u9fff]{2,4})\s*[，,、\(（]", desc_str.strip())
+        if m_nm:
+            cand = m_nm.group(1)
+            if cand not in ("年轻", "古装", "现代", "女性", "男性", "少女", "青年", "身穿", "鹅蛋"):
+                return cand
+        return ""
+
+    name_a = _extract_char_name(desc_a)
+    name_b = _extract_char_name(desc_b)
+    name_c = _extract_char_name(desc_c)
 
     # 判断题材与时代特征 (古装 vs 现代 vs 动漫)
     is_ancient = any(k in txt for k in ("古装", "古代", "市集", "发簪", "仙侠", "公子", "长袍", "衣袂", "汉服", "江湖", "宫廷"))
@@ -8595,13 +8615,13 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
             "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。角色C：{desc_c}。背景干净柔和虚化。",
         })
 
-    # 2. 切分所有镜头块 (支持 镜头01 / 镜1 / 第1镜 / Shot 1 / 分镜1 等任意数量分镜，不限总镜数与总时长)
-    shot_pat = r"(?=(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜))"
+    # 2. 切分所有镜头块 (仅匹配行首带【时长】或换行的真实镜头头，彻底避免说明文字中的“镜头 01”被误拆)
+    shot_pat = r"(?m)(?=^\s*(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜)\s*(?:【|\(|（|:|：|\n))"
     shot_blocks = re.split(shot_pat, txt, flags=re.IGNORECASE)
     shot_blocks = [
         b.strip()
         for b in shot_blocks
-        if re.match(r"^(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜)", b.strip(), flags=re.IGNORECASE)
+        if re.match(r"^(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜)\s*(?:【|\(|（|:|：|\n)", b.strip(), flags=re.IGNORECASE)
     ]
     if not shot_blocks:
         # 兜底：按编号行或段落切分 (不设 15 镜硬性截断，支持任意长度)
@@ -8671,13 +8691,25 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
             elif spoken_text.startswith(("（喘息）", "(喘息)", "（深呼吸）", "(深呼吸)")):
                 spoken_text = "[Breathing] " + re.sub(r"^(?:[（(][^）)]+[）)])\s*", "", spoken_text)
 
-        # 判断该镜出现的角色参考图与 Picture 锁脸指令
-        check_span = f"{vis_txt} {first_ov_txt} {dlg_raw}"
-        has_a = any(k in check_span for k in ("A", "女主", "她", "少女", "女孩", "女子"))
-        has_b = has_role_b and any(k in check_span for k in ("B", "男主", "他", "公子", "男人", "男子", "少侠", "总裁"))
-        has_c = has_role_c and any(k in check_span for k in ("C", "配角"))
+        # 判断该镜出现的角色参考图与 Picture 锁脸指令 (支持识别角色真名如 林晚/沈砚，并区分单人特写中的“看着她/他”宾语)
+        check_span = f"{cam_txt} {vis_txt} {first_ov_txt}"
+        span_no_look_obj = re.sub(r"(?:看着|望向|望着|看向|盯着|背对|指向)[她他]", "", check_span)
+        a_tokens = [t for t in (name_a, "女主", "角色A", "她", "少女", "女孩", "女子") if t]
+        b_tokens = [t for t in (name_b, "男主", "角色B", "他", "公子", "男人", "男子", "少侠", "总裁") if t]
+        c_tokens = [t for t in (name_c, "配角", "角色C") if t]
 
-        if has_a and has_b:
+        has_both_kw = any(k in check_span for k in ("两人", "二人", "双人", "越肩", "肩后", "一前一后", "共撑"))
+        has_a = has_both_kw or any(k in span_no_look_obj for k in a_tokens) or (speaker_role == "A" and bool(spoken_text))
+        has_b = has_role_b and (has_both_kw or any(k in span_no_look_obj for k in b_tokens) or (speaker_role == "B" and bool(spoken_text)))
+        has_c = has_role_c and any(k in span_no_look_obj for k in c_tokens)
+
+        # 纯空镜/景物全景镜头 (未出现任何角色名或人称代词) 不传人物锁脸图，避免空镜被强行画入大头人像
+        is_pure_scenery = (not has_a and not has_b and not has_c and not spoken_text and not any(k in check_span for k in ("手", "皮鞋", "脚步", "背影", "肩")))
+
+        if is_pure_scenery:
+            refs = []
+            ref_hint = ""
+        elif has_a and has_b:
             refs = ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"]
             ref_hint = "Keep the woman from <Picture 1> <Picture 2> and the man from <Picture 3>. "
         elif has_b and not has_a:
@@ -8690,17 +8722,27 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
             refs = ["char_A_half.jpg", "char_A_closeup.jpg"]
             ref_hint = "Keep the exact facial identity of the woman in <Picture 1> <Picture 2>. "
 
+        # 若画面采用“起幅：...；随后：...”结构，首帧只取“起幅”段，尾帧取“随后”段，确保首尾关键帧画面精准分离
+        has_split_transition = ("随后" in vis_txt or "接着" in vis_txt)
+        if first_ov_txt:
+            first_img_prompt = first_ov_txt
+        elif has_split_transition:
+            first_img_prompt = re.split(r"[；;。]?\s*(?:随后|接着)\s*[:：]?", vis_txt, maxsplit=1)[0].replace("起幅：", "").replace("起幅:", "").strip()
+        else:
+            first_img_prompt = vis_txt
+
         first_img_fn = f"{shot_id}_first.jpg"
-        short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", (first_ov_txt or vis_txt))[:10] or f"分镜{idx:02d}"
-        first_img_prompt = first_ov_txt if first_ov_txt else vis_txt
+        short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", first_img_prompt)[:10] or f"分镜{idx:02d}"
+        scene_prefix = f"{scene_desc}。" if (scene_desc and idx in (1, 2, 14, 27)) else ""
         image_tasks.append({
             "file": first_img_fn,
             "label": f"📷 镜{idx:02d}首帧:{short_vis}",
             "refs": refs,
-            "prompt": f"{ref_hint}{global_style} {cam_txt} {first_img_prompt}",
+            "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt} {first_img_prompt}",
         })
 
-        # 判断是否需要尾帧 (显式提供了【尾帧】，或含“随后/接着”且为动作转焦镜头)
+        # 判断是否需要生成尾帧 (显式提供了【尾帧】，或画面包含“起幅...随后/接着...”)
+        spoken_words_only = re.sub(r"\[[A-Za-z-]+\]", "", spoken_text).strip()
         last_img_fn = ""
         if last_ov_txt and last_ov_txt not in ("无", "暂无", "none"):
             last_img_fn = f"{shot_id}_last.jpg"
@@ -8711,9 +8753,9 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
                 "refs": refs,
                 "prompt": f"{ref_hint}{global_style} {cam_txt} {last_ov_txt}",
             })
-        elif ("随后" in vis_txt or "接着" in vis_txt) and (not spoken_text or dur_s >= 4.5):
+        elif has_split_transition and (not spoken_words_only or dur_s >= 4.5):
             last_img_fn = f"{shot_id}_last.jpg"
-            after_part = re.split(r"随后|接着", vis_txt, maxsplit=1)[-1].strip()
+            after_part = re.split(r"[；;。]?\s*(?:随后|接着)\s*[:：]?", vis_txt, maxsplit=1)[-1].strip()
             short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", after_part)[:10] or "落幅"
             image_tasks.append({
                 "file": last_img_fn,
@@ -8722,13 +8764,13 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
                 "prompt": f"{ref_hint}{global_style} {cam_txt} {after_part}",
             })
 
-        # 智能路由引擎：支持显式【引擎】指定，否则有对白且无复杂首尾帧转场的镜头自动走 LongCat-Avatar + Ming-3.0
+        # 智能路由引擎：只有包含真实可发音文字台词 (非纯 [Breathing] / [Surprise-ah] 无字气口) 且无首尾双帧转场的镜头才走 LongCat-Avatar
         if "avatar" in eng_ov or "数字人" in eng_ov:
-            use_avatar = True
+            use_avatar = bool(spoken_words_only)
         elif "fl2va" in eng_ov or "首尾帧" in eng_ov:
             use_avatar = False
         else:
-            use_avatar = bool(spoken_text) and (not last_img_fn)
+            use_avatar = bool(spoken_words_only) and (not last_img_fn)
 
         if not use_avatar and not ambience_src:
             ambience_src = f"{shot_id}_raw.mp4"
