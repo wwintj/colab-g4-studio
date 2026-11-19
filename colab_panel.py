@@ -2270,29 +2270,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div id="fusionAdvancedDrawer" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(2,6,23,0.85);border:1px dashed #64748b;">
       <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;">
         <div>
-          <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">🎭 表情与嘴型</label>
+          <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">🎭 表情与脸型保持</label>
           <select id="fusionExprSelect" style="width:100%;padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-            <option value="natural_closed" selected>😌 自然平静闭唇 (数字人最佳)</option>
+            <option value="keep_orig" selected>📸 保持人脸原图自然表情与脸型 (推荐)</option>
+            <option value="natural_closed">😌 自然平静闭唇 (数字人底图)</option>
             <option value="gentle_smile">😊 温和浅笑 (不露齿)</option>
             <option value="boss_serious">😠 冷峻威严 (大佬气场)</option>
             <option value="sly_smirk">😏 狡黠似笑非笑</option>
             <option value="sad_teary">😢 眼眶微红忧郁</option>
-            <option value="keep_orig">📸 保持原图表情</option>
           </select>
         </div>
         <div>
           <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">👁️ 视线方向</label>
           <select id="fusionGazeSelect" style="width:100%;padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-            <option value="front_camera" selected>👁️ 正面平视镜头</option>
+            <option value="keep_target" selected>🖼️ 跟随姿势与构图视线 (推荐)</option>
+            <option value="front_camera">👁️ 正面平视镜头</option>
             <option value="side_15_right">↗️ 微侧15°看右侧 (正反打)</option>
             <option value="side_15_left">↖️ 微侧15°看左侧 (正反打)</option>
-            <option value="keep_target">🖼️ 跟随底图视线</option>
           </select>
         </div>
         <div>
           <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">🧍 体型身材</label>
           <select id="fusionBodySelect" style="width:100%;padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-            <option value="standard" selected>🖼️ 标准匀称 / 跟随底图</option>
+            <option value="standard" selected>🖼️ 100% 跟随姿势底图身材 (推荐)</option>
             <option value="boss_stocky">🐻 敦实微胖大佬体型</option>
             <option value="athletic_tall">💪 宽肩健硕体型</option>
             <option value="slim_youth">🌿 清瘦修长少年体型</option>
@@ -2300,23 +2300,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </select>
         </div>
         <div>
-          <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">📐 景别范围</label>
+          <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">📐 姿势与景别范围</label>
           <select id="fusionFramingSelect" style="width:100%;padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-            <option value="waist_medium" selected>🧍 腰部/大腿以上中景 (完整展现服装穿搭·推荐)</option>
-            <option value="keep_target_frame">🖼️ 保持参考图原有构图与姿势</option>
+            <option value="keep_target_frame" selected>🖼️ 100% 保持参考图原有姿势与构图 (推荐)</option>
+            <option value="waist_medium">🧍 腰部/大腿以上中景</option>
             <option value="bust_half">📸 胸口以上半身 (定妆特写)</option>
             <option value="closeup_face">🔍 面部近景特写</option>
             <option value="full_body">🏞️ 全身融入场景</option>
           </select>
         </div>
         <div>
-          <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">💡 背景虚化与光影</label>
+          <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">💡 背景与光影</label>
           <select id="fusionLightingSelect" style="width:100%;padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-            <option value="cinema_85mm_bokeh" selected>🎬 85mm电影浅景深虚化</option>
+            <option value="keep_target_light" selected>🖼️ 100% 保持参考图背景与光影 (推荐)</option>
+            <option value="cinema_85mm_bokeh">🎬 85mm电影浅景深虚化</option>
             <option value="clear_35mm_scene">🏞️ 35mm场景清晰融入</option>
             <option value="dramatic_noir">🕯️ 港风暗调高反差光影</option>
             <option value="soft_natural">☀️ 柔和均匀自然光</option>
-            <option value="keep_target_light">🖼️ 继承被换脸原图光影</option>
           </select>
         </div>
         <div>
@@ -5194,26 +5194,29 @@ function splitFusionTargetCardLeftRight(idx) {
     const w = img.naturalWidth || img.width;
     const h = img.naturalHeight || img.height;
     if (w < 40 || h < 40) return;
-    // 左半图 (0 ~ 49.3% 宽度，自动避开中间白缝) 与右半图 (50.7% ~ 100% 宽度)
-    const leftW = Math.floor(w * 0.493);
-    const rightX = Math.ceil(w * 0.507);
-    const rightW = w - rightX;
+    // 自动切除社交平台双联截图四周的白边/圆角与中间白缝
+    const topY = Math.floor(h * 0.045);
+    const cropH = Math.floor(h * 0.91);
+    const leftX = Math.floor(w * 0.035);
+    const leftW = Math.floor(w * 0.452);
+    const rightX = Math.ceil(w * 0.513);
+    const rightW = Math.floor(w * 0.452);
 
     const c1 = document.createElement('canvas');
     c1.width = leftW;
-    c1.height = h;
-    c1.getContext('2d').drawImage(img, 0, 0, leftW, h, 0, 0, leftW, h);
+    c1.height = cropH;
+    c1.getContext('2d').drawImage(img, leftX, topY, leftW, cropH, 0, 0, leftW, cropH);
     const leftB64 = c1.toDataURL('image/jpeg', 0.95);
 
     const c2 = document.createElement('canvas');
     c2.width = rightW;
-    c2.height = h;
-    c2.getContext('2d').drawImage(img, rightX, 0, rightW, h, 0, 0, rightW, h);
+    c2.height = cropH;
+    c2.getContext('2d').drawImage(img, rightX, topY, rightW, cropH, 0, 0, rightW, cropH);
     const rightB64 = c2.toDataURL('image/jpeg', 0.95);
 
     fusionTargetList.splice(idx, 1, leftB64, rightB64);
     renderFusionTargetCards();
-    showGlobalCopyToast('✂️ 已将该左右双联截图拆分为 #1、#2 两张独立竖版照片！点击「🪄 一键批量合成全部」即可一次生成两张');
+    showGlobalCopyToast('✂️ 已将该左右双联截图拆分为 #1、#2 两张无白边独立竖版照片！点击「🪄 一键批量合成全部」即可一次生成两张');
   };
   img.src = srcB64;
 }
@@ -5277,16 +5280,16 @@ function switchFusionSubMode(subMode) {
     if (s2Title) s2Title.innerText = '👗 第二步：换套服装 (可选，支持多张)';
     if (s3Title) s3Title.innerText = '🏞️ 第三步：上传场景照片';
     if (s3Main) s3Main.innerText = '点击上传【场景环境照片】';
-    if (framingSel && framingSel.value === 'keep_target_frame') framingSel.value = 'waist_medium';
-    if (lightSel && lightSel.value === 'keep_target_light') lightSel.value = 'cinema_85mm_bokeh';
+    if (framingSel) framingSel.value = 'keep_target_frame';
+    if (lightSel) lightSel.value = 'clear_35mm_scene';
     if (hairSel) hairSel.value = 'keep_face_hair';
   } else {
     if (grid) grid.style.gridTemplateColumns = '1fr 1.65fr';
     if (s3Card) s3Card.style.display = 'none';
     if (s1Title) s1Title.innerText = '🧑 第一步：上传人脸照片';
     if (s2Title) s2Title.innerText = '👗 第二步：上传服装/穿搭参考图 (支持多张)';
-    if (framingSel && framingSel.value === 'keep_target_frame') framingSel.value = 'waist_medium';
-    if (lightSel && lightSel.value === 'keep_target_light') lightSel.value = 'cinema_85mm_bokeh';
+    if (framingSel) framingSel.value = 'keep_target_frame';
+    if (lightSel) lightSel.value = 'keep_target_light';
     if (hairSel) hairSel.value = 'keep_face_hair';
   }
   renderFusionTargetCards();
@@ -5348,55 +5351,59 @@ async function loadCurrentPreviewIntoFusionSlot(slotIdx) {
   alert('请先在下方历史记录中点击选择一张已生成的图片，再点「📋取预览图」载入此槽位');
 }
 
-function buildFusionSubjectPrompt(targetListForJob) {
-  const hasFace = Boolean(fusionSlotsB64[0]);
+// 核心底层机制：MiniMaxH3ImageConditioning 中 image_1 (<Picture 1>) 永远是空间构图与姿势底图 ("image_1 is the picture to edit")！
+// 因此当上传了服装/姿势参考图时，必须把【服装/姿势底图】作为 <Picture 1>，把【目标人脸照】作为 <Picture 2> 注入，才能 100% 锁住底图坐姿/动作，同时 100% 还原目标人脸的精致小V脸与神态！
+function buildFusionRefsAndPrompt(targetListForJob) {
+  const faceB64 = fusionSlotsB64[0] || '';
   const targets = Array.isArray(targetListForJob) ? targetListForJob.filter(Boolean) : [];
+  const sceneB64 = fusionSlotsB64[2] || '';
+  const hasFace = Boolean(faceB64);
   const hasSlot2 = targets.length > 0;
-  const hasScene = Boolean(fusionSlotsB64[2]);
+  const hasScene = Boolean(sceneB64);
 
-  const exprVal = ((document.getElementById('fusionExprSelect') || {}).value || 'natural_closed');
-  const gazeVal = ((document.getElementById('fusionGazeSelect') || {}).value || 'front_camera');
+  const exprVal = ((document.getElementById('fusionExprSelect') || {}).value || 'keep_orig');
+  const gazeVal = ((document.getElementById('fusionGazeSelect') || {}).value || 'keep_target');
   const bodyVal = ((document.getElementById('fusionBodySelect') || {}).value || 'standard');
-  const frameVal = ((document.getElementById('fusionFramingSelect') || {}).value || 'waist_medium');
-  const lightVal = ((document.getElementById('fusionLightingSelect') || {}).value || 'cinema_85mm_bokeh');
+  const frameVal = ((document.getElementById('fusionFramingSelect') || {}).value || 'keep_target_frame');
+  const lightVal = ((document.getElementById('fusionLightingSelect') || {}).value || 'keep_target_light');
   const hairVal = ((document.getElementById('fusionHairModeSelect') || {}).value || 'keep_face_hair');
   const accVal = ((document.getElementById('fusionAccessorySelect') || {}).value || 'auto_face');
   const extraTxt = (((document.getElementById('fusionPropsActionInput') || {}).value) || '').trim();
 
   const exprMap = {
+    keep_orig: 'preserving the exact natural facial expression, smile, and lip posture from the face reference photo',
     natural_closed: 'serene, calm natural expression with relaxed gently closed lips (no teeth showing, ideal neutral mouth posture)',
-    gentle_smile: 'warm, subtle gentle closed-lip smile with expressive eyes',
+    gentle_smile: 'warm, subtle gentle smile with expressive eyes',
     boss_serious: 'commanding, sharp, authoritative serious expression with steady piercing gaze',
     sly_smirk: 'subtle, clever, knowing half-smile with agile observant eyes',
     sad_teary: 'emotional, melancholic expression with glistening slightly reddened eyes',
-    keep_orig: 'preserving the natural facial expression from <Picture 1>',
   };
   const gazeMap = {
-    front_camera: 'looking directly at the camera at eye level (frontal to slight 10-degree angle)',
+    keep_target: 'natural gaze direction matching the pose and camera composition',
+    front_camera: 'looking directly at the camera at eye level',
     side_15_right: 'head turned slightly 15 degrees looking toward an off-camera person on the right',
     side_15_left: 'head turned slightly 15 degrees looking toward an off-camera person on the left',
-    keep_target: 'natural gaze direction matching the composition',
   };
   const bodyMap = {
-    standard: 'natural, well-proportioned body build matching the reference',
+    standard: 'preserving the natural body proportions and posture of the pose reference',
     boss_stocky: 'solid, stocky, mature heavyweight boss build with broad shoulders',
     athletic_tall: 'tall, broad-shouldered, athletic muscular build',
     slim_youth: 'slender, lean, refined youthful build',
     curvy_tall: 'tall, graceful, slender and well-proportioned feminine silhouette',
   };
   const frameMap = {
-    waist_medium: 'Three-quarter to waist-up fashion portrait (from mid-thigh/hips up to top of head, clearly showcasing the complete upper garment, waistline, lower pants/skirt pairing, and natural body posture from <Picture 2>)',
-    keep_target_frame: 'Exact camera framing, shot scale, body pose, and composition angle preserved from <Picture 2>',
+    keep_target_frame: '100% preserve the exact camera framing, shot scale, seated/standing body pose, arm and hand placement, and leg posture from <Picture 1>',
+    waist_medium: 'Three-quarter to waist-up fashion portrait clearly showcasing the complete upper garment, waistline, lower pants/skirt pairing, and body posture',
     bust_half: 'Medium close-up bust portrait (from chest up to top of head with natural headroom)',
     closeup_face: 'Cinematic facial close-up portrait (focusing on facial features, eyes, and collar)',
     full_body: 'Full-body to three-quarter cinematic shot naturally grounded in the environment',
   };
   const lightMap = {
-    cinema_85mm_bokeh: 'Captured on an 85mm f/1.4 cinema portrait lens, shallow depth of field with soft creamy background bokeh, natural ambient rim light matching the environment color temperature, realistic skin texture.',
-    clear_35mm_scene: 'Captured on a 35mm cinema lens with deep focus, both the person and the surrounding architectural/scene details clearly visible, realistic spatial perspective and grounded shadows.',
-    dramatic_noir: 'Cinematic high-contrast chiaroscuro lighting, warm amber key light and cool rim light, rich atmospheric shadows and film grain.',
-    soft_natural: 'Soft, even, diffused natural studio lighting across the face and body, clean and transparent skin tone without harsh shadows.',
-    keep_target_light: 'Exact lighting direction, color grading, shadows, and ambient reflections matched seamlessly to <Picture 2>.',
+    keep_target_light: '100% preserve the clean background environment, studio lighting, shadows, and color grading from <Picture 1>.',
+    cinema_85mm_bokeh: 'Captured on an 85mm f/1.4 cinema portrait lens, shallow depth of field with soft creamy background bokeh, natural ambient rim light, realistic skin texture.',
+    clear_35mm_scene: 'Captured on a 35mm cinema lens with deep focus, both the person and the surrounding architectural/scene details clearly visible, realistic spatial perspective.',
+    dramatic_noir: 'Cinematic high-contrast chiaroscuro lighting, warm amber key light and cool rim light, rich atmospheric shadows.',
+    soft_natural: 'Soft, even, diffused natural studio lighting across the face and body, clean and transparent skin tone.',
   };
   const accMap = {
     auto_face: '',
@@ -5407,96 +5414,90 @@ function buildFusionSubjectPrompt(targetListForJob) {
     clean_shaven: 'Clean-shaven smooth jawline with no beard or mustache.',
   };
 
-  const styleTail = `${frameMap[frameVal] || frameMap.waist_medium}. Facial expression: ${exprMap[exprVal] || exprMap.natural_closed}, ${gazeMap[gazeVal] || gazeMap.front_camera}. Body build: ${bodyMap[bodyVal] || bodyMap.standard}. ${accMap[accVal] || ''} ${extraTxt ? 'Action, props & details: ' + extraTxt + '.' : ''} ${lightMap[lightVal] || lightMap.cinema_85mm_bokeh} Raw unedited cinema camera photograph, pure clean frame.`;
+  const styleTail = `${frameMap[frameVal] || frameMap.keep_target_frame}. Facial expression: ${exprMap[exprVal] || exprMap.keep_orig}, ${gazeMap[gazeVal] || gazeMap.keep_target}. Body build: ${bodyMap[bodyVal] || bodyMap.standard}. ${accMap[accVal] || ''} ${extraTxt ? 'Additional requirements: ' + extraTxt + '.' : ''} ${lightMap[lightVal] || lightMap.keep_target_light} High-resolution real-life photograph, delicate skin texture.`;
 
-  // 若用户在“多图合并为1张”模式下上传了多张服装/配饰参考图 (<Picture 2>..<Picture K>)
-  if (hasFace && targets.length >= 2) {
-    const itemDefs = targets.map((_, i) => `The clothing/outfit item or styling reference in <Picture ${i + 2}> is <Subject ${i + 2}>.`).join(' ');
-    const itemNames = targets.map((_, i) => `<Subject ${i + 2}>`).join(' combined with ');
-    const scenePicIdx = targets.length + 2;
-    const sceneSubj = `<Subject ${scenePicIdx}>`;
-    const sceneDef = hasScene ? ` The environment, architecture, and lighting in <Picture ${scenePicIdx}> is ${sceneSubj}.` : '';
-    const scenePlace = hasScene ? `, naturally integrated inside ${sceneSubj}` : '';
-    return (
-      `The person in <Picture 1> is <Subject 1>. ${itemDefs}${sceneDef} ` +
-      `The target image shows <Subject 1> wearing ${itemNames}${scenePlace}. ` +
-      `<Subject 1>'s exact facial features, facial bone structure, face shape, hairstyle, and identity from <Picture 1> remain 100% unchanged, while wearing the complete combined outfit (${itemNames}). ` +
-      styleTail
-    );
-  }
-
-  // 根据实际上传的槽位计算紧凑后的 <Picture 1..N> 编号
-  if (currentFusionSubMode === 'faceswap' && hasFace && hasSlot2) {
+  // 情形 A：人脸 + 1张服装/姿势目标图 (+ 可选场景图)
+  // 将【服装/姿势目标图】放在 image_1 (<Picture 1> = 待编辑的空间与姿势底图)，将【目标人脸照】放在 image_2 (<Picture 2> = 脸型与五官身份源)！
+  if (hasFace && targets.length === 1) {
+    const poseOrOutfitB64 = targets[0];
     if (hasScene) {
-      const hairClause = hairVal === 'keep_target_hair'
-        ? "Keep the hairstyle and headwear from <Picture 2>, replacing only the facial features and facial bone structure with <Subject 1>."
-        : "Keep both the exact facial features and hairstyle of <Subject 1> from <Picture 1>.";
-      return (
-        "The person's face and identity in <Picture 1> is <Subject 1>. " +
-        "The body posture and clothing in <Picture 2> is <Subject 2>. " +
+      const refs = [poseOrOutfitB64, faceB64, sceneB64];
+      const hairInstruction = hairVal === 'keep_target_hair'
+        ? "Keep the hairstyle and headwear from <Picture 1>, replacing only the face shape, jawline contour, and facial features with <Subject 2> from <Picture 2>."
+        : "Keep <Subject 2>'s exact slim face shape, narrow jawline contour, facial features, warm expression, and hairstyle from <Picture 2> 100% unchanged.";
+      const prompt = (
+        "Edit <Picture 1>. The person, body posture, hand gesture, and clothing outfit in <Picture 1> is <Subject 1>. " +
+        "The person (exact slim V-shaped/oval face contour, narrow jawline, chin proportion, eyes, nose, lips, expression, and hairstyle) in <Picture 2> is <Subject 2>. " +
         "The background environment and lighting in <Picture 3> is <Subject 3>. " +
-        `The target image shows <Subject 1> adopting the body posture and clothing of <Subject 2>, naturally placed inside <Subject 3>. ${hairClause} ` +
-        `<Subject 1>'s exact East Asian facial identity, eye shape, nose bridge, and skin tone remain 100% unchanged. ${styleTail}`
-      );
-    }
-    if (hairVal === 'keep_target_hair') {
-      return (
-        "The facial identity, facial bone structure, eyes, nose, lips, and skin tone of the person in <Picture 1> is <Subject 1>. " +
-        "The body posture, hairstyle, headwear, complete clothing outfit, and background environment in <Picture 2> is <Subject 2>. " +
-        "The target image shows <Subject 2> with the face seamlessly replaced by <Subject 1>. " +
-        "<Subject 1>'s exact facial features, eye spacing, nose, and identity remain 100% unchanged, while the hairstyle, headwear, complete outfit, body pose, framing, and background environment of <Subject 2> are preserved and naturally relit. " +
+        `Replace the head and face of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, and place the figure naturally inside <Subject 3> (<Picture 3>). ${hairInstruction} ` +
+        "Completely discard the original face shape or wider cheek contour of <Picture 1>, while 100% preserving the exact body posture, arm/hand gesture, and complete clothing outfit from <Picture 1>, relit naturally by <Picture 3>. " +
         styleTail
       );
+      return {refs, prompt};
     }
-    return (
-      "The person (exact facial features, face shape, eyes, nose, and hairstyle) in <Picture 1> is <Subject 1>. " +
-      "The body posture, complete clothing outfit, and background environment in <Picture 2> is <Subject 2>. " +
-      "The target image shows <Subject 1>'s head, face, and hairstyle seamlessly replacing the person's head in <Subject 2>, while preserving the complete clothing, body posture, framing, and environment of <Subject 2>. " +
-      "<Subject 1>'s exact facial identity remains 100% unchanged, with natural neck transition and ambient lighting matching <Subject 2>. " +
+
+    const refs = [poseOrOutfitB64, faceB64];
+    if (hairVal === 'keep_target_hair') {
+      const prompt = (
+        "Edit <Picture 1>. The person sitting or standing in <Picture 1> is <Subject 1>. " +
+        "The face (exact slim V-shaped/oval face contour, narrow jawline, chin proportion, cheekbones, eyes, nose, mouth, and natural expression) of the person in <Picture 2> is <Subject 2>. " +
+        "Replace the face and facial contour of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. " +
+        "Keep <Subject 2>'s exact slim face shape, narrow jawline contour, facial features, and natural expression from <Picture 2> 100% unchanged (do not inherit the wider face shape or jaw width from <Picture 1>), " +
+        "while 100% preserving the exact body posture, arm and hand gesture, leg position, hairstyle, headwear, complete clothing outfit (both upper top and lower pants/jeans/skirt), camera framing, and clean studio/background environment from <Picture 1>. " +
+        styleTail
+      );
+      return {refs, prompt};
+    }
+
+    const prompt = (
+      "Edit <Picture 1>. The person sitting or standing in <Picture 1> is <Subject 1>. " +
+      "The person (exact slim V-shaped/oval face contour, narrow jawline, chin proportion, facial features, natural expression, and hairstyle) in <Picture 2> is <Subject 2>. " +
+      "Replace the head, face shape, facial features, and hairstyle of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. " +
+      "Keep <Subject 2>'s exact slim V-shaped/oval face contour, narrow jawline, facial features, natural expression, and hairstyle from <Picture 2> 100% unchanged (completely discard the original face shape and hair of <Picture 1>), " +
+      "while 100% preserving the exact seated/standing body posture, raised arm and hand gesture, leg position, complete clothing outfit (both upper garment and lower pants/jeans/skirt), camera framing, and background environment from <Picture 1>. " +
       styleTail
     );
+    return {refs, prompt};
   }
 
-  // 模式一 (人脸+服装) & 模式三 (人脸+[服装]+场景)
-  if (hasFace && hasSlot2 && hasScene) {
-    return (
-      "The person in <Picture 1> is <Subject 1>. " +
-      "The complete clothing outfit (both upper garment and lower pants/skirt/dress, fabric texture, and styling) shown in <Picture 2> is <Subject 2>. " +
-      "The environment, architecture, and lighting in <Picture 3> is <Subject 3>. " +
-      "The target image shows <Subject 1> wearing the complete outfit of <Subject 2>, naturally integrated inside <Subject 3>. " +
-      "<Subject 1>'s exact facial features, face shape, hairstyle, and identity from <Picture 1> remain 100% unchanged. " +
-      "<Subject 2>'s garment design, fabric texture, color, and full outfit styling from <Picture 2> are faithfully worn by <Subject 1>. " +
-      "<Subject 3>'s scene environment, spatial perspective, and ambient lighting color temperature naturally illuminate <Subject 1>. " +
+  // 情形 B：多图合并为 1 张 (人脸 + 2张以上服装/配饰参考图)
+  if (hasFace && targets.length >= 2) {
+    const refs = [targets[0], faceB64, ...targets.slice(1), ...(hasScene ? [sceneB64] : [])];
+    const extraItems = targets.slice(1).map((_, i) => `The additional clothing/styling item in <Picture ${i + 3}> is <Subject ${i + 3}>.`).join(' ');
+    const extraNames = targets.slice(1).map((_, i) => `<Subject ${i + 3}>`).join(' and ');
+    const sceneIdx = targets.length + 2;
+    const sceneClause = hasScene ? ` Place the figure inside the background environment of <Picture ${sceneIdx}>.` : '';
+    const prompt = (
+      `Edit <Picture 1>. The base body posture and primary outfit in <Picture 1> is <Subject 1>. ` +
+      `The person (exact slim face shape, jawline contour, facial features, expression, and hairstyle) in <Picture 2> is <Subject 2>. ${extraItems} ` +
+      `Replace the head and face of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, wearing the combined outfit of <Subject 1> and ${extraNames}.${sceneClause} ` +
+      `Keep <Subject 2>'s exact face shape, narrow jawline, facial features, and identity from <Picture 2> 100% unchanged, while preserving the body posture from <Picture 1>. ` +
       styleTail
     );
+    return {refs, prompt};
   }
 
-  if (hasFace && hasSlot2 && !hasScene) {
-    return (
-      "The person in <Picture 1> is <Subject 1>. " +
-      "The complete clothing outfit (both upper top and lower pants/jeans/skirt/dress), pose, and studio background ambience shown in <Picture 2> is <Subject 2>. " +
-      "The target image shows <Subject 1> wearing the complete outfit of <Subject 2> and adopting the natural pose and framing of <Picture 2>. " +
-      "<Subject 1>'s exact facial features, facial bone structure, face shape, skin tone, hairstyle, and identity from <Picture 1> remain 100% unchanged, " +
-      "while <Subject 1> wears the exact complete outfit from <Picture 2> (preserving both the upper garment and lower pants/skirt, fabric texture, color, and fit of <Subject 2>). " +
-      styleTail
-    );
-  }
-
+  // 情形 C：仅有人脸/人物图 + 场景图 (无新服装图)
   if (hasFace && !hasSlot2 && hasScene) {
-    return (
-      "The person in <Picture 1> is <Subject 1>. " +
-      "The real-world scene environment, architecture, and lighting in <Picture 2> is <Subject 2>. " +
-      "The target image shows <Subject 1> naturally integrated inside <Subject 2> with realistic spatial perspective, grounded shadows, and ambient rim lighting matching <Subject 2>. " +
-      "<Subject 1>'s exact facial features, face shape, hairstyle, and identity from <Picture 1> remain 100% unchanged. " +
+    const refs = [faceB64, sceneB64];
+    const prompt = (
+      "Edit <Picture 1>. The person (exact slim face shape, jawline contour, facial features, hairstyle, and clothing) in <Picture 1> is <Subject 1>. " +
+      "The real-world scene environment, architecture, and ambient lighting in <Picture 2> is <Subject 2>. " +
+      "Place <Subject 1> from <Picture 1> naturally inside <Subject 2> (<Picture 2>) with realistic spatial perspective, grounded shadows, and ambient rim lighting matching <Picture 2>, while keeping <Subject 1>'s exact face shape, facial features, hairstyle, and identity from <Picture 1> 100% unchanged. " +
       styleTail
     );
+    return {refs, prompt};
   }
 
-  return (
-    "The person in <Picture 1> is <Subject 1>. " +
-    "Generate a brand-new cinematic portrait of <Subject 1> keeping <Subject 1>'s exact facial identity, face shape, and core features from <Picture 1> 100% unchanged. " +
-    styleTail
-  );
+  // 情形 D：仅上传了人脸/人物主照
+  return {
+    refs: [faceB64],
+    prompt: (
+      "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. " +
+      "Keep <Subject 1>'s exact slim face shape, jawline contour, facial features, hairstyle, and identity from <Picture 1> 100% unchanged. " +
+      styleTail
+    ),
+  };
 }
 
 function renderFusionBatchGallery() {
@@ -5684,13 +5685,9 @@ async function startFusionStudioGenerate() {
         : resChoice;
       const [wStr, hStr] = actualRes.split('x');
 
-      const refsPayload = [
-        fusionSlotsB64[0],
-        ...targetsForJob,
-        ...(fusionSlotsB64[2] ? [fusionSlotsB64[2]] : []),
-      ].filter(Boolean);
-
-      const promptForJob = buildFusionSubjectPrompt(targetsForJob);
+      const built = buildFusionRefsAndPrompt(targetsForJob);
+      const refsPayload = built.refs;
+      const promptForJob = built.prompt;
       const payload = {
         mode: 'image',
         prompt: promptForJob,
