@@ -7365,6 +7365,7 @@ def main():
     if "--no-browser" not in sys.argv:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
 
+    ThreadingHTTPServer.allow_reuse_address = True
     server = ThreadingHTTPServer(("127.0.0.1", PANEL_PORT), PanelRequestHandler)
     try:
         server.serve_forever()

@@ -24,3 +24,4 @@ build_revised_agreement.py
 .DS_Store
 .idea/
 .vscode/
+.colab_panel_daemon.log
