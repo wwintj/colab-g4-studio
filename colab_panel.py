@@ -7731,15 +7731,16 @@ def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: 
     _append_panel_log(f"🎬 [自动导演·引擎调度] 正在自动加载/切换云端引擎至 {label} ({folder})...")
 
     with _DEPLOY_LOCK:
-        if not _DEPLOY_STATE.get("running"):
-            _start_deploy_process(
-                repo=repo,
-                folder=folder,
-                pattern=pattern,
-                ctx=262144,
-                gpu="G4",
-                download_only=False,
-            )
+        already_deploying = bool(_DEPLOY_STATE.get("running"))
+    if not already_deploying:
+        _start_deploy_background(
+            repo=repo,
+            folder=folder,
+            pattern=pattern,
+            ctx=262144,
+            gpu="G4",
+            download_only=False,
+        )
 
     for _ in range(900):
         _drama_check_cancel()
@@ -8236,7 +8237,7 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
                 target_engine="minimax-h3-image",
                 repo="Comfy-Org/MiniMax-H3-Image",
                 folder="MiniMax-H3-Image",
-                pattern="split_files/diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors",
+                pattern="*.safetensors",
                 label="📸 MiniMax-H3-Image (33B · 4K锁脸定妆与首尾帧引擎)",
             )
 
@@ -8290,7 +8291,7 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
                 target_engine="longcat-avatar-1.6",
                 repo="meituan-longcat/LongCat-Video-Avatar-1.6",
                 folder="LongCat-Video-Avatar-1.6",
-                pattern="base_model_distill/*.safetensors",
+                pattern="base_model/*.safetensors",
                 label="🎭 LongCat-Video-Avatar-1.6 + Ming-3.0 (越肩对白驱动引擎)",
             )
 
