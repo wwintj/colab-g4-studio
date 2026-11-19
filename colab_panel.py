@@ -2167,7 +2167,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div style="font-size:12px;color:#cbd5e1;line-height:1.55;margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(2,6,23,0.55);border:1px solid rgba(148,163,184,0.2);">
       <div><b>🤖 全自动四步执行流程（全程无需手动输入任何提示词或传图）：</b></div>
       <div>① <b>阶段一 & 二 (MiniMax-H3-Image)</b>：自动生成 <code>图1(女主A半身·右侧小粉花)</code>、<code>图2(女主A锁脸特写)</code>、<code>图3(男主B定妆)</code>，并自动挂载三图生成 <b>12 张锁脸/锁白花发簪首尾关键帧</b>（镜09/11自动继承镜07将白花发簪插进左侧发间）；</div>
-      <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，用 <code>灵小柔</code> & <code>灵逍遥</code> 生成 <b>镜07、镜09、镜10、镜11</b> 四个越肩正反打对白镜头（镜11自动注入 <code>[Dissatisfaction-hnn]</code> 傲娇“哼～”气口）；</div>
+      <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，用 <code>灵小柔</code> & <code>灵信远_中性</code> 生成 <b>镜07、镜09、镜10、镜11</b> 四个越肩正反打对白镜头（镜11自动注入 <code>[Dissatisfaction-hnn]</code> 傲娇“哼～”气口）；</div>
       <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，生成 <b>镜01~06、镜08</b> 七个动作与环境音镜头（原生溪水声、小鱼跃水声、撩水泼洒笑声、市集跟拍人群声与镜06招手呼喊）；</div>
       <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按剧本秒数（<code>2.2s / 3.0s / 3.7s / 2.1s / 2.6s / 5.3s / 1.7s / 2.3s / 1.7s / 1.6s / 3.8s = 30.0s</code>）精准卡点，并将镜05市集环境底噪无缝铺入镜07~11对白背景，输出 30.0 秒完整成片至 <code>~/Movies/EasyColab/</code>！</div>
     </div>
@@ -4518,8 +4518,9 @@ const H3_IMAGE_RES_OPTIONS_HTML = `
   <option value="4096x4096">4096×4096 (1:1 方形4K海报 · 1677万像素)</option>
   <option value="5472x3072">5472×3072 (16:9 宽幅4K夜景 · 1681万像素)</option>
   <option value="4736x3552">4736×3552 (4:3 横版4K展板 · 1682万像素)</option>
-  <option value="1536x2048">1536×2048 (3:4 极速2K人像 · ~2.5s · 适合作数字人底图)</option>
-  <option value="1152x2048">1152×2048 (9:16 极速2K竖屏 · ~2.3s · 适合作数字人底图)</option>
+  <option value="2048x1152">2048×1152 (16:9 极速2K电影横屏 · ~2.3s · 短剧分镜/数字人底图推荐)</option>
+  <option value="1152x2048">1152×2048 (9:16 极速2K短剧竖屏 · ~2.3s · 竖屏短剧/数字人底图推荐)</option>
+  <option value="1536x2048">1536×2048 (3:4 极速2K人像 · ~2.5s)</option>
 `;
 
 function switchMiniMaxMode(mode) {
@@ -8198,7 +8199,7 @@ def _get_default_drama_workflow() -> Dict[str, Any]:
                 "first_img": "shot04_first.jpg",
                 "last_img": "",
                 "tts_text": "",
-                "tts_voice": "ming:灵逍遥",
+                "tts_voice": "ming:灵信远_中性",
                 "mix_ambience": False,
                 "prompt": "固定特写镜头，机位与焦距完全静止。林间溪边，男主B的面部特写，目光专注地望向画面左下方A的方向；他先是神情沉静平和，随即嘴角慢慢扬起，露出一抹温柔而克制的浅笑，眼神随之柔和下来；身后阳光勾勒出金色发丝轮廓光。纯自然环境音效：轻柔的溪水流动声与林间微风鸟鸣，无背景音乐，无对白。",
             },
@@ -8246,7 +8247,7 @@ def _get_default_drama_workflow() -> Dict[str, Any]:
                 "first_img": "shot08_first.jpg",
                 "last_img": "",
                 "tts_text": "",
-                "tts_voice": "ming:灵逍遥",
+                "tts_voice": "ming:灵信远_中性",
                 "mix_ambience": False,
                 "prompt": "固定特写镜头，机位与焦距完全静止。背景是虚化的红橙色市集灯笼光斑，男主B的面部特写：他先是微微垂下眼帘，像在认真端详对面A头侧比试的白花发簪，随即缓缓抬起眼看向A，嘴角扬起一抹温柔浅笑，眼神里带着满满的纵容。纯自然环境音效：轻柔的市集背景人群环境声，无背景音乐，无对白。",
             },
@@ -8270,7 +8271,7 @@ def _get_default_drama_workflow() -> Dict[str, Any]:
                 "first_img": "shot10_first.jpg",
                 "last_img": "",
                 "tts_text": "好看。",
-                "tts_voice": "ming:灵逍遥",
+                "tts_voice": "ming:灵信远_中性",
                 "mix_ambience": True,
                 "prompt": "固定反打越肩镜头，机位完全静止，左侧前景女主后脑虚化。阳光自男主B身后打来形成暖融融的轮廓光，B专注地看着对面的A，眼神温柔纵容，含笑认真地开口回答，伴随说话有轻微温和的点头与眼神交流，口型自然准确。",
             },
@@ -8296,6 +8297,13 @@ def _load_drama_workflow() -> Dict[str, Any]:
         try:
             wf = json.loads(DRAMA_WORKFLOW_FILE.read_text(encoding="utf-8"))
             if isinstance(wf, dict) and wf.get("image_tasks") and wf.get("video_tasks"):
+                changed = False
+                for vt in wf.get("video_tasks") or []:
+                    if vt.get("tts_voice") == "ming:灵逍遥":
+                        vt["tts_voice"] = "ming:灵信远_中性"
+                        changed = True
+                if changed:
+                    _save_drama_workflow(wf)
                 return wf
         except Exception:
             pass
@@ -8421,7 +8429,7 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
         if not use_avatar and not ambience_src:
             ambience_src = f"{shot_id}_raw.mp4"
 
-        tts_voice = "ming:灵逍遥" if speaker_is_b else "ming:灵小柔"
+        tts_voice = "ming:灵信远_中性" if speaker_is_b else "ming:灵小柔"
         vid_label = (
             f"🗣️ 镜{idx:02d}({dur_s}s):{'B' if speaker_is_b else 'A'}「{spoken_text[:7]}」"
             if use_avatar
@@ -8646,7 +8654,26 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
     return out_path
 
 
-def _drama_img_to_b64(img_path: Path) -> str:
+def _drama_img_to_b64(img_path: Path, target_res: str = "") -> str:
+    if target_res and "x" in target_res:
+        try:
+            from PIL import Image, ImageOps
+            tw_s, th_s = target_res.lower().split("x", 1)
+            tw, th = int(tw_s), int(th_s)
+            target_ratio = float(tw) / float(max(1, th))
+            im = Image.open(img_path).convert("RGB")
+            cur_ratio = float(im.width) / float(max(1, im.height))
+            if abs(cur_ratio - target_ratio) > 0.06:
+                if target_ratio > cur_ratio:
+                    new_w = im.width
+                    new_h = max(64, int(round(new_w / target_ratio / 16.0)) * 16)
+                else:
+                    new_h = im.height
+                    new_w = max(64, int(round(new_h * target_ratio / 16.0)) * 16)
+                im = ImageOps.fit(im, (new_w, new_h), method=Image.Resampling.LANCZOS, centering=(0.5, 0.25))
+                im.save(img_path, format="JPEG", quality=96)
+        except Exception:
+            pass
     ext = img_path.suffix.lower()
     mime = "image/png" if ext == ".png" else "image/jpeg"
     return f"data:{mime};base64," + base64.b64encode(img_path.read_bytes()).decode("ascii")
@@ -8721,11 +8748,12 @@ def _drama_run_avatar_step(
     if not ref_p.is_file():
         raise RuntimeError(f"缺少首帧参考图 {ref_img_fn}")
     w_s, h_s = res_str.split("x")
+    clean_vis = visual_prompt.rstrip("。.,， ") + "。画面干净纯粹，底部无任何字幕、无台词文字、无水印 (clean raw camera footage without any subtitles, captions, or text on screen)。"
     _DRAMA_STATE["message"] = f"🗣️ [{step_idx}/{tot_steps}] 正在生成越肩对白镜头 {step_label}..."
     _append_panel_log(f"🗣️ [自动导演 {step_idx}/{tot_steps}] 开始生成数字人对白镜头 {step_label} (音色: {tts_voice}, 台词: {tts_text})...")
     payload = {
         "mode": "avatar",
-        "prompt": visual_prompt,
+        "prompt": clean_vis,
         "resolution": res_str,
         "width": int(w_s),
         "height": int(h_s),
@@ -8743,7 +8771,7 @@ def _drama_run_avatar_step(
         "clone_ref_b64": "",
         "clone_prompt_text": "",
         "use_builtin_sample": False,
-        "first_frame_b64": _drama_img_to_b64(ref_p),
+        "first_frame_b64": _drama_img_to_b64(ref_p, target_res=res_str),
     }
     return _drama_submit_and_wait_media(payload, out_p, step_label)
 
@@ -8752,7 +8780,7 @@ def _drama_run_fl2va_step(
     fn: str,
     step_label: str,
     first_img_fn: str,
-    last_img_fn: str | None,
+    last_img_fn: Optional[str],
     prompt: str,
     res_str: str,
     resume: bool,
@@ -8771,11 +8799,13 @@ def _drama_run_fl2va_step(
     if not first_p.is_file():
         raise RuntimeError(f"缺少起幅首帧图 {first_img_fn}")
     w_s, h_s = res_str.split("x")
+    clean_fl_prompt = prompt.rstrip("。.,， ") + "。画面干净纯粹，无任何字幕、无台词文字、无水印 (clean video frame without any subtitles, captions, or text on screen)。"
     _DRAMA_STATE["message"] = f"🎞️ [{step_idx}/{tot_steps}] 正在生成动作与环境音镜头 {step_label}..."
     _append_panel_log(f"🎞️ [自动导演 {step_idx}/{tot_steps}] 开始生成首尾帧有声视频 {step_label}...")
     payload: Dict[str, Any] = {
         "mode": "fl2va",
-        "prompt": prompt,
+        "prompt": clean_fl_prompt,
+        "negative_prompt": "字幕，底部字幕，台词文字，水印，乱码，画面拉伸，人物变形，subtitles, captions, text on screen, lower thirds, watermark, logo, stretched face, distorted face",
         "resolution": res_str,
         "width": int(w_s),
         "height": int(h_s),
@@ -8785,12 +8815,12 @@ def _drama_run_fl2va_step(
         "seed": -1,
         "randomize_seed": True,
         "batch_count": 1,
-        "first_frame_b64": _drama_img_to_b64(first_p),
+        "first_frame_b64": _drama_img_to_b64(first_p, target_res=res_str),
     }
     if last_img_fn:
         last_p = DRAMA_WORK_DIR / last_img_fn
         if last_p.is_file():
-            payload["last_frame_b64"] = _drama_img_to_b64(last_p)
+            payload["last_frame_b64"] = _drama_img_to_b64(last_p, target_res=res_str)
     return _drama_submit_and_wait_media(payload, out_p, step_label)
 
 
@@ -8861,8 +8891,8 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
         src_p = work_dir / fn
         dst_p = norm_dir / f"norm_{idx:02d}_{dur_s:.1f}s.mp4"
         vf_chain = (
-            f"fps=25,scale={out_w}:{out_h}:flags=lanczos:force_original_aspect_ratio=decrease,"
-            f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p,"
+            f"fps=25,scale={out_w}:{out_h}:flags=lanczos:force_original_aspect_ratio=increase,"
+            f"crop={out_w}:{out_h}:(iw-{out_w})/2:(ih-{out_h})*0.22,setsar=1,format=yuv420p,"
             f"tpad=stop_mode=clone:stop_duration=0.8"
         )
         fade_out_st = max(0.05, round(dur_s - 0.05, 2))
@@ -8952,7 +8982,7 @@ def _run_single_drama_step_bg(target_file: str, aspect: str = "16:9"):
     """单独重新生成工作流中的某一张定妆/关键帧图片或某一条分镜视频"""
     DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
     wf = _load_drama_workflow()
-    img_res = "1536x2048" if aspect == "9:16" else "2048x1536"
+    img_res = "1152x2048" if aspect == "9:16" else "2048x1152"
     vid_res = "480x832" if aspect == "9:16" else "832x480"
     try:
         for it in (wf.get("image_tasks") or []):
@@ -9043,7 +9073,7 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
     avatar_tasks = [vt for vt in vid_tasks if str(vt.get("engine")) == "avatar"]
     fl2va_tasks = [vt for vt in vid_tasks if str(vt.get("engine")) != "avatar"]
     tot_steps = len(img_tasks) + len(vid_tasks) + 1
-    img_res = "1536x2048" if aspect == "9:16" else "2048x1536"
+    img_res = "1152x2048" if aspect == "9:16" else "2048x1152"
     vid_res = "480x832" if aspect == "9:16" else "832x480"
 
     try:

