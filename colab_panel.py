@@ -2628,7 +2628,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <div id="videoResultWrap" style="display:none;">
-        <video id="mmVideoPlayer" controls autoplay loop style="width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;display:block;"></video>
+        <video id="mmVideoPlayer" controls preload="metadata" style="width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;display:block;"></video>
         <img id="mmImagePreview" alt="Generated Image" style="display:none;width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;">
       </div>
 
