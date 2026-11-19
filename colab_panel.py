@@ -2150,13 +2150,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:12px;">
-        <!-- 左栏：粘贴任意剧本自动解析为工作流 -->
+        <!-- 左栏：既可输入原著故事与台词点上方复制给外部 AI，也可粘贴外部 AI 生成好的分镜剧本直接解析 -->
         <div style="display:flex;flex-direction:column;gap:8px;padding-right:10px;border-right:1px solid rgba(148,163,184,0.2);">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:12.5px;font-weight:800;color:#7dd3fc;">📜 1. 粘贴外部 AI 生成的分镜剧本 (不限时长/镜数)</span>
-            <input type="text" id="inpDramaProjectTitle" placeholder="剧目名称 (自动提取或手填)" style="padding:3px 8px;font-size:11.5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;width:165px;">
+            <span style="font-size:12.5px;font-weight:800;color:#7dd3fc;">📜 1. 在此输入您的原著故事/台词（点上方复制给AI），或粘贴 AI 生成好的分镜剧本</span>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <button type="button" onclick="document.getElementById('inpDramaRawScript').value='';document.getElementById('inpAiIdeaTheme').value='';document.getElementById('inpDramaRawScript').focus();" style="padding:2px 7px;font-size:11px;border-radius:4px;border:1px solid rgba(239,68,68,0.45);background:transparent;color:#fca5a5;cursor:pointer;" title="清空文本框以输入您的新故事与台词">🗑️ 清空文本框</button>
+              <input type="text" id="inpDramaProjectTitle" placeholder="剧目名称 (自动提取或手填)" style="padding:3px 8px;font-size:11.5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;width:150px;">
+            </div>
           </div>
-          <textarea id="inpDramaRawScript" rows="10" placeholder="把上方复制的指令发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi，然后将它生成的剧本直接粘贴到这里！&#10;&#10;支持任意分镜数量（3镜~50镜均可）与任意总时长（15秒、30秒、1分钟、3分钟均可）：&#10;【剧名】《...》&#10;【全局设定】&#10;画风：...&#10;女主A：...&#10;男主B：...&#10;【分镜】&#10;镜头01【时长】3.0秒&#10;【运镜】...&#10;【画面】...&#10;【对白】A：&quot;...&quot;&#10;&#10;点击下方「🔍 智能解析剧本生成工作流节点」即可一键生成全部角色锁脸卡与分镜节点！" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11.5px;line-height:1.45;resize:vertical;"></textarea>
+          <textarea id="inpDramaRawScript" rows="10" placeholder="【用法 A：带您自己的故事与台词去让外部 AI 拆解分镜】&#10;1. 直接在此框（或上方紫色框）写下您的原本故事、人物设定与每一句台词；&#10;2. 点击上方「📋 一键复制【发给外部 AI 的编剧指令】」，系统会把您写的全部故事和台词 100% 打包进剪贴板（绝不篡改您的原意）；&#10;&#10;【用法 B：把外部 AI 生成好的分镜剧本粘回来】&#10;3. 将外部 AI 输出的【剧名】...【分镜】镜头01... 粘贴回此框，点击下方「🔍 智能解析剧本生成工作流节点」即可开拍！" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11.5px;line-height:1.45;resize:vertical;"></textarea>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
             <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#fcd34d;cursor:pointer;">
               <input type="checkbox" id="chkDramaClearOldAssets" checked style="accent-color:#f59e0b;">
@@ -6149,15 +6152,47 @@ async function copyExternalAiScriptPrompt(btnEl) {
   const drawer = document.getElementById('dramaWorkflowEditorDrawer');
   if (drawer && drawer.style.display === 'none') {
     drawer.style.display = 'block';
-    loadDramaWorkflowEditor();
+    await loadDramaWorkflowEditor();
   }
-  const theme = ((document.getElementById('inpAiIdeaTheme') || {}).value || '').trim() || '请自由构思一个富有戏剧张力、画面唯美且有情绪递进的高口碑短剧片段';
+  const ideaBoxVal = ((document.getElementById('inpAiIdeaTheme') || {}).value || '').trim();
+  const rawBoxVal = ((document.getElementById('inpDramaRawScript') || {}).value || '').trim();
+  const savedWfScript = (currentDramaWorkflow && currentDramaWorkflow.raw_script) ? String(currentDramaWorkflow.raw_script).trim() : '';
+
+  // 智能提取用户填写的原著故事与台词：
+  // 1. 若用户在上方紫色框和下方大文本框都写了内容（且下方大文本框不是上一次已保存的旧分镜模板），将两者合并；
+  // 2. 若用户直接把完整的故事和台词写在了下方大文本框 (inpDramaRawScript) 中，直接提取大文本框里的全部内容！
+  let userStoryPieces = [];
+  if (ideaBoxVal) {
+    userStoryPieces.push(ideaBoxVal);
+  }
+  if (rawBoxVal && !rawBoxVal.startsWith('你现在是一位顶级的影视分镜导演')) {
+    const isUnmodifiedOldTemplate = (rawBoxVal === savedWfScript) && rawBoxVal.includes('【分镜】') && Boolean(ideaBoxVal);
+    if (!isUnmodifiedOldTemplate) {
+      userStoryPieces.push(rawBoxVal);
+    }
+  }
+  const userOriginalStory = userStoryPieces.join('\n\n').trim();
+  const hasUserStory = Boolean(userOriginalStory);
+
   const targetDur = ((document.getElementById('selAiTargetDur') || {}).value || '不限总时长（由剧情节奏自然决定镜头数与秒数）').trim();
   const visStyle = ((document.getElementById('selAiVisualStyle') || {}).value || '写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影').trim();
 
+  const storySection = hasUserStory
+    ? `【用户提供的原著故事、人设与台词原稿（必须 100% 忠实保留，严禁另编其他故事！）】：
+====================
+${userOriginalStory}
+====================
+
+⚠️ 核心改编铁律（请严格遵守）：
+1. 你必须 100% 忠实于上方【用户提供的原著故事、人设与台词原稿】进行分镜拆解，严禁脱离原稿另编一个无关的新故事！
+2. 原稿中用户已经写好的每一句台词、角色姓名/外貌、关键动作与剧情走向，必须原封不动地保留并精准分配到对应分镜的【对白】与【画面】中！
+3. 如果原稿中部分动作过渡没有台词，你可以为其补充合理的镜头衔接与自然环境音，但主线剧情与已有台词绝对不能篡改或删减。`
+    : `【创作主题/剧情梗概】：请自由构思一个富有戏剧张力、画面唯美且有情绪递进的高口碑短剧片段`;
+
   const metaPrompt = `你现在是一位顶级的影视分镜导演与 AI 视频工作流编剧。请根据以下创作要求，为我编写一份可直接导入「EasyColab 多分镜短剧全自动工作流引擎」的完整分镜剧本。
 
-【创作主题/剧情梗概】：${theme}
+${storySection}
+
 【目标总时长与分镜规模】：${targetDur}（单镜时长可在 1.5秒 ~ 10.0秒 之间根据戏剧节奏自由设定，总时长不限死）
 【全局视觉画风】：${visStyle}
 
@@ -6166,8 +6201,8 @@ async function copyExternalAiScriptPrompt(btnEl) {
 【剧名】《在此填写剧名》
 【全局设定】
 画风：${visStyle}
-女主A：（详细描述女主A的年龄、脸型五官、发型发饰、服装颜色与材质，确保跨镜头锁脸一致）
-男主B：（详细描述男主B的年龄、脸型五官、发型发饰、服装颜色与材质，若无男主可写无）
+女主A：（详细描述女主A的姓名、年龄、脸型五官、发型发饰、服装颜色与材质，确保跨镜头锁脸一致）
+男主B：（详细描述男主B的姓名、年龄、脸型五官、发型发饰、服装颜色与材质，若无男主可写无）
 配角C：（可选，若有第三位角色请描述，无则省略）
 
 【分镜】
@@ -6175,11 +6210,11 @@ async function copyExternalAiScriptPrompt(btnEl) {
 【运镜】固定镜头 / 缓慢推镜 / 倒退跟拍 / 越肩正反打（写清机位与景别，如全景/中近景/面部特写）
 【画面】（详细描述画面中人物的位置、动作起止、表情神态变化、光影与环境细节；若该镜需要明显的前后焦点转移或大跨度连续动作，可用“起幅...；随后...”描述，系统会自动生成首尾双关键帧）
 【环境音】（描述该镜头的纯自然环境音效，如雨声、溪水声、市集人群声、脚步声等）
-【对白】无（若有角色开口说话，请写如 A："台词内容" 或 B："台词内容"；支持在台词开头或中间加入 [Dissatisfaction-hnn] 傲娇哼声、[Sigh] 叹气、[Laughter] 轻笑、[Breathing] 呼吸、[Surprise-ah] 惊呼 等真人气口标签）
+【对白】无（若有角色开口说话，请严格保留用户原稿台词，写如 A："台词内容" 或 B："台词内容"；支持在台词开头或中间加入 [Dissatisfaction-hnn] 傲娇哼声、[Sigh] 叹气、[Laughter] 轻笑、[Breathing] 呼吸、[Surprise-ah] 惊呼 等真人气口标签）
 【音色】（若有对白，可从以下官方音色中选填一个：ming:灵小柔 / ming:灵雨汐_中性 / ming:灵黛嗔_生气 / ming:灵采薇_悲伤 / ming:灵梦 / ming:妩媚妲己 / ming:灵信远_中性 / ming:灵朗 / ming:灵宇 / ming:灵孤影_厌恶 / ming:灵孤影_悲伤 / ming:灵孤影_生气 / ming:甄嬛传_四郎）
 
 镜头02【时长】3.5秒
-...（请按剧情自然展开所有分镜，镜头数量与总秒数不设硬性上限）`;
+...（请按原著故事与台词自然展开所有分镜，镜头数量与总秒数不设硬性上限）`;
 
   let copiedOk = false;
   try {
@@ -6202,18 +6237,22 @@ async function copyExternalAiScriptPrompt(btnEl) {
     } catch (e2) {}
   }
 
-  showGlobalCopyToast('✅ 已复制到剪贴板！请直接粘贴 (Cmd+V / Ctrl+V) 发给外部 AI 生成分镜剧本');
+  const cleanPreview = userOriginalStory.replace(/\s+/g, ' ').slice(0, 22);
+  const toastMsg = hasUserStory
+    ? `✅ 已将您的故事与台词（「${cleanPreview}...」共 ${userOriginalStory.length} 字）打包复制到剪贴板！`
+    : '📋 已复制「自由构思模式」指令！（如需按您的故事与台词写，请先在左框输入您的故事再点复制）';
+  showGlobalCopyToast(toastMsg);
 
   const bTop = document.getElementById('btnCopyExtAiTop');
   const bDrw = document.getElementById('btnCopyExtAiDrawer');
   if (bTop) {
-    bTop.innerText = '✅ 已复制到剪贴板！';
+    bTop.innerText = hasUserStory ? `✅ 已打包复制您的故事 (${userOriginalStory.length}字)！` : '✅ 已复制到剪贴板！';
     bTop.style.background = 'linear-gradient(135deg,#059669,#10b981)';
     bTop.style.borderColor = '#34d399';
     bTop.style.color = '#ffffff';
   }
   if (bDrw) {
-    bDrw.innerText = '✅ 已成功复制到剪贴板！(去粘贴给外部 AI 吧)';
+    bDrw.innerText = hasUserStory ? `✅ 已将您的故事与台词 (${userOriginalStory.length}字) 复制到剪贴板！` : '✅ 已成功复制到剪贴板！';
     bDrw.style.background = 'linear-gradient(135deg,#059669,#10b981)';
   }
   if (window._extAiBtnResetTimer) clearTimeout(window._extAiBtnResetTimer);
@@ -6228,11 +6267,11 @@ async function copyExternalAiScriptPrompt(btnEl) {
       bDrw.innerText = '📋 一键复制【发给外部 AI 的编剧指令】';
       bDrw.style.background = 'linear-gradient(135deg,#9333ea,#6366f1)';
     }
-  }, 3500);
+  }, 4000);
 
   const stEl = document.getElementById('dramaStatusText');
   if (stEl) {
-    stEl.innerText = '✅ 已将【外部 AI 编剧专用指令】复制到剪贴板！请粘贴给 ChatGPT / Claude / DeepSeek / Gemini，再将它生成的剧本粘回左框并点「🔍 智能解析」即可！';
+    stEl.innerText = toastMsg + ' 请粘贴给外部 AI，再将它生成的分镜剧本粘回左框并点「🔍 智能解析」即可！';
     stEl.style.color = '#34d399';
   }
 }
