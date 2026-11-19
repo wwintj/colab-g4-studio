@@ -2158,7 +2158,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             <button type="button" onclick="copyCharacterGoldenPrompt('', this)" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #f472b6;background:rgba(244,114,182,0.15);color:#fbcfe8;cursor:pointer;">📋 复制【通用5条黄金标准·定妆照生图词】</button>
-            <button type="button" onclick="addDramaCastRole()" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;">+ 新增角色 (C/D/E...)</button>
+            <button type="button" onclick="addDramaCastRole()" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;">+ 新增角色 (A/B/C...)</button>
+            <button type="button" onclick="clearAllDramaCastRoles()" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="一键清空当前所有角色卡槽（清空后发给外部 AI 时完全由您的故事自由决定角色）">🗑️ 清空全部角色</button>
           </div>
         </div>
         <div id="dramaCastCardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(295px, 1fr));gap:8px;max-height:210px;overflow-y:auto;padding-right:2px;"></div>
@@ -6145,6 +6146,13 @@ const CAST_VOICE_OPTIONS = [
 function renderDramaCastCards() {
   const grid = document.getElementById('dramaCastCardsGrid');
   if (!grid) return;
+  if (!Array.isArray(dramaCastState) || dramaCastState.length === 0) {
+    grid.innerHTML = `<div style="grid-column:1 / -1;padding:12px 14px;border-radius:8px;background:rgba(2,6,23,0.75);border:1px dashed #475569;color:#94a3b8;font-size:11.5px;text-align:center;line-height:1.6;">
+      ✨ 当前已清空所有预设角色（0 个角色）。<br>
+      <span style="color:#cbd5e1;">此时点击「🤖 复制外部 AI 编剧指令」将完全按您的原创故事自由生成角色，粘贴剧本后点「🔍 解析并生成工作流」会自动提取新角色填入此处；您也可随时点右上角「+ 新增角色」手动添加。</span>
+    </div>`;
+    return;
+  }
   grid.innerHTML = dramaCastState.map((c, idx) => {
     const imgUrl = `/api/drama_work_file?name=char_${encodeURIComponent(c.id)}_half.jpg&t=${dramaCastPhotoCacheBust}`;
     const voiceOpts = CAST_VOICE_OPTIONS.map(o => `<option value="${o.val}" ${c.voice === o.val ? 'selected' : ''}>${o.lbl}</option>`).join('');
@@ -6172,12 +6180,12 @@ function renderDramaCastCards() {
           <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:4px;">
               <span style="font-size:11px;font-weight:900;padding:1px 6px;border-radius:4px;background:#f472b6;color:#020617;">角色${escapeHtmlAttr(c.id)}</span>
-              <input type="text" value="${escapeHtmlAttr(c.name || '')}" onchange="dramaCastState[${idx}].name=this.value.trim();syncCastToWorkflow();" placeholder="姓名(如:林晚)" style="width:68px;padding:2px 5px;font-size:11px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+              <input type="text" value="${escapeHtmlAttr(c.name || '')}" onchange="dramaCastState[${idx}].name=this.value.trim();syncCastToWorkflow();" placeholder="姓名(如:博哥)" style="width:68px;padding:2px 5px;font-size:11px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
               ${badgeHtml}
             </div>
             <div style="display:flex;align-items:center;gap:3px;">
               ${c.user_uploaded ? `<button type="button" onclick="deleteDramaCharPhoto('${escapeHtmlAttr(c.id)}')" style="padding:1px 5px;font-size:9.5px;border-radius:3px;border:1px solid #f59e0b;background:transparent;color:#fcd34d;cursor:pointer;" title="取消上传的照片，改由云端 AI 生成定妆照">↺改AI生</button>` : ''}
-              ${dramaCastState.length > 1 ? `<button type="button" onclick="removeDramaCastRole('${escapeHtmlAttr(c.id)}')" style="padding:1px 5px;font-size:10px;border-radius:3px;border:1px solid #ef4444;background:transparent;color:#fca5a5;cursor:pointer;" title="移除角色${escapeHtmlAttr(c.id)}">✕</button>` : ''}
+              <button type="button" onclick="removeDramaCastRole('${escapeHtmlAttr(c.id)}')" style="padding:1px 6px;font-size:10px;border-radius:3px;border:1px solid #ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="删除角色${escapeHtmlAttr(c.id)}">✕</button>
             </div>
           </div>
           <select onchange="dramaCastState[${idx}].voice=this.value;syncCastToWorkflow();" style="width:100%;padding:2px 5px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#fde68a;font-weight:600;">
@@ -6193,13 +6201,18 @@ function renderDramaCastCards() {
 function syncCastToWorkflow() {
   if (currentDramaWorkflow) {
     currentDramaWorkflow.cast_list = dramaCastState;
+    fetch('/api/drama_workflow_save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({workflow: currentDramaWorkflow}),
+    }).catch(() => {});
   }
 }
 
 function addDramaCastRole() {
   const usedIds = new Set(dramaCastState.map(c => c.id));
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let nextId = 'C';
+  let nextId = 'A';
   for (let i = 0; i < letters.length; i++) {
     if (!usedIds.has(letters[i])) {
       nextId = letters[i];
@@ -6210,8 +6223,8 @@ function addDramaCastRole() {
   dramaCastState.push({
     id: nextId,
     name: `角色${nextId}`,
-    voice: isMaleDefault ? 'ming:灵朗' : 'ming:灵雨汐_中性',
-    desc: isMaleDefault ? '28岁青年男性，五官立体轮廓分明，沉稳干练穿搭' : '23岁青年女性，五官精致灵动，气质温婉穿搭',
+    voice: isMaleDefault ? 'ming:灵朗' : 'ming:灵小柔',
+    desc: isMaleDefault ? '28岁青年男性，五官立体轮廓分明，沉稳干练穿搭' : '24岁青年女性，五官精致灵动，气质温婉穿搭',
     has_photo: false,
     user_uploaded: false,
   });
@@ -6224,6 +6237,14 @@ function removeDramaCastRole(roleId) {
   dramaCastState = dramaCastState.filter(c => c.id !== roleId);
   syncCastToWorkflow();
   renderDramaCastCards();
+  showGlobalCopyToast(`🗑️ 已删除「角色${roleId}」（当前剩余 ${dramaCastState.length} 个角色）`);
+}
+
+function clearAllDramaCastRoles() {
+  dramaCastState = [];
+  syncCastToWorkflow();
+  renderDramaCastCards();
+  showGlobalCopyToast('🗑️ 已清空全部预设角色！现在复制编剧指令时将 100% 由您的故事自由决定角色');
 }
 
 async function uploadDramaCharPhoto(roleId, inputEl) {
@@ -6431,16 +6452,17 @@ ${userOriginalStory}
 3. 如果原稿中部分动作过渡没有台词，你可以为其补充合理的镜头衔接与自然环境音，但主线剧情与已有台词绝对不能篡改或删减。`
     : `【创作主题/剧情梗概】：请自由构思一个富有戏剧张力、画面唯美且有情绪递进的高口碑短剧片段`;
 
+  const castSectionTxt = (Array.isArray(dramaCastState) && dramaCastState.length > 0)
+    ? `\n【剧组角色卡槽参考（若以下角色与上方【用户提供的原著故事】中的角色不一致且未标注“已上传照片锁定”，请直接以原著故事里的真实角色为准重新编号为 角色A、角色B、角色C...，切勿保留原著里不出场的旧角色！）】：\n${dramaCastState.map(c => `- 角色${c.id}${c.name ? '（' + c.name + (c.user_uploaded ? ' · 已上传照片锁定' : '') + '）' : ''}：${c.desc || '请根据剧情补充外貌与穿搭'} 【绑定音色】${c.voice || 'ming:灵小柔'}`).join('\n')}\n`
+    : `\n【角色设定说明】：当前未预设任何角色卡槽，请直接根据上方【用户提供的原著故事】中出现的角色，按 角色A、角色B、角色C... 依次定义外貌穿搭并绑定专属 Ming-3.0 音色。\n`;
+
   const metaPrompt = `你现在是一位顶级的影视分镜导演与 AI 视频工作流编剧。请根据以下创作要求，为我编写一份可直接导入「EasyColab 多分镜短剧全自动工作流引擎」的完整分镜剧本。
 
 ${storySection}
 
 【目标总时长与分镜规模】：${targetDur}（单镜时长可在 1.5秒 ~ 10.0秒 之间根据戏剧节奏自由设定，总时长不限死）
 【全局视觉画风】：${visStyle}
-
-【剧组角色卡槽参考（若以下角色与上方【用户提供的原著故事】中的角色不一致且未标注“已上传照片锁定”，请直接以原著故事里的真实角色为准重新编号为 角色A、角色B、角色C...，切勿保留原著里不出场的旧角色！）】：
-${dramaCastState.map(c => `- 角色${c.id}${c.name ? '（' + c.name + (c.user_uploaded ? ' · 已上传照片锁定' : '') + '）' : ''}：${c.desc || '请根据剧情补充外貌与穿搭'} 【绑定音色】${c.voice || 'ming:灵小柔'}`).join('\n')}
-
+${castSectionTxt}
 请严格按照以下结构化格式输出（不要省略标签，以便工作流引擎 100% 自动拆解为多角色锁脸定妆卡、首尾关键帧、数字人配音与环境音视频节点）：
 
 【剧名】《在此填写剧名》
@@ -6625,7 +6647,7 @@ async function loadDramaWorkflowEditor() {
     const d = await r.json();
     if (d && d.ok && d.workflow) {
       currentDramaWorkflow = d.workflow;
-      if (Array.isArray(d.workflow.cast_list) && d.workflow.cast_list.length > 0) {
+      if (Array.isArray(d.workflow.cast_list)) {
         dramaCastState = d.workflow.cast_list;
       }
       dramaCastPhotoCacheBust = Date.now();
