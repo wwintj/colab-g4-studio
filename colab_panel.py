@@ -2091,7 +2091,54 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button type="button" id="tabBtnFl2va" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fl2va')">🖼️ 首尾帧生音视频 (FL2VA)</button>
       <button type="button" id="tabBtnImage" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('image')">📸 4K无审查写真 / 免Mask换装 (H3-Image)</button>
       <button type="button" id="tabBtnAvatar" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('avatar')">🎭 数字人音频驱动 (LongCat-Avatar)</button>
+      <button type="button" id="tabBtnAutoDrama" class="btn-outline" style="padding:5px 14px;font-size:12.5px;border-color:#f59e0b;background:rgba(245,158,11,0.16);color:#fcd34d;font-weight:700;" onclick="toggleAutoDramaDirector()">🎬 11镜30秒短剧全自动导演台</button>
     </div>
+  </div>
+
+  <!-- 11镜30秒古装短剧全自动导演流水线面板 -->
+  <div id="autoDramaDirectorRow" style="display:block;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.92) 100%);border:1.5px solid #f59e0b;border-radius:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 多分镜短剧全自动导演流水线 · 《溪边与市集白花簪》(11 镜 · 30.0 秒)</span>
+        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">免手输 Prompt · 三阶段自动切模型 · 0.1秒卡点混音合片</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <select id="dramaAspectSelect" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+          <option value="16:9" selected>📺 16:9 横屏电影剧集 (推荐)</option>
+          <option value="9:16">📱 9:16 竖屏古装短剧</option>
+        </select>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#cbd5e1;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.05);">
+          <input type="checkbox" id="chkDramaResume" checked style="accent-color:#10b981;">
+          <span>♻️ 断点续拍 (自动复用已生好的定妆照/分镜)</span>
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#c4b5fd;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(139,92,246,0.12);">
+          <input type="checkbox" id="chkDramaAuto2K" style="accent-color:#8b5cf6;">
+          <span>✨ 成片后自动 ReCaVSR 2K 超分</span>
+        </label>
+        <button type="button" onclick="toggleAutoDramaDirector()" style="padding:3px 8px;font-size:11px;border-radius:5px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">收起 ▲</button>
+      </div>
+    </div>
+
+    <div style="font-size:12px;color:#cbd5e1;line-height:1.55;margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(2,6,23,0.55);border:1px solid rgba(148,163,184,0.2);">
+      <div><b>🤖 全自动四步执行流程（全程无需手动输入任何提示词或传图）：</b></div>
+      <div>① <b>阶段一 & 二 (MiniMax-H3-Image)</b>：自动生成 <code>图1(女主A半身·右侧小粉花)</code>、<code>图2(女主A锁脸特写)</code>、<code>图3(男主B定妆)</code>，并自动挂载三图生成 <b>12 张锁脸/锁白花发簪首尾关键帧</b>（镜09/11自动继承镜07将白花发簪插进左侧发间）；</div>
+      <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，用 <code>灵小柔</code> & <code>灵逍遥</code> 生成 <b>镜07、镜09、镜10、镜11</b> 四个越肩正反打对白镜头（镜11自动注入 <code>[Dissatisfaction-hnn]</code> 傲娇“哼～”气口）；</div>
+      <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，生成 <b>镜01~06、镜08</b> 七个动作与环境音镜头（原生溪水声、小鱼跃水声、撩水泼洒笑声、市集跟拍人群声与镜06招手呼喊）；</div>
+      <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按剧本秒数（<code>2.2s / 3.0s / 3.7s / 2.1s / 2.6s / 5.3s / 1.7s / 2.3s / 1.7s / 1.6s / 3.8s = 30.0s</code>）精准卡点，并将镜05市集环境底噪无缝铺入镜07~11对白背景，输出 30.0 秒完整成片至 <code>~/Movies/EasyColab/</code>！</div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <div id="dramaStatusText" style="font-size:12.5px;font-weight:700;color:#34d399;">✅ 已预装全部 11 镜分镜脚本与锁脸提示词，点击右侧按钮即可全自动开机并从 0 拍完 30 秒完整短剧！</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" id="btnRemuxAutoDrama" onclick="remuxAutoDramaOnly()" class="btn-outline" style="padding:7px 12px;font-size:12px;border-color:#38bdf8;color:#7dd3fc;white-space:nowrap;">🎞️ 仅用已有分镜重新合成 30s 成片</button>
+        <button type="button" id="btnStopAutoDrama" onclick="stopAutoDramaPipeline()" class="btn-danger" style="display:none;padding:7px 14px;font-size:12.5px;font-weight:700;white-space:nowrap;">🛑 暂停自动导演 (已生成素材保留)</button>
+        <button type="button" id="btnStartAutoDrama" onclick="startAutoDramaPipeline()" style="padding:8px 18px;font-size:13px;font-weight:800;border-radius:8px;border:none;background:linear-gradient(135deg, #f59e0b, #ea580c);color:#ffffff;cursor:pointer;box-shadow:0 4px 14px rgba(245,158,11,0.35);white-space:nowrap;">🚀 一键全自动拍摄 30秒古装短剧 (共 26 步自动完成)</button>
+      </div>
+    </div>
+
+    <div class="progress-bar" style="height:7px;margin-bottom:10px;background:#0f172a;"><div class="progress-fill" id="dramaProgressBar" style="width:0%;background:linear-gradient(90deg,#f59e0b,#10b981);"></div></div>
+
+    <div id="dramaStepsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(155px, 1fr));gap:6px;font-size:11px;"></div>
   </div>
 
   <!-- MiniMax-H3-Image 4K无审查写真与免Mask锁脸换装操作区 (切换至 image 模式自动显示) -->
@@ -5946,9 +5993,201 @@ async function pollUpscaleStatus() {
   } catch (e) {}
 }
 
+let dramaPollTimer = null;
+
+function toggleAutoDramaDirector() {
+  const row = document.getElementById('autoDramaDirectorRow');
+  if (!row) return;
+  row.style.display = (row.style.display === 'none') ? 'block' : 'none';
+}
+
+function renderDramaStepsGrid(stepsList) {
+  const grid = document.getElementById('dramaStepsGrid');
+  if (!grid || !Array.isArray(stepsList)) return;
+  grid.innerHTML = stepsList.map(item => {
+    const st = item.status || 'pending';
+    let bg = 'rgba(30,41,59,0.65)';
+    let bd = '#334155';
+    let col = '#94a3b8';
+    let icon = '⏳';
+    if (st === 'done') {
+      bg = 'rgba(16,185,129,0.14)';
+      bd = 'rgba(16,185,129,0.45)';
+      col = '#6ee7b7';
+      icon = '✅';
+    } else if (st === 'running') {
+      bg = 'rgba(245,158,11,0.22)';
+      bd = '#f59e0b';
+      col = '#fde68a';
+      icon = '🎬';
+    } else if (st === 'error') {
+      bg = 'rgba(239,68,68,0.18)';
+      bd = '#ef4444';
+      col = '#fca5a5';
+      icon = '❌';
+    }
+    return `<div style="padding:5px 8px;border-radius:6px;background:${bg};border:1px solid ${bd};color:${col};display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${item.label || ''}">
+      <span>${icon}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;font-weight:${st === 'running' ? '700' : '500'};">${item.label || ''}</span>
+    </div>`;
+  }).join('');
+}
+
+async function startAutoDramaPipeline() {
+  const aspect = ((document.getElementById('dramaAspectSelect') || {}).value || '16:9').trim();
+  const resume = Boolean(((document.getElementById('chkDramaResume') || {}).checked) ?? true);
+  const auto2k = Boolean(((document.getElementById('chkDramaAuto2K') || {}).checked) ?? false);
+  const stEl = document.getElementById('dramaStatusText');
+  const btnStart = document.getElementById('btnStartAutoDrama');
+  const btnStop = document.getElementById('btnStopAutoDrama');
+  if (btnStart) btnStart.disabled = true;
+  if (stEl) {
+    stEl.innerText = '🚀 正在启动 11 镜 30 秒古装短剧全自动导演流水线...';
+    stEl.style.color = '#fbbf24';
+  }
+  try {
+    const r = await fetch('/api/drama_auto_start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({aspect, resume, auto_2k: auto2k}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (stEl) {
+        stEl.innerText = '❌ ' + (d.error || '启动失败');
+        stEl.style.color = '#ef4444';
+      }
+      if (btnStart) btnStart.disabled = false;
+      return;
+    }
+    if (btnStop) btnStop.style.display = 'inline-block';
+    await pollAutoDramaStatus();
+    if (!dramaPollTimer) {
+      dramaPollTimer = setInterval(pollAutoDramaStatus, 2000);
+    }
+  } catch (e) {
+    if (stEl) {
+      stEl.innerText = '❌ 请求异常: ' + e;
+      stEl.style.color = '#ef4444';
+    }
+    if (btnStart) btnStart.disabled = false;
+  }
+}
+
+async function stopAutoDramaPipeline() {
+  const stEl = document.getElementById('dramaStatusText');
+  if (stEl) {
+    stEl.innerText = '🛑 正在发送暂停信号 (已生成的定妆照与分镜将完整保留，下次点击可直接断点续拍)...';
+    stEl.style.color = '#f59e0b';
+  }
+  try {
+    await fetch('/api/drama_auto_stop', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    await pollAutoDramaStatus();
+  } catch (e) {}
+}
+
+async function remuxAutoDramaOnly() {
+  const aspect = ((document.getElementById('dramaAspectSelect') || {}).value || '16:9').trim();
+  const auto2k = Boolean(((document.getElementById('chkDramaAuto2K') || {}).checked) ?? false);
+  const stEl = document.getElementById('dramaStatusText');
+  if (stEl) {
+    stEl.innerText = '🎞️ 正在使用已生成的 11 个分镜执行 0.1 秒级卡点裁切 + 市集环境底噪混音合成 30.0 秒成片...';
+    stEl.style.color = '#38bdf8';
+  }
+  try {
+    const r = await fetch('/api/drama_auto_remux', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({aspect, auto_2k: auto2k}),
+    });
+    const d = await r.json();
+    await pollAutoDramaStatus();
+    await loadLocalVideoHistory(true);
+    if (!d.ok && stEl) {
+      stEl.innerText = '❌ ' + (d.error || '合片失败');
+      stEl.style.color = '#ef4444';
+    }
+  } catch (e) {
+    if (stEl) {
+      stEl.innerText = '❌ 合片请求异常: ' + e;
+      stEl.style.color = '#ef4444';
+    }
+  }
+}
+
+async function pollAutoDramaStatus() {
+  const stEl = document.getElementById('dramaStatusText');
+  const pBar = document.getElementById('dramaProgressBar');
+  const btnStart = document.getElementById('btnStartAutoDrama');
+  const btnStop = document.getElementById('btnStopAutoDrama');
+  const tLabel = document.getElementById('taskProgressLabel');
+  const tSpeed = document.getElementById('taskProgressSpeed');
+  const tBar = document.getElementById('taskProgressBar');
+  try {
+    const r = await fetch('/api/drama_auto_status');
+    const d = await r.json();
+    await pollLogs();
+    if (Array.isArray(d.steps)) {
+      renderDramaStepsGrid(d.steps);
+    }
+    const pct = Math.max(0, Math.min(100, parseInt(d.pct || 0, 10)));
+    if (pBar) pBar.style.width = `${pct}%`;
+    if (d.running) {
+      if (btnStart) {
+        btnStart.disabled = true;
+        btnStart.innerText = `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26} 步 · ${pct}%)...`;
+      }
+      if (btnStop) btnStop.style.display = 'inline-block';
+      if (stEl && d.message) {
+        stEl.innerText = d.message;
+        stEl.style.color = '#fde68a';
+      }
+      if (tLabel && d.message) tLabel.innerText = d.message;
+      if (tSpeed) tSpeed.innerText = `全自动导演进度: ${d.done_count || 0}/${d.total_count || 26} 步 (${pct}%)`;
+      if (tBar) {
+        tBar.className = 'progress-fill';
+        tBar.style.width = `${Math.max(5, pct)}%`;
+      }
+    } else {
+      if (dramaPollTimer) {
+        clearInterval(dramaPollTimer);
+        dramaPollTimer = null;
+      }
+      if (btnStart) {
+        btnStart.disabled = false;
+        btnStart.innerText = '🚀 一键全自动拍摄 30秒古装短剧 (共 26 步自动完成)';
+      }
+      if (btnStop) btnStop.style.display = 'none';
+      if (d.error) {
+        if (stEl) {
+          stEl.innerText = '❌ ' + d.error;
+          stEl.style.color = '#ef4444';
+        }
+      } else if (d.message) {
+        if (stEl) {
+          stEl.innerText = d.message;
+          stEl.style.color = '#34d399';
+        }
+      }
+      if (d.final_video) {
+        await loadLocalVideoHistory(true);
+      }
+    }
+  } catch (e) {}
+}
+
 refreshStatus(false);
 loadLocalVideoHistory(true);
 (async () => {
+  try {
+    const rd = await fetch('/api/drama_auto_status');
+    const dd = await rd.json();
+    if (dd && Array.isArray(dd.steps)) renderDramaStepsGrid(dd.steps);
+    if (dd && dd.running && !dramaPollTimer) {
+      pollAutoDramaStatus();
+      dramaPollTimer = setInterval(pollAutoDramaStatus, 2000);
+    }
+  } catch (e) {}
   try {
     const rv = await fetch('/api/video_status');
     const dv = await rv.json();
@@ -6209,6 +6448,10 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     self._send_json({"running": False, "engine_ready": False, "error": ""})
                 else:
                     self._send_json({"running": False, "error": err_s})
+            return
+
+        if self.path.startswith("/api/drama_auto_status"):
+            self._send_json(_get_drama_status_payload())
             return
 
         if self.path.startswith("/api/video_upscale_status"):
@@ -7347,7 +7590,798 @@ p.wait()
             self._send_json({"ok": True, "message": "🛑 已手动停止 ReCaVSR 视频超分任务"})
             return
 
+        if self.path == "/api/drama_auto_start":
+            if _DRAMA_STATE["running"]:
+                self._send_json({"ok": True, "already_running": True, "message": "全自动导演流水线已在运行中"})
+                return
+            aspect = str(payload.get("aspect") or "16:9").strip()
+            resume = bool(payload.get("resume", True))
+            auto_2k = bool(payload.get("auto_2k", False))
+            _DRAMA_STATE["running"] = True
+            _DRAMA_STATE["cancel"] = False
+            _DRAMA_STATE["error"] = ""
+            _DRAMA_STATE["pct"] = 2
+            _DRAMA_STATE["message"] = "🚀 已启动《溪边与市集白花簪》11 镜 30 秒全自动导演流水线..."
+            threading.Thread(
+                target=_run_auto_drama_pipeline_bg,
+                args=(aspect, resume, auto_2k),
+                daemon=True,
+            ).start()
+            self._send_json({"ok": True, "message": "已启动 11 镜 30 秒全自动导演流水线"})
+            return
+
+        if self.path == "/api/drama_auto_stop":
+            _DRAMA_STATE["cancel"] = True
+            _DRAMA_STATE["message"] = "🛑 正在安全暂停全自动导演流水线 (已生成的定妆照与分镜均已保存，下次可断点续拍)..."
+            _append_panel_log("🛑 [自动导演] 已收到暂停信号，当前单步完成后将停止并保留全部已生成素材")
+            self._send_json({"ok": True, "message": "已发送暂停信号"})
+            return
+
+        if self.path == "/api/drama_auto_remux":
+            aspect = str(payload.get("aspect") or "16:9").strip()
+            auto_2k = bool(payload.get("auto_2k", False))
+            try:
+                final_p = _drama_assemble_30s_movie(DRAMA_WORK_DIR, aspect=aspect, auto_2k=auto_2k)
+                _DRAMA_STATE["final_video"] = final_p.name
+                _DRAMA_STATE["pct"] = 100
+                _DRAMA_STATE["error"] = ""
+                _DRAMA_STATE["message"] = f"🎉 30.0 秒完整古装短剧成片已重新合成：{final_p.name} (已保存至 ~/Movies/EasyColab/)"
+                self._send_json({"ok": True, "final_video": final_p.name, "message": _DRAMA_STATE["message"]})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
         self.send_error(404)
+
+
+DRAMA_WORK_DIR = LOCAL_MOVIES_DIR / "drama_30s_ancient"
+
+_DRAMA_STEP_DEFS = [
+    ("char_A_half.jpg", "① 图1:女主A半身(小粉花)"),
+    ("char_A_closeup.jpg", "② 图2:女主A锁脸特写"),
+    ("char_B_half.jpg", "③ 图3:男主B古装定妆"),
+    ("shot01_first.jpg", "📷 镜01首帧:溪边A歪头"),
+    ("shot02_first.jpg", "📷 镜02首帧:小鱼跃水面"),
+    ("shot02_last.jpg", "📷 镜02尾帧:转焦A弯眼笑"),
+    ("shot03_first.jpg", "📷 镜03首帧:全景A撩水"),
+    ("shot04_first.jpg", "📷 镜04首帧:溪边B逆光"),
+    ("shot05_first.jpg", "📷 镜05首帧:市集A前B随"),
+    ("shot06_first.jpg", "📷 镜06首帧:摊前捧白花簪"),
+    ("shot06_last.jpg", "📷 镜06尾帧:举簪招手唤B"),
+    ("shot07_first.jpg", "📷 镜07首帧:越肩A举簪"),
+    ("shot08_first.jpg", "📷 镜08首帧:灯笼B垂眼笑"),
+    ("shot09_11_first.jpg", "📷 镜09/11首帧:左侧插妥簪"),
+    ("shot10_first.jpg", "📷 镜10首帧:反打越肩B笑"),
+    ("shot07_raw.mp4", "🗣️ 镜07(1.7s):A「怎么样？」"),
+    ("shot09_raw.mp4", "🗣️ 镜09(1.7s):A「这发簪好看吗」"),
+    ("shot10_raw.mp4", "🗣️ 镜10(1.6s):B「好看。」"),
+    ("shot11_raw.mp4", "🗣️ 镜11(3.8s):A「哼～问你什么」"),
+    ("shot01_raw.mp4", "🎞️ 镜01(2.2s):溪边歪头笑"),
+    ("shot02_raw.mp4", "🎞️ 镜02(3.0s):小鱼跃水转焦"),
+    ("shot03_raw.mp4", "🎞️ 镜03(3.7s):A撩水泼洒笑"),
+    ("shot04_raw.mp4", "🎞️ 镜04(2.1s):B逆光浅笑"),
+    ("shot05_raw.mp4", "🎞️ 镜05(2.6s):市集倒退跟拍"),
+    ("shot06_raw.mp4", "🎞️ 镜06(5.3s):拿簪招手唤B"),
+    ("shot08_raw.mp4", "🎞️ 镜08(2.3s):B灯笼下浅笑"),
+    ("ancient_drama_30s_final.mp4", "🎬 30.0s 完整短剧混音合片"),
+]
+
+_DRAMA_STATE: Dict[str, Any] = {
+    "running": False,
+    "cancel": False,
+    "pct": 0,
+    "active_file": "",
+    "message": "✅ 已预装全部 11 镜分镜脚本与锁脸提示词，点击右侧按钮即可全自动开机并从 0 拍完 30 秒完整短剧！",
+    "error": "",
+    "final_video": "",
+}
+
+
+def _get_drama_status_payload() -> Dict[str, Any]:
+    DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+    steps_out = []
+    done_cnt = 0
+    active_fn = _DRAMA_STATE.get("active_file") or ""
+    for fn, lbl in _DRAMA_STEP_DEFS:
+        p = DRAMA_WORK_DIR / fn
+        is_done = p.is_file() and p.stat().st_size > 8192
+        if is_done:
+            done_cnt += 1
+        if _DRAMA_STATE["running"] and fn == active_fn:
+            st = "running"
+        elif is_done:
+            st = "done"
+        else:
+            st = "pending"
+        steps_out.append({"file": fn, "label": lbl, "status": st})
+    tot_cnt = len(_DRAMA_STEP_DEFS)
+    pct = _DRAMA_STATE["pct"] if _DRAMA_STATE["running"] else (int(round(done_cnt * 100.0 / max(1, tot_cnt))) if done_cnt > 0 else 0)
+    return {
+        "running": _DRAMA_STATE["running"],
+        "pct": pct,
+        "done_count": done_cnt,
+        "total_count": tot_cnt,
+        "message": _DRAMA_STATE["message"],
+        "error": _DRAMA_STATE["error"],
+        "final_video": _DRAMA_STATE["final_video"],
+        "steps": steps_out,
+    }
+
+
+def _drama_check_cancel():
+    if _DRAMA_STATE.get("cancel"):
+        raise RuntimeError("🛑 已暂停全自动导演流水线（已生成的定妆照与分镜已保存，随时可继续）")
+
+
+def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: str, label: str):
+    """确保云端 G4 已加载并就绪指定的推理引擎 (minimax-h3-image / longcat-avatar-1.6 / minimax-h3)"""
+    _drama_check_cancel()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open("http://127.0.0.1:30000/health", timeout=3) as r:
+            if r.status == 200:
+                hd = json.loads(r.read().decode("utf-8"))
+                cur_eng = str(hd.get("engine") or "")
+                if cur_eng == target_engine or (target_engine == "minimax-h3" and cur_eng in ("minimax-h3", "minimax-h3-t4")):
+                    return
+    except Exception:
+        pass
+
+    _DRAMA_STATE["message"] = f"🔄 正在云端 G4 自动加载/切换至 {label}..."
+    _append_panel_log(f"🎬 [自动导演·引擎调度] 正在自动加载/切换云端引擎至 {label} ({folder})...")
+
+    with _DEPLOY_LOCK:
+        if not _DEPLOY_STATE.get("running"):
+            _start_deploy_process(
+                repo=repo,
+                folder=folder,
+                pattern=pattern,
+                ctx=262144,
+                gpu="G4",
+                download_only=False,
+            )
+
+    for _ in range(900):
+        _drama_check_cancel()
+        time.sleep(2)
+        with _DEPLOY_LOCK:
+            d_run = bool(_DEPLOY_STATE.get("running"))
+            d_code = _DEPLOY_STATE.get("exit_code")
+        if not d_run:
+            if d_code not in (0, None):
+                raise RuntimeError(f"加载 {label} 失败，请查看下方实时日志")
+            break
+
+    for _ in range(45):
+        _drama_check_cancel()
+        try:
+            with opener.open("http://127.0.0.1:30000/health", timeout=3) as r:
+                if r.status == 200:
+                    hd = json.loads(r.read().decode("utf-8"))
+                    cur_eng = str(hd.get("engine") or "")
+                    if cur_eng == target_engine or (target_engine == "minimax-h3" and cur_eng in ("minimax-h3", "minimax-h3-t4")):
+                        _append_panel_log(f"✅ [自动导演·引擎就绪] {label} 已在云端就绪！")
+                        return
+        except Exception:
+            pass
+        time.sleep(2)
+    raise RuntimeError(f"等待 {label} /health 就绪超时")
+
+
+def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, step_label: str) -> Path:
+    """向云端 30000 网关提交单次图片或视频生成任务，轮询进度并高速回传保存至 out_path 与 ~/Movies/EasyColab/"""
+    _drama_check_cancel()
+    cfg = _load_endpoint_cfg()
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+        "User-Agent": "ColabPanel/1.0",
+    }
+    body = json.dumps(job_payload).encode("utf-8")
+
+    # 若云端上一任务尚未彻底收尾，最多等待 30 秒
+    for _ in range(20):
+        _drama_check_cancel()
+        req = urllib.request.Request("http://127.0.0.1:30000/v1/video/generations", data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
+        if not res.get("ok"):
+            raise RuntimeError(f"{step_label} 提交失败: {res.get('error')}")
+        if not res.get("already_running"):
+            break
+        time.sleep(2)
+
+    time.sleep(1.2)
+    remote_fname = ""
+    for _ in range(600):
+        _drama_check_cancel()
+        time.sleep(1.5)
+        try:
+            st_req = urllib.request.Request("http://127.0.0.1:30000/v1/video/status", headers=headers, method="GET")
+            with urllib.request.urlopen(st_req, timeout=12) as sr:
+                sd = json.loads(sr.read().decode("utf-8"))
+        except Exception:
+            continue
+
+        if sd.get("error") and not sd.get("running"):
+            raise RuntimeError(f"{step_label} 云端出错: {sd.get('error')}")
+
+        msg = str(sd.get("message") or "")
+        if sd.get("running"):
+            if msg:
+                _DRAMA_STATE["message"] = f"🎬 [{step_label}] {msg}"
+                _append_panel_log(f"[自动导演] {step_label}: {msg}")
+            continue
+
+        vids = sd.get("completed_videos") or ([sd["latest_video"]] if sd.get("latest_video") else []) or (sd.get("history") or [])[:1]
+        if vids:
+            remote_fname = os.path.basename(str(vids[-1]))
+            break
+
+    if not remote_fname:
+        raise RuntimeError(f"{step_label} 未获取到生成文件名")
+
+    _DRAMA_STATE["message"] = f"⬇️ [{step_label}] 正在 16 线程极速回传 {remote_fname}..."
+    local_dl = LOCAL_MOVIES_DIR / remote_fname
+    if not (local_dl.is_file() and local_dl.stat().st_size > 4096):
+        ok = _download_remote_video_to_local(remote_fname, 0.0)
+        if not ok or not local_dl.is_file():
+            raise RuntimeError(f"{step_label} 回传文件 {remote_fname} 失败")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(local_dl, out_path)
+    _append_panel_log(f"✅ [自动导演·单步完成] {step_label} 已落盘 → {out_path.name}")
+    return out_path
+
+
+def _drama_img_to_b64(img_path: Path) -> str:
+    ext = img_path.suffix.lower()
+    mime = "image/png" if ext == ".png" else "image/jpeg"
+    return f"data:{mime};base64," + base64.b64encode(img_path.read_bytes()).decode("ascii")
+
+
+def _drama_run_image_step(
+    fn: str,
+    step_label: str,
+    prompt: str,
+    ref_files: List[str],
+    res_str: str,
+    resume: bool,
+    step_idx: int,
+    tot_steps: int,
+) -> Path:
+    _drama_check_cancel()
+    out_p = DRAMA_WORK_DIR / fn
+    _DRAMA_STATE["active_file"] = fn
+    _DRAMA_STATE["pct"] = max(2, int(round((step_idx - 1) * 100.0 / tot_steps)))
+    if resume and out_p.is_file() and out_p.stat().st_size > 8192:
+        _append_panel_log(f"♻️ [自动导演·断点复用] {step_label} 已存在 ({fn})，跳过重绘")
+        return out_p
+
+    w_s, h_s = res_str.split("x")
+    ref_b64s = []
+    for rf in ref_files:
+        rp = DRAMA_WORK_DIR / rf
+        if rp.is_file():
+            ref_b64s.append(_drama_img_to_b64(rp))
+
+    _DRAMA_STATE["message"] = f"📸 [{step_idx}/{tot_steps}] 正在生成 {step_label}..."
+    _append_panel_log(f"📸 [自动导演 {step_idx}/{tot_steps}] 开始生成图片 {step_label} ({res_str})...")
+    payload = {
+        "mode": "image",
+        "prompt": prompt,
+        "resolution": res_str,
+        "width": int(w_s),
+        "height": int(h_s),
+        "steps": 6,
+        "seed": -1,
+        "randomize_seed": True,
+        "batch_count": 1,
+        "ref_images_b64": ref_b64s,
+        "edit_outfit": "",
+        "edit_scene": "",
+        "clean_matte": True,
+    }
+    return _drama_submit_and_wait_media(payload, out_p, step_label)
+
+
+def _drama_run_avatar_step(
+    fn: str,
+    step_label: str,
+    ref_img_fn: str,
+    tts_text: str,
+    tts_voice: str,
+    visual_prompt: str,
+    res_str: str,
+    resume: bool,
+    step_idx: int,
+    tot_steps: int,
+) -> Path:
+    _drama_check_cancel()
+    out_p = DRAMA_WORK_DIR / fn
+    _DRAMA_STATE["active_file"] = fn
+    _DRAMA_STATE["pct"] = max(5, int(round((step_idx - 1) * 100.0 / tot_steps)))
+    if resume and out_p.is_file() and out_p.stat().st_size > 20480:
+        _append_panel_log(f"♻️ [自动导演·断点复用] {step_label} 已存在 ({fn})，跳过重新渲染")
+        return out_p
+
+    ref_p = DRAMA_WORK_DIR / ref_img_fn
+    if not ref_p.is_file():
+        raise RuntimeError(f"缺少首帧参考图 {ref_img_fn}")
+    w_s, h_s = res_str.split("x")
+    _DRAMA_STATE["message"] = f"🗣️ [{step_idx}/{tot_steps}] 正在生成越肩对白镜头 {step_label}..."
+    _append_panel_log(f"🗣️ [自动导演 {step_idx}/{tot_steps}] 开始生成数字人对白镜头 {step_label} (音色: {tts_voice}, 台词: {tts_text})...")
+    payload = {
+        "mode": "avatar",
+        "prompt": visual_prompt,
+        "resolution": res_str,
+        "width": int(w_s),
+        "height": int(h_s),
+        "num_segments": 1,
+        "steps": 8,
+        "fps": 25,
+        "seed": -1,
+        "randomize_seed": True,
+        "batch_count": 1,
+        "audio_b64": "",
+        "audio_ext": ".wav",
+        "is_tts_audio": True,
+        "tts_text": tts_text,
+        "tts_voice": tts_voice,
+        "clone_ref_b64": "",
+        "clone_prompt_text": "",
+        "use_builtin_sample": False,
+        "first_frame_b64": _drama_img_to_b64(ref_p),
+    }
+    return _drama_submit_and_wait_media(payload, out_p, step_label)
+
+
+def _drama_run_fl2va_step(
+    fn: str,
+    step_label: str,
+    first_img_fn: str,
+    last_img_fn: str | None,
+    prompt: str,
+    res_str: str,
+    resume: bool,
+    step_idx: int,
+    tot_steps: int,
+) -> Path:
+    _drama_check_cancel()
+    out_p = DRAMA_WORK_DIR / fn
+    _DRAMA_STATE["active_file"] = fn
+    _DRAMA_STATE["pct"] = max(5, int(round((step_idx - 1) * 100.0 / tot_steps)))
+    if resume and out_p.is_file() and out_p.stat().st_size > 20480:
+        _append_panel_log(f"♻️ [自动导演·断点复用] {step_label} 已存在 ({fn})，跳过重新渲染")
+        return out_p
+
+    first_p = DRAMA_WORK_DIR / first_img_fn
+    if not first_p.is_file():
+        raise RuntimeError(f"缺少起幅首帧图 {first_img_fn}")
+    w_s, h_s = res_str.split("x")
+    _DRAMA_STATE["message"] = f"🎞️ [{step_idx}/{tot_steps}] 正在生成动作与环境音镜头 {step_label}..."
+    _append_panel_log(f"🎞️ [自动导演 {step_idx}/{tot_steps}] 开始生成首尾帧有声视频 {step_label}...")
+    payload: Dict[str, Any] = {
+        "mode": "fl2va",
+        "prompt": prompt,
+        "resolution": res_str,
+        "width": int(w_s),
+        "height": int(h_s),
+        "num_frames": 124,
+        "steps": 25,
+        "fps": 24,
+        "seed": -1,
+        "randomize_seed": True,
+        "batch_count": 1,
+        "first_frame_b64": _drama_img_to_b64(first_p),
+    }
+    if last_img_fn:
+        last_p = DRAMA_WORK_DIR / last_img_fn
+        if last_p.is_file():
+            payload["last_frame_b64"] = _drama_img_to_b64(last_p)
+    return _drama_submit_and_wait_media(payload, out_p, step_label)
+
+
+def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: bool = False) -> Path:
+    """
+    将 11 个分镜视频按剧本精确秒数 (总计 30.0 秒) 裁切对齐，
+    并将镜 05 的市集环境底噪自动以 -16dB 铺入镜 07/09/10/11 数字人对白背景，输出 1280x720 (或 720x1280) 25fps 完整短剧成片。
+    """
+    _DRAMA_STATE["active_file"] = "ancient_drama_30s_final.mp4"
+    _DRAMA_STATE["pct"] = 95
+    _DRAMA_STATE["message"] = "🎞️ 正在执行 FFmpeg 0.1 秒级卡点裁切 + 市集环境底噪混音 + 30.0 秒完整古装短剧封装..."
+    _append_panel_log("🎞️ [自动导演·阶段四] 开始按剧本精确秒数 (2.2s~5.3s，总计 30.0s) 精剪混音并封装成片...")
+
+    shot_specs = [
+        ("shot01_raw.mp4", 2.2, False, "镜01"),
+        ("shot02_raw.mp4", 3.0, False, "镜02"),
+        ("shot03_raw.mp4", 3.7, False, "镜03"),
+        ("shot04_raw.mp4", 2.1, False, "镜04"),
+        ("shot05_raw.mp4", 2.6, False, "镜05"),
+        ("shot06_raw.mp4", 5.3, False, "镜06"),
+        ("shot07_raw.mp4", 1.7, True, "镜07"),
+        ("shot08_raw.mp4", 2.3, False, "镜08"),
+        ("shot09_raw.mp4", 1.7, True, "镜09"),
+        ("shot10_raw.mp4", 1.6, True, "镜10"),
+        ("shot11_raw.mp4", 3.8, True, "镜11"),
+    ]
+
+    missing = [lbl for fn, _, _, lbl in shot_specs if not (work_dir / fn).is_file()]
+    if missing:
+        raise RuntimeError(f"尚未生成完毕以下分镜视频，无法合片: {', '.join(missing)}")
+
+    out_w, out_h = (720, 1280) if aspect == "9:16" else (1280, 720)
+    norm_dir = work_dir / "norm_clips"
+    norm_dir.mkdir(parents=True, exist_ok=True)
+
+    # 从镜05提取市集环境底噪音频 (供镜07/09/10/11越肩对白铺底，确保市集背景声不断流)
+    amb_wav = norm_dir / "market_ambience_bed.wav"
+    shot05_p = work_dir / "shot05_raw.mp4"
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-v", "error",
+                "-stream_loop", "3",
+                "-i", str(shot05_p),
+                "-vn", "-ac", "2", "-ar", "44100",
+                "-t", "10.0",
+                str(amb_wav),
+            ],
+            check=True,
+            timeout=30,
+        )
+    except Exception:
+        amb_wav = Path("/nonexistent_amb.wav")
+
+    norm_files: List[Path] = []
+    for idx, (fn, dur_s, is_avatar_dlg, lbl) in enumerate(shot_specs, start=1):
+        src_p = work_dir / fn
+        dst_p = norm_dir / f"norm_{idx:02d}_{dur_s:.1f}s.mp4"
+        vf_chain = (
+            f"fps=25,scale={out_w}:{out_h}:flags=lanczos:force_original_aspect_ratio=decrease,"
+            f"pad={out_w}:{out_h}:(ow-iw)/2:(oh-ih)/2,format=yuv420p,"
+            f"tpad=stop_mode=clone:stop_duration=0.8"
+        )
+        fade_out_st = max(0.05, round(dur_s - 0.05, 2))
+        if is_avatar_dlg and amb_wav.is_file():
+            af_complex = (
+                f"[0:a]aresample=44100,aformat=channel_layouts=stereo,apad[va];"
+                f"[1:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.16[amb];"
+                f"[va][amb]amix=inputs=2:duration=first:dropout_transition=0,"
+                f"afade=t=in:st=0:d=0.04,afade=t=out:st={fade_out_st}:d=0.04[aout]"
+            )
+            cmd = [
+                "ffmpeg", "-y", "-v", "error",
+                "-i", str(src_p),
+                "-i", str(amb_wav),
+                "-filter_complex", f"[0:v]{vf_chain}[vout];{af_complex}",
+                "-map", "[vout]", "-map", "[aout]",
+                "-t", f"{dur_s:.2f}",
+                "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+                "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+                str(dst_p),
+            ]
+        else:
+            af_chain = f"aresample=44100,aformat=channel_layouts=stereo,apad,afade=t=in:st=0:d=0.04,afade=t=out:st={fade_out_st}:d=0.04"
+            cmd = [
+                "ffmpeg", "-y", "-v", "error",
+                "-i", str(src_p),
+                "-vf", vf_chain,
+                "-af", af_chain,
+                "-t", f"{dur_s:.2f}",
+                "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+                "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+                str(dst_p),
+            ]
+        subprocess.run(cmd, check=True, timeout=60)
+        norm_files.append(dst_p)
+
+    concat_txt = norm_dir / "concat_list.txt"
+    concat_txt.write_text("\n".join(f"file '{p.resolve()}'" for p in norm_files) + "\n", encoding="utf-8")
+
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    final_work_p = work_dir / "ancient_drama_30s_final.mp4"
+    final_gallery_p = LOCAL_MOVIES_DIR / f"ancient_drama_11shots_30s_{ts}.mp4"
+
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_txt),
+            "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+            "-c:a", "aac", "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(final_work_p),
+        ],
+        check=True,
+        timeout=90,
+    )
+    shutil.copy2(final_work_p, final_gallery_p)
+    _append_panel_log(f"🎉 [自动导演·合片完成] 30.0 秒 11 镜古装短剧成片已生成 → {final_gallery_p}")
+
+    if auto_2k:
+        try:
+            _append_panel_log(f"✨ [自动导演·ReCaVSR] 正在将 30 秒成片 {final_gallery_p.name} 提交云端 ReCaVSR 2K 超分...")
+            cfg = _load_endpoint_cfg()
+            req_up = urllib.request.Request(
+                f"{_get_recavsr_base_url()}/v1/video/upscale",
+                data=json.dumps({
+                    "filename": final_gallery_p.name,
+                    "target_preset": "2k",
+                    "color_fix": "wavelet",
+                    "video_b64": base64.b64encode(final_gallery_p.read_bytes()).decode("ascii"),
+                }).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req_up, timeout=30) as _:
+                pass
+        except Exception as e_up:
+            _append_panel_log(f"⚠️ 自动提交 2K 超分提示: {e_up}")
+
+    return final_gallery_p
+
+
+def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_2k: bool = False):
+    """三阶段全自动执行《溪边与市集白花簪》11 镜 30 秒古装短剧拍摄与剪辑合片"""
+    DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+    tot_steps = len(_DRAMA_STEP_DEFS)
+    img_res = "1536x2048" if aspect == "9:16" else "2048x1536"
+    vid_res = "480x832" if aspect == "9:16" else "832x480"
+
+    try:
+        # ==================== 阶段一 & 阶段二：MiniMax-H3-Image 生成 3 张定妆照 + 12 张分镜首尾帧 ====================
+        image_tasks = [
+            (
+                "char_A_half.jpg",
+                "① 图1:女主A半身定妆(右侧小粉花)",
+                [],
+                "写实真人摄影，古装爱情剧质感，85mm人像镜头，电影级浅景深，阳光暖调，画面通透柔和。一位19岁中国古装少女（女主A）的正面中近景半身定妆照，性格活泼俏皮、灵动甜美，鹅蛋脸，清澈有神的大眼睛，白皙细腻的真实皮肤纹理，带着俏皮明朗的浅笑。她梳着精致少女古装发髻，发间右侧固定簪着一朵小巧精致的浅粉色五瓣小花（右侧小粉花清晰可见，左侧发间无任何发饰），身穿浅青与淡粉交织的轻盈宋制齐胸衫裙，刺绣纹理清晰，自然户外暖阳，背景为干净柔和的浅绿色虚化光斑。",
+            ),
+            (
+                "char_A_closeup.jpg",
+                "② 图2:女主A锁脸面部特写",
+                ["char_A_half.jpg"],
+                "Keep the exact facial identity, hairstyle, and the small pink flower on the right side of the hair of the woman in <Picture 1>. 写实真人电影级面部特写镜头（Close-up），古装少女（女主A）直视镜头，五官与 <Picture 1> 完全一致，眼神灵动俏皮，嘴角微扬，细腻真实的皮肤质感，发间右侧依然簪着那朵小巧的浅粉色小花，左侧发间无发饰，柔和暖阳轮廓光，背景柔和虚化。",
+            ),
+            (
+                "char_B_half.jpg",
+                "③ 图3:男主B古装半身定妆",
+                [],
+                "写实真人摄影，古装爱情剧质感，85mm人像镜头，电影级浅景深，阳光暖调，画面通透柔和。一位23岁中国古装青年公子（男主B）的正面中近景半身定妆照，面容俊朗温润，剑眉星目，气质沉静温和、内敛克制，嘴角带着一丝温柔克制的浅笑。他束着整洁的古装墨发玉冠，身穿深藏青色与墨色交织的质感暗纹古装直裰长袍，真实细腻的皮肤纹理与发丝质感，柔和户外暖阳自后方打来形成金色发丝轮廓光，背景为柔和的深绿色林间虚化光斑。",
+            ),
+            (
+                "shot01_first.jpg",
+                "镜01首帧:溪边A歪头逆光特写",
+                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "Keep the exact face and right-side small pink hair flower of the woman in <Picture 1> and <Picture 2>, and the man in <Picture 3> in the blurred background. 写实古装剧电影画面，林间溪边，阳光暖调。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花）的面部特写占画面左侧，前景左缘有一片虚化的浅色树叶遮挡；A的头向她自己的右肩侧微微歪着，脸朝着镜头，双唇微张、眼神俏皮灵动地望向镜头方向；男主B（来自 <Picture 3>）在画面右后方远处虚化成一团深色古装身影。暖阳自A身后打来，发丝边缘有一圈明亮的金色轮廓光，背景是虚化的溪边绿色光斑，电影级浅景深。",
+            ),
+            (
+                "shot02_first.jpg",
+                "镜02首帧:低角度溪面小鱼跃起",
+                ["char_A_half.jpg", "char_B_half.jpg"],
+                "Keep the woman from <Picture 1> in the soft out-of-focus background. 写实古装剧画面，机位贴近清澈溪水水面的超低角度镜头。焦点清晰落在前景水面上：一条灵动的小溪鱼正自清浅的溪水中跃起，在半空划出一道水线，水面溅起晶莹的水花与一圈涟漪；后景处于浅景深柔和虚化状态，女主A（来自 <Picture 1>，穿浅青淡粉古装裙，右侧发间有小粉花）蹲在溪边卵石滩上，裙摆铺开遮住双腿，正笑着把手伸向水面；男主B（来自 <Picture 2>）在更后方青苔大石处虚化。阳光洒在水面与树叶间，暖调通透。",
+            ),
+            (
+                "shot02_last.jpg",
+                "镜02尾帧:转焦后景A眉眼弯弯",
+                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "Keep the exact face and outfit of the woman in <Picture 1> and <Picture 2>. 写实古装剧画面，机位贴近溪水水面的低角度镜头。前景溪水水面处于柔和虚化并带有余波涟漪；焦点清晰对准后景蹲在溪边卵石滩上的女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花），她裙摆铺开遮住双腿，手停在水面上方，笑得眉眼弯弯、俏皮可爱；男主B（来自 <Picture 3>）在更后方远处虚化。阳光透过树叶洒下温暖光斑。",
+            ),
+            (
+                "shot03_first.jpg",
+                "镜03首帧:溪边全景A俯身撩水",
+                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "Keep the woman from <Picture 1> <Picture 2> and the man from <Picture 3>. 写实古装剧溪边全景镜头，画面左右两缘有虚化的翠绿树叶作前景框景。画面左中位置，女主A（来自 <Picture 1>，右侧发间有小粉花）站在清浅的溪水卵石滩边，正开心地笑着俯身用双手撩起溪水向镜头方向泼洒，晶莹的水花在阳光下发亮；画面右侧岸边的青苔大石上，男主B（来自 <Picture 3>，深色古装）安稳坐着，侧身温和地看着A，嘴角带着一丝克制温柔的笑意。溪水在两人前方缓缓流过，倒映着金色阳光。",
+            ),
+            (
+                "shot04_first.jpg",
+                "镜04首帧:溪边男主B逆光特写",
+                ["char_B_half.jpg"],
+                "Keep the exact facial identity and outfit of the man in <Picture 1>. 写实古装剧电影级面部特写镜头，林间溪边。男主B（来自 <Picture 1>）的面部特写，他的目光温柔地望向画面左下方的方向，神情沉静温和，嘴角微露一丝克制的浅笑意，眼神柔和。温暖的阳光自他身后打来，墨发边缘有一圈金色轮廓光，背景是虚化的森林绿色光斑，电影级浅景深。",
+            ),
+            (
+                "shot05_first.jpg",
+                "镜05首帧:古代市集A在前B跟随",
+                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "Keep the exact woman from <Picture 1> <Picture 2> in front and the man from <Picture 3> walking behind her. 写实古装剧白天的古代市集街道，中景正面镜头。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花，左侧无发饰）走在前面处于画面中景，笑容明朗俏皮，正开心看向两旁摊位；男主B（来自 <Picture 3>，深色古装）跟在她身后两三步的距离，神情平静温和地目光落在她身上。街道两旁摊位林立、商贩与路人全部处于浅景深虚化状态，不看镜头；远处可见石拱桥与古代酒楼招牌，阳光明亮，街面有斑驳暖调光影。",
+            ),
+            (
+                "shot06_first.jpg",
+                "镜06首帧:香囊摊前A双手捧白花簪",
+                ["char_A_half.jpg", "char_A_closeup.jpg"],
+                "Keep the exact face and outfit of the woman in <Picture 1> <Picture 2>. 写实古装剧古代市集小摊前的中近景镜头，摊位上方挂着一排色彩雅致的古风香囊与小饰物。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着一朵小粉花，左侧发间无发饰）站在摊前，正微微低头，双手小心捧着一支刚从摊上拿起的「白花发簪」（细长的簪杆，顶端是一朵精致的白色五瓣小花），神情专注欣喜地端详着发簪。背景为虚化的阳光市集街道，电影级暖调浅景深。",
+            ),
+            (
+                "shot06_last.jpg",
+                "镜06尾帧:A举簪比试转头朝B招手",
+                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "Keep the exact woman from <Picture 1> <Picture 2> and the man from <Picture 3> in the blurred background. 写实古装剧市集香囊小摊前的中近景镜头。女主A（来自 <Picture 1> <Picture 2>，右侧发间有小粉花）一只手把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）举在自己左侧头边比试，同时转头望向画面左后方，笑得明朗俏皮，另一只手抬起朝左后方招手示意；画面左后方背景中，男主B（来自 <Picture 3>）正应声走近停在她对面（处于浅景深柔和虚化中）。阳光暖调。",
+            ),
+            (
+                "shot07_first.jpg",
+                "镜07首帧:越肩A把白花簪举在头侧",
+                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "Keep the exact face of the woman in <Picture 1> <Picture 2>. 写实古装剧越肩镜头（Over-the-shoulder shot）。画面左侧前景是男主B（来自 <Picture 3>）虚化的深色古装后脑与左肩背；镜头越过B的肩膀对准对面的女主A（来自 <Picture 1> <Picture 2>，面部与上身清晰实焦）。A发间右侧簪着小粉花，她右手正把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）举在自己左侧发髻旁比试，笑得眉眼弯弯，眼神亮晶晶地望着对面的B。背景是虚化的市集香囊小摊，阳光暖调。",
+            ),
+            (
+                "shot08_first.jpg",
+                "镜08首帧:市集灯笼光斑B特写",
+                ["char_B_half.jpg"],
+                "Keep the exact facial identity of the man in <Picture 1>. 写实古装剧电影级面部特写镜头。男主B（来自 <Picture 1>）站在市集摊位前，眼帘微垂后刚抬起眼望向对面的A，嘴角缓缓扬起温柔浅笑，眼神里带着满满的纵容与宠溺。背景是浅景深虚化的红色与橙色市集灯笼温暖光斑，肤质细腻真实。",
+            ),
+            (
+                "shot09_11_first.jpg",
+                "镜09/11首帧:白花发簪插妥在A左侧发间",
+                ["shot07_first.jpg", "char_A_closeup.jpg"],
+                "Based on <Picture 1> and keeping the exact face of <Picture 2>, keep the same over-the-shoulder composition with the blurred dark shoulder of the man on the left foreground. 写实古装剧越肩近景特写镜头，保持与 <Picture 1> 完全相同的机位、背景和前景左侧虚化的男主肩背。画面中的女主A已经把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）稳稳插进了自己左侧发间（同时她右侧发间原本的小粉花依然保留），双手已自然放下不再举着，她眼睛发亮、嘴角带着俏皮灵动的神情望着对面的B。",
+            ),
+            (
+                "shot10_first.jpg",
+                "镜10首帧:反打越肩男主B逆光含笑",
+                ["char_A_half.jpg", "char_B_half.jpg"],
+                "Keep the exact facial identity of the man in <Picture 2>. 写实古装剧反打越肩镜头（Reverse over-the-shoulder shot）。画面左侧前景是女主A（来自 <Picture 1>）虚化的古装发髻后脑（左侧隐约可见白花发簪轮廓）；镜头越过A的后脑清晰对准对面的男主B（来自 <Picture 2>）。B正专注地看着A，面带温柔认真又纵容的浅笑。温暖的阳光自B身后打来，在他脸庞和发丝边缘勾勒出暖融融的金色轮廓光，市集背景柔和虚化。",
+            ),
+        ]
+
+        need_any_img = any(
+            not (resume and (DRAMA_WORK_DIR / fn).is_file() and (DRAMA_WORK_DIR / fn).stat().st_size > 8192)
+            for fn, _, _, _ in image_tasks
+        )
+        if need_any_img:
+            _drama_wait_for_engine(
+                target_engine="minimax-h3-image",
+                repo="Comfy-Org/MiniMax-H3-Image",
+                folder="MiniMax-H3-Image",
+                pattern="split_files/diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors",
+                label="📸 MiniMax-H3-Image (33B · 4K锁脸定妆与首尾帧引擎)",
+            )
+
+        step_cursor = 1
+        for fn, lbl, refs, prm in image_tasks:
+            _drama_run_image_step(fn, lbl, prm, refs, img_res, resume, step_cursor, tot_steps)
+            step_cursor += 1
+
+        # ==================== 阶段三-A：LongCat-Video-Avatar-1.6 + Ming-3.0 生成 4 个越肩特写对白镜头 ====================
+        avatar_tasks = [
+            (
+                "shot07_raw.mp4",
+                "镜07(1.7s):A举簪问「怎么样？」",
+                "shot07_first.jpg",
+                "怎么样？",
+                "ming:灵小柔",
+                "固定越肩镜头，机位完全静止，左侧前景男主肩背保持虚化。画面中的古装少女A把白花发簪举在左侧头边，笑得眉眼弯弯，眼神亮晶晶地望着对面的B自然开口问话，伴随语流有灵动的微眨眼与俏皮期盼的神情，口型与语音精准同步，阳光暖调。",
+            ),
+            (
+                "shot09_raw.mp4",
+                "镜09(1.7s):A插簪问「这发簪好看吗？」",
+                "shot09_11_first.jpg",
+                "这发簪好看吗？",
+                "ming:灵小柔",
+                "固定越肩镜头，机位完全静止，左侧前景男主肩背虚化。白花发簪稳稳插在女主A左侧发间，右侧小粉花保留。A眼睛发亮，兴奋又期待地望着对面的B开口追问，嘴角压不住甜美俏皮的笑意，伴随说话有自然的微挑眉和眨眼，口型精准同步。",
+            ),
+            (
+                "shot10_raw.mp4",
+                "镜10(1.6s):B含笑答「好看。」",
+                "shot10_first.jpg",
+                "好看。",
+                "ming:灵逍遥",
+                "固定反打越肩镜头，机位完全静止，左侧前景女主后脑虚化。阳光自男主B身后打来形成暖融融的轮廓光，B专注地看着对面的A，眼神温柔纵容，含笑认真地开口回答，伴随说话有轻微温和的点头与眼神交流，口型自然准确。",
+            ),
+            (
+                "shot11_raw.mp4",
+                "镜11(3.8s):A撇嘴「哼～问你什么都说好看...」",
+                "shot09_11_first.jpg",
+                "[Dissatisfaction-hnn] 问你什么都说好看，男人的嘴，骗人的鬼。",
+                "ming:灵小柔",
+                "固定越肩面部特写镜头，机位完全静止，左侧前景男主肩背虚化，女主A左侧发间插着白花发簪、右侧小粉花保留。A先是假装生气地板起脸、微微撇嘴佯装瞪了对面的B一眼，随即俏皮灵动地开口数落他，眼神灵动有戏，眉眼与头部伴随说话节奏有自然的微动作，说完自然收住，口型与牙齿清晰自然。",
+            ),
+        ]
+
+        need_any_avatar = any(
+            not (resume and (DRAMA_WORK_DIR / fn).is_file() and (DRAMA_WORK_DIR / fn).stat().st_size > 20480)
+            for fn, _, _, _, _, _ in avatar_tasks
+        )
+        if need_any_avatar:
+            _drama_wait_for_engine(
+                target_engine="longcat-avatar-1.6",
+                repo="meituan-longcat/LongCat-Video-Avatar-1.6",
+                folder="LongCat-Video-Avatar-1.6",
+                pattern="base_model_distill/*.safetensors",
+                label="🎭 LongCat-Video-Avatar-1.6 + Ming-3.0 (越肩对白驱动引擎)",
+            )
+
+        for fn, lbl, ref_fn, tts_txt, tts_v, vis_prm in avatar_tasks:
+            _drama_run_avatar_step(fn, lbl, ref_fn, tts_txt, tts_v, vis_prm, vid_res, resume, step_cursor, tot_steps)
+            step_cursor += 1
+
+        # ==================== 阶段三-B：MiniMax-H3 (FL2VA) 生成 7 个动作与原生环境音镜头 ====================
+        fl2va_tasks = [
+            (
+                "shot01_raw.mp4",
+                "镜01(2.2s):溪边A歪头抿唇浅笑",
+                "shot01_first.jpg",
+                None,
+                "固定镜头，机位与焦距完全静止。林间溪边，左侧女主A（右侧发间带小粉花）头向自己右肩微微歪着朝向镜头，她先是双唇微张像刚要说话，随即抿起嘴唇露出俏皮甜美的浅笑，眼神灵动地望向镜头方向；发丝在微风与身后金色阳光轮廓光中轻轻拂动，右后方男主B虚化身影安静不动。纯自然环境音效：清脆的溪水潺潺流动声与林间清幽鸟鸣声，无背景音乐，无人物说话。",
+            ),
+            (
+                "shot02_raw.mp4",
+                "镜02(3.0s):小鱼跃水溅水花+转焦A",
+                "shot02_first.jpg",
+                "shot02_last.jpg",
+                "固定低角度贴近水面镜头，机位完全静止。起幅焦点落在前景溪面：一条小鱼自溪水中灵动跃起，在半空划出一道自然弧线后落回水中，溅起水花与一圈涟漪；随后镜头焦点平滑转移到后景蹲在溪边卵石滩上的女主A身上，她裙摆铺开，正笑得眉眼弯弯，手停在水面上方。纯自然环境音效：小鱼跃出水面的清脆扑通水花声与溪水流动声，无背景音乐。",
+            ),
+            (
+                "shot03_raw.mp4",
+                "镜03(3.7s):溪边全景A撩水泼洒笑出声",
+                "shot03_first.jpg",
+                None,
+                "固定全景镜头，机位完全静止，左右两缘有虚化绿叶前景。画面左中女主A在溪边开心地用双手撩起溪水向镜头方向泼洒出去，泼水的水花方向与手部动作一致，晶莹水花在阳光下飞溅发亮，泼完水她自己先眉眼弯弯地笑出声；画面右侧青苔大石上，男主B安稳坐着侧身看着A，神情温和，嘴角带一点宠溺笑意。溪水在前方缓缓流过。纯自然环境音效：双手撩水泼洒的水花声、少女清脆轻快的浅笑声、溪水流淌与林间鸟鸣声，无背景音乐。",
+            ),
+            (
+                "shot04_raw.mp4",
+                "镜04(2.1s):溪边男主B逆光温柔浅笑",
+                "shot04_first.jpg",
+                None,
+                "固定特写镜头，机位与焦距完全静止。林间溪边，男主B的面部特写，目光专注地望向画面左下方A的方向；他先是神情沉静平和，随即嘴角慢慢扬起，露出一抹温柔而克制的浅笑，眼神随之柔和下来；身后阳光勾勒出金色发丝轮廓光。纯自然环境音效：轻柔的溪水流动声与林间微风鸟鸣，无背景音乐，无对白。",
+            ),
+            (
+                "shot05_raw.mp4",
+                "镜05(2.6s):古代市集倒退跟拍A与B",
+                "shot05_first.jpg",
+                None,
+                "镜头在主体前方一边平稳后退一边拍摄（倒退跟拍机位），正对女主A的表情与步伐，A始终保持中景大小。白天的古代市集街道，A走在前面，笑容明朗俏皮，边走边开心地左右张望两旁虚化的摊位，脚步轻快；男主B跟在她身后两三步的距离，神情平静温和地跟着她前行。两旁商贩与路人全部虚化且不看镜头，远处有石拱桥，阳光斑驳。纯自然环境音效：热闹的古代市集人群低语交谈声、轻快的脚步声与摊位杂声，无背景音乐。",
+            ),
+            (
+                "shot06_raw.mp4",
+                "镜06(5.3s):香囊摊前拿簪比试招手「你快过来」",
+                "shot06_first.jpg",
+                "shot06_last.jpg",
+                "固定中近景镜头，机位完全静止。市集香囊小摊前，女主A（右侧发间有小粉花）先低头双手捧着那支白花发簪（细簪杆顶端一朵白色五瓣小花）轻轻翻看端详，随后抬手把白花发簪举到自己左侧头边比试；接着她转头望向画面左后方，笑着朝男主B招了招手，动作俏皮可爱，并开口用甜美中文说道：\"你快过来。\"；男主B应声自画面左后方走近，在后段进入虚化背景停在A对面。音效包含市集环境人群杂声与女主清晰的中文台词\"你快过来\"，无背景音乐。",
+            ),
+            (
+                "shot08_raw.mp4",
+                "镜08(2.3s):灯笼光斑B垂眼端详再抬眼笑",
+                "shot08_first.jpg",
+                None,
+                "固定特写镜头，机位与焦距完全静止。背景是虚化的红橙色市集灯笼光斑，男主B的面部特写：他先是微微垂下眼帘，像在认真端详对面A头侧比试的白花发簪，随即缓缓抬起眼看向A，嘴角扬起一抹温柔浅笑，眼神里带着满满的纵容。纯自然环境音效：轻柔的市集背景人群环境声，无背景音乐，无对白。",
+            ),
+        ]
+
+        need_any_fl2va = any(
+            not (resume and (DRAMA_WORK_DIR / fn).is_file() and (DRAMA_WORK_DIR / fn).stat().st_size > 20480)
+            for fn, _, _, _, _ in fl2va_tasks
+        )
+        if need_any_fl2va:
+            _drama_wait_for_engine(
+                target_engine="minimax-h3",
+                repo="MiniMaxAI/MiniMax-H3",
+                folder="MiniMax-H3",
+                pattern="FL2VA/*.safetensors",
+                label="🎬 MiniMax-H3 (58B · FL2VA 首尾帧有声视频引擎)",
+            )
+
+        for fn, lbl, f_img, l_img, prm in fl2va_tasks:
+            _drama_run_fl2va_step(fn, lbl, f_img, l_img, prm, vid_res, resume, step_cursor, tot_steps)
+            step_cursor += 1
+
+        # ==================== 阶段四：FFmpeg 0.1s 精准卡点 + 市集环境底噪混音 + 30.0s 成片封装 ====================
+        final_p = _drama_assemble_30s_movie(DRAMA_WORK_DIR, aspect=aspect, auto_2k=auto_2k)
+        _DRAMA_STATE["active_file"] = ""
+        _DRAMA_STATE["final_video"] = final_p.name
+        _DRAMA_STATE["pct"] = 100
+        _DRAMA_STATE["error"] = ""
+        _DRAMA_STATE["message"] = f"🎉 全自动拍摄与精剪完成！30.0 秒 11 镜古装短剧成片已保存至 ~/Movies/EasyColab/{final_p.name}"
+    except Exception as e:
+        _DRAMA_STATE["active_file"] = ""
+        _DRAMA_STATE["error"] = str(e)
+        _DRAMA_STATE["message"] = str(e)
+        _append_panel_log(f"⚠️ [自动导演中断] {e}")
+    finally:
+        _DRAMA_STATE["running"] = False
 
 
 def _ensure_macos_launch_agent():
