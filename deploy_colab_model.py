@@ -4240,6 +4240,7 @@ def _run_image_job(payload: dict):
         edit_props = str(payload.get("edit_props") or "").strip()
         res_str = str(payload.get("resolution") or "3552x4736").strip().lower()
         steps = max(4, min(12, int(payload.get("steps") or 6)))
+        batch_count = max(1, min(4, int(payload.get("batch_count") or 1)))
         base_seed = int(payload.get("seed") if payload.get("seed") is not None else -1)
         rand_seed = bool(payload.get("randomize_seed")) or (base_seed < 0)
         cur_seed = random.randint(1, 2**31 - 1) if rand_seed else base_seed
@@ -4309,58 +4310,68 @@ def _run_image_job(payload: dict):
             latent = cond_out[1]
             negative = nodes.ConditioningZeroOut().zero_out(positive)[0]
 
-            sampled = nodes.KSampler().sample(
-                model=unet,
-                seed=cur_seed,
-                steps=steps,
-                cfg=1.0,
-                sampler_name="euler",
-                scheduler="simple",
-                positive=positive,
-                negative=negative,
-                latent_image=latent,
-                denoise=1.0,
-            )[0]
+            completed_imgs = []
+            last_seed = cur_seed
+            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+            for b_i in range(batch_count):
+                b_seed = (random.randint(1, 2**31 - 1) if (rand_seed and b_i > 0) else (cur_seed + b_i))
+                last_seed = b_seed
+                b_pref = f"[连抽 {b_i + 1}/{batch_count}] " if batch_count > 1 else ""
+                sampled = nodes.KSampler().sample(
+                    model=unet,
+                    seed=b_seed,
+                    steps=steps,
+                    cfg=1.0,
+                    sampler_name="euler",
+                    scheduler="simple",
+                    positive=positive,
+                    negative=negative,
+                    latent_image=latent,
+                    denoise=1.0,
+                )[0]
 
-            JOB_STATE.update({
-                "pct": 95,
-                "message": f"🖼️ [MiniMax-H3-Image] 正在通过 24 层 2D ViT VAE 解码 {width}×{height} ({mp_val}MP) 原生超清大图...",
-            })
-            decoded = nodes.VAEDecode().decode(vae, sampled)[0]
-            img_np = (decoded[0].detach().cpu().numpy().clip(0.0, 1.0) * 255.0).astype(np.uint8)
-            pil_out = PIL.Image.fromarray(img_np)
+                JOB_STATE.update({
+                    "pct": min(98, int(round(((b_i + 0.9) / float(batch_count)) * 90)) + 8),
+                    "message": f"🖼️ {b_pref}[MiniMax-H3-Image] 正在通过 24 层 2D ViT VAE 解码 {width}×{height} ({mp_val}MP) 原生超清大图...",
+                })
+                decoded = nodes.VAEDecode().decode(vae, sampled)[0]
+                img_np = (decoded[0].detach().cpu().numpy().clip(0.0, 1.0) * 255.0).astype(np.uint8)
+                pil_out = PIL.Image.fromarray(img_np)
 
-            dt = round(time.time() - t0, 1)
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            kind = "edit" if ref_images_dict else "t2i"
-            fname = f"minimax_h3_image_{kind}_{width}x{height}_{ts}_dur{max(1, int(round(dt)))}s_seed{cur_seed}.jpg"
-            out_path = os.path.join(OUTPUT_DIR, fname)
-            pil_out.save(out_path, format="JPEG", quality=96, subsampling=0, optimize=True)
+                dt_i = round(time.time() - t0, 1)
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                kind = "edit" if ref_images_dict else "t2i"
+                fname = f"minimax_h3_image_{kind}_{width}x{height}_{ts}_dur{max(1, int(round(dt_i)))}s_seed{b_seed}.jpg"
+                out_path = os.path.join(OUTPUT_DIR, fname)
+                pil_out.save(out_path, format="JPEG", quality=96, subsampling=0, optimize=True)
+                completed_imgs.append(fname)
+                JOB_STATE["latest_video"] = fname
+                JOB_STATE["completed_videos"] = list(completed_imgs)
+                del decoded, sampled
+                if os.path.exists(rc_conf) and shutil.which("rclone"):
+                    subprocess.Popen(
+                        ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
 
-            del decoded, sampled, latent, positive, negative, ref_images_dict
+            del latent, positive, negative, ref_images_dict
             gc.collect()
             torch.cuda.empty_cache()
 
-            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
-            if os.path.exists(rc_conf) and shutil.which("rclone"):
-                subprocess.Popen(
-                    ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-
         dt = round(time.time() - t0, 1)
+        b_lbl = f"共 {batch_count} 张 · " if batch_count > 1 else ""
         JOB_STATE.update({
             "running": False,
             "pct": 100,
             "step": steps,
             "total_steps": steps,
-            "seed": cur_seed,
+            "seed": last_seed,
             "elapsed_s": dt,
-            "latest_video": fname,
-            "completed_videos": [fname],
+            "latest_video": completed_imgs[-1] if completed_imgs else "",
+            "completed_videos": completed_imgs,
             "final_prompt": final_prompt,
-            "message": f"✅ [MiniMax-H3-Image] {width}×{height} ({mp_val}MP · {mode_tag}) 超清大图生成完成！耗时 {dt}s (Seed: {cur_seed})",
+            "message": f"✅ [MiniMax-H3-Image] {b_lbl}{width}×{height} ({mp_val}MP · {mode_tag}) 超清大图生成完成！耗时 {dt}s (Seed: {last_seed})",
         })
     except Exception as e:
         JOB_STATE.update({

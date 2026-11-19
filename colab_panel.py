@@ -2095,6 +2095,225 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button type="button" id="tabBtnImage" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('image')">📸 4K无审查写真 / 免Mask换装 (H3-Image)</button>
       <button type="button" id="tabBtnAvatar" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('avatar')">🎭 数字人音频驱动 (LongCat-Avatar)</button>
       <button type="button" id="tabBtnAutoDrama" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('drama')">🎬 短剧分镜全自动导演台</button>
+      <button type="button" id="tabBtnFusion" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fusion')">🪄 智能换脸 · 换装 · 场景融合</button>
+    </div>
+  </div>
+
+  <!-- 第 6 大功能：🪄 智能换脸 · 试衣换装 · 实景光影融合工坊 (仅在选中第 6 个标签 fusion 时显示) -->
+  <div id="fusionStudioRow" style="display:none;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(46,16,101,0.88) 100%);border:1.5px solid #c084fc;border-radius:12px;">
+    <!-- 顶部：3 大融合子模式一键切换栏 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(192,132,252,0.28);">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:14.5px;font-weight:900;color:#f3e8ff;">🪄 AI 智能换脸 · 试衣换装 · 实景光影融合工坊</span>
+        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(192,132,252,0.22);color:#e9d5ff;font-weight:700;">MiniMax-H3-Image 33B 多图空间主语解耦 · 自动匹配透视与环境光</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <button type="button" id="btnFusionModeTryon" onclick="switchFusionSubMode('tryon')" style="padding:5px 12px;font-size:12px;font-weight:800;border-radius:7px;border:1.5px solid #c084fc;background:linear-gradient(135deg,#9333ea,#c026d3);color:#ffffff;cursor:pointer;">👗 1. 人脸 + 服装图 ➡️ 自动穿衣合成</button>
+        <button type="button" id="btnFusionModeFaceswap" onclick="switchFusionSubMode('faceswap')" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;cursor:pointer;">🎭 2. 人脸 + 他人照片 ➡️ 无痕换脸替换</button>
+        <button type="button" id="btnFusionModeScenefuse" onclick="switchFusionSubMode('scenefuse')" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;cursor:pointer;">🏞️ 3. 人脸 + (服装) + 场景图 ➡️ 实景融合</button>
+      </div>
+    </div>
+
+    <!-- 中部第 1 排：3 个可视化专属参考图卡槽 (槽位1: 目标人脸 | 槽位2: 服装图 或 被换脸底图 | 槽位3: 实景环境底图) -->
+    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:12px;">
+      <!-- 槽位 1：🧑 目标人脸/人物底图 -->
+      <div style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #a855f7;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+          <span id="fusionSlot1Title" style="font-size:12.5px;font-weight:800;color:#e9d5ff;">🧑 槽位1：目标人脸照片 (&lt;Picture 1&gt; · 必传)</span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" onclick="loadCurrentPreviewIntoFusionSlot(0)" style="padding:2px 6px;font-size:10px;border-radius:4px;border:1px solid #6366f1;background:rgba(99,102,241,0.16);color:#c7d2fe;cursor:pointer;" title="将下方播放器当前预览图载入此槽位">📋取预览图</button>
+            <button type="button" onclick="clearFusionSlot(0)" style="padding:2px 6px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕清空</button>
+          </div>
+        </div>
+        <label style="position:relative;height:148px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <img id="fusionSlot1Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
+          <div id="fusionSlot1Empty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:10px;line-height:1.5;">
+            <div style="font-size:26px;margin-bottom:4px;">🧑</div>
+            <div style="color:#e9d5ff;font-weight:700;">点击上传【目标人脸照片】</div>
+            <div id="fusionSlot1SubHint" style="font-size:10.5px;color:#64748b;">提取该人物的五官骨相、脸型与眼神特征</div>
+          </div>
+          <input type="file" id="inpFusionSlot1" accept="image/*" style="display:none;" onchange="onFusionSlotFileChange(0, this)">
+        </label>
+      </div>
+
+      <!-- 槽位 2：👗 服装参考图 / 🖼️ 被替换的目标原图 -->
+      <div id="fusionSlot2Card" style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #ec4899;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+          <span id="fusionSlot2Title" style="font-size:12.5px;font-weight:800;color:#fbcfe8;">👗 槽位2：服装参考图片 (&lt;Picture 2&gt; · 必传)</span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" onclick="loadCurrentPreviewIntoFusionSlot(1)" style="padding:2px 6px;font-size:10px;border-radius:4px;border:1px solid #ec4899;background:rgba(236,72,153,0.16);color:#fbcfe8;cursor:pointer;" title="将下方播放器当前预览图载入此槽位">📋取预览图</button>
+            <button type="button" onclick="clearFusionSlot(1)" style="padding:2px 6px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕清空</button>
+          </div>
+        </div>
+        <label style="position:relative;height:148px;border-radius:8px;border:1.5px dashed #be185d;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <img id="fusionSlot2Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
+          <div id="fusionSlot2Empty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:10px;line-height:1.5;">
+            <div id="fusionSlot2Icon" style="font-size:26px;margin-bottom:4px;">👗</div>
+            <div id="fusionSlot2MainHint" style="color:#fbcfe8;font-weight:700;">点击上传【服装图 / 模特衣服照】</div>
+            <div id="fusionSlot2SubHint" style="font-size:10.5px;color:#64748b;">支持平铺衣服图、衣架图或他人穿搭照，自动剥离衣服穿到槽位1身上</div>
+          </div>
+          <input type="file" id="inpFusionSlot2" accept="image/*" style="display:none;" onchange="onFusionSlotFileChange(1, this)">
+        </label>
+      </div>
+
+      <!-- 槽位 3：🏞️ 实景场景环境照片 -->
+      <div id="fusionSlot3Card" style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #38bdf8;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+          <span id="fusionSlot3Title" style="font-size:12.5px;font-weight:800;color:#bae6fd;">🏞️ 槽位3：实景场景照片 (可选 · 叠加实景融合)</span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" onclick="loadCurrentPreviewIntoFusionSlot(2)" style="padding:2px 6px;font-size:10px;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;" title="将下方播放器当前预览图载入此槽位">📋取预览图</button>
+            <button type="button" onclick="clearFusionSlot(2)" style="padding:2px 6px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕清空</button>
+          </div>
+        </div>
+        <label style="position:relative;height:148px;border-radius:8px;border:1.5px dashed #0284c7;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <img id="fusionSlot3Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
+          <div id="fusionSlot3Empty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:10px;line-height:1.5;">
+            <div style="font-size:26px;margin-bottom:4px;">🏞️</div>
+            <div id="fusionSlot3MainHint" style="color:#bae6fd;font-weight:700;">点击上传【场景环境照片】(可选)</div>
+            <div id="fusionSlot3SubHint" style="font-size:10.5px;color:#64748b;">上传后自动把人物融入该实景中，并自动匹配场景透视与环境光影</div>
+          </div>
+          <input type="file" id="inpFusionSlot3" accept="image/*" style="display:none;" onchange="onFusionSlotFileChange(2, this)">
+        </label>
+      </div>
+    </div>
+
+    <!-- 中部第 2 排：5 大精细控制项面板 (①表情嘴型与视线 | ②体型身材与构图景别 | ③场景虚化与光影融合 + 换脸发型开关 | ④配饰与手持道具动作 | ⑤画幅与连抽挑选) -->
+    <div style="padding:11px 13px;border-radius:10px;background:rgba(2,6,23,0.78);border:1px solid rgba(148,163,184,0.28);margin-bottom:12px;display:flex;flex-direction:column;gap:10px;">
+      <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;">
+        <!-- 控制项 1-A：面部表情与嘴型 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#e9d5ff;">🎭 1. 面部表情与嘴型 (数字人底图关键)</label>
+          <select id="fusionExprSelect" style="padding:5px 7px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="natural_closed" selected>😌 自然平静 · 双唇轻合微放松 (数字人最佳)</option>
+            <option value="gentle_smile">😊 温和浅笑 (不露齿 · 亲和自然)</option>
+            <option value="boss_serious">😠 冷峻威严 / 气场压迫 (大佬/反派)</option>
+            <option value="sly_smirk">😏 狡黠玩味 / 似笑非笑 (机灵中间人)</option>
+            <option value="sad_teary">😢 眼眶微红 / 隐忍忧郁 (情感哭戏)</option>
+            <option value="keep_orig">📸 保持参考人脸原图表情</option>
+          </select>
+        </div>
+
+        <!-- 控制项 1-B：视线与头部朝向 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#e9d5ff;">👁️ 视线方向与机位角度</label>
+          <select id="fusionGazeSelect" style="padding:5px 7px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="front_camera" selected>👁️ 正面平视镜头 (单人定妆/直视说话推荐)</option>
+            <option value="side_15_right">↗️ 微侧 15° 看向画面右侧对话者 (正反打推荐)</option>
+            <option value="side_15_left">↖️ 微侧 15° 看向画面左侧对话者 (正反打推荐)</option>
+            <option value="keep_target">🖼️ 跟随目标底图/场景自然视线</option>
+          </select>
+        </div>
+
+        <!-- 控制项 2-A：体型与身材比例 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#fbcfe8;">🧍 2. 体型与身材比例适配</label>
+          <select id="fusionBodySelect" style="padding:5px 7px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="standard" selected>🖼️ 跟随目标底图 / 标准匀称身材 (默认)</option>
+            <option value="boss_stocky">🐻 敦实稳重 / 微胖大佬体型 (如博哥)</option>
+            <option value="athletic_tall">💪 宽肩挺拔 / 健硕力量感体型</option>
+            <option value="slim_youth">🌿 清瘦修长 / 书生或少年感体型</option>
+            <option value="curvy_tall">👗 高挑修长 / 曲线曼妙 (女性角色)</option>
+          </select>
+        </div>
+
+        <!-- 控制项 2-B：融入景别与构图 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#fbcfe8;">📐 构图景别 (半身/全身/特写)</label>
+          <select id="fusionFramingSelect" style="padding:5px 7px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="bust_half" selected>📸 中近景半身 (胸口以上 · 定妆/数字人黄金景别)</option>
+            <option value="waist_medium">🧍 腰部以上中景 (展现完整上衣穿搭与手势)</option>
+            <option value="closeup_face">🔍 电影级面部特写 (锁脸细节特写)</option>
+            <option value="full_body">🏞️ 全身融入场景 (展现完整全身穿搭与场景透视)</option>
+            <option value="keep_target_frame">🖼️ 100% 保持被替换原图构图景别 (换脸专用)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.1fr 1fr 0.9fr 1.6fr;gap:10px;">
+        <!-- 控制项 3-A：场景景深（虚化度）与光影融合强度 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#bae6fd;">💡 3. 场景虚化度与环境光影融合</label>
+          <select id="fusionLightingSelect" style="padding:5px 7px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="cinema_85mm_bokeh" selected>🎬 85mm 电影浅景深 (背景柔和微虚化+环境轮廓光)</option>
+            <option value="clear_35mm_scene">🏞️ 35mm 实景清晰融入 (人物与场景建筑均清晰)</option>
+            <option value="dramatic_noir">🕯️ 戏剧暗调高反差 (港风/电影冷暖撞色侧光)</option>
+            <option value="soft_natural">☀️ 柔和漫反射自然光 (五官受光均匀通透)</option>
+            <option value="keep_target_light">🖼️ 100% 继承被替换原图光影 (纯换脸推荐)</option>
+          </select>
+        </div>
+
+        <!-- 控制项 3-B：换脸发型与头饰策略 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#bae6fd;">💇 发型与头饰保留策略</label>
+          <select id="fusionHairModeSelect" style="padding:5px 7px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="keep_face_hair" selected>💇 使用【槽位1人脸】的原本发型</option>
+            <option value="keep_target_hair">👑 保留【槽位2目标原图】的发型/古装发髻/帽子</option>
+          </select>
+        </div>
+
+        <!-- 控制项 4-A：标志性配饰（眼镜/胡须）开关 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#fde68a;">👓 4. 眼镜与胡须特征</label>
+          <select id="fusionAccessorySelect" style="padding:5px 7px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="auto_face" selected>👓 自动跟随人脸原图 (默认)</option>
+            <option value="no_glasses">🚫 强制去除眼镜 (面部无遮挡)</option>
+            <option value="thin_glasses">👓 佩戴斯文金丝/细框眼镜</option>
+            <option value="sunglasses">🕶️ 佩戴时尚墨镜</option>
+            <option value="stubble_beard">🧔 加上硬朗青色胡茬</option>
+            <option value="clean_shaven">✨ 面部清爽无胡须</option>
+          </select>
+        </div>
+
+        <!-- 控制项 4-B：手持道具、动作站位与补充细节描述 -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;font-weight:700;color:#fde68a;">🍷 手持道具 / 动作姿态 / 服装或背景文字补充 (选填)</label>
+          <input type="text" id="fusionPropsActionInput" placeholder="如：靠坐在场景中的真皮沙发上，左手戴钢壳机械表，右手端着威士忌杯（没传服装/场景图也可直接在此文字指定）" style="padding:5px 8px;font-size:11.5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部第 3 排：控制项 5（用途画幅预设 + 多张连抽挑选）+ 一键执行合成 + 一键锁入短剧角色卡槽 / 数字人 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:5px;background:#0f172a;padding:4px 9px;border-radius:8px;border:1px solid #475569;">
+          <span style="font-size:11.5px;color:#94a3b8;font-weight:700;">📐 5. 输出画幅:</span>
+          <select id="fusionResSelect" style="padding:2px 4px;font-size:12px;font-weight:700;border:none;background:transparent;color:#f8fafc;">
+            <option value="2048x1152" selected>📺 16:9 横屏剧集定妆/分镜底图 (2048×1152 · ~2.3s极速·推荐)</option>
+            <option value="1152x2048">📱 9:16 竖屏短剧/抖音底图 (1152×2048 · ~2.3s极速)</option>
+            <option value="1536x2048">📷 3:4 极速2K人像写真 (1536×2048 · ~2.5s)</option>
+            <option value="3552x4736">🖼️ 3:4 满血4K超清写真海报 (3552×4736 · 1682万像素)</option>
+            <option value="5472x3072">🎬 16:9 满血4K宽幅电影剧照 (5472×3072 · 1681万像素)</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;background:#0f172a;padding:4px 9px;border-radius:8px;border:1px solid #475569;">
+          <span style="font-size:11.5px;color:#94a3b8;font-weight:700;">🎲 连抽对比:</span>
+          <select id="fusionBatchSelect" style="padding:2px 4px;font-size:12px;font-weight:700;border:none;background:transparent;color:#fde68a;">
+            <option value="1" selected>1 张 (极速单张)</option>
+            <option value="2">连抽 2 张对比挑最优</option>
+            <option value="4">连抽 4 张对比挑最优</option>
+          </select>
+        </div>
+        <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="padding:8px 18px;font-size:13.5px;font-weight:900;border-radius:9px;border:none;background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 6px 18px -4px rgba(236,72,153,0.55);">
+          🪄 立即执行 AI 换脸 / 换装 / 场景融合
+        </button>
+      </div>
+
+      <!-- 右侧：合成结果一键流转至「短剧角色 A/B/C/D/E 定妆卡槽」或「LongCat 数字人开口说话」 -->
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:rgba(15,23,42,0.85);padding:5px 10px;border-radius:9px;border:1px solid rgba(16,185,129,0.4);">
+        <span style="font-size:11.5px;font-weight:700;color:#6ee7b7;">🔗 将下方当前预览图流转至：</span>
+        <select id="selFusionTargetRole" style="padding:3px 6px;font-size:11.5px;font-weight:700;border-radius:5px;border:1px solid #10b981;background:#020617;color:#a7f3d0;">
+          <option value="A">🎭 短剧角色A</option>
+          <option value="B">🎭 短剧角色B</option>
+          <option value="C">🎭 短剧角色C</option>
+          <option value="D">🎭 短剧角色D</option>
+          <option value="E">🎭 短剧角色E</option>
+        </select>
+        <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:4px 10px;font-size:11.5px;font-weight:800;border-radius:6px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;" title="把当前生成好的融合图直接设为短剧对应角色的 16:9 锁定定妆照">📌 锁入该角色定妆卡槽</button>
+        <button type="button" onclick="sendCurrentImageToAvatar()" style="padding:4px 10px;font-size:11.5px;font-weight:800;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.18);color:#7dd3fc;cursor:pointer;" title="把当前融合图直接送入 LongCat-Avatar-1.6 数字人配音开口说话">🗣️ 让TA开口说话</button>
+      </div>
+    </div>
+    <div id="fusionStudioStatusText" style="margin-top:8px;font-size:12px;color:#e9d5ff;font-weight:600;">
+      ✨ 提示：可自由上传「人脸 + 服装图」、「人脸 + 他人照片」或「人脸 + 服装 + 场景图」，系统会自动通过 32B VLM 主语解耦引擎完成像素级骨相锁脸与实景光影重打光！
     </div>
   </div>
 
@@ -2685,6 +2904,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
           <div id="imageActionBtns" style="display:none;align-items:center;gap:6px;">
+            <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(192,132,252,0.65);background:rgba(168,85,247,0.22);color:#e9d5ff;cursor:pointer;" title="将当前预览图直接锁定为短剧角色A/B/C/D/E的 16:9 基准定妆照">📌 锁入短剧角色</button>
             <button type="button" onclick="sendCurrentImageToAvatar()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(16,185,129,0.55);background:rgba(16,185,129,0.2);color:#6ee7b7;cursor:pointer;" title="将当前图片直接设为 LongCat-Avatar-1.6 数字人参考图，驱动她开口说话">🎭 送入数字人说话</button>
             <button type="button" onclick="sendCurrentImageToH3Edit()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(236,72,153,0.55);background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;" title="将当前图片设为 &lt;Picture 1&gt;，免涂 Mask 像素级锁脸换装">👗 设为&lt;Picture 1&gt;换装</button>
           </div>
@@ -4576,28 +4796,33 @@ function switchMiniMaxMode(mode) {
   const isAv = mode === 'avatar';
   const isImg = mode === 'image';
   const isDrama = mode === 'drama';
+  const isFusion = mode === 'fusion';
   const flRow = document.getElementById('fl2vaImageRow');
   const avRow = document.getElementById('avatarControlRow');
   const imgRow = document.getElementById('h3ImageControlRow');
   const dramaRow = document.getElementById('autoDramaDirectorRow');
+  const fusionRow = document.getElementById('fusionStudioRow');
   const promptCard = document.getElementById('promptSectionCard');
   const specCard = document.getElementById('specSectionCard');
   if (flRow) flRow.style.display = isFl ? 'grid' : 'none';
   if (avRow) avRow.style.display = isAv ? 'grid' : 'none';
   if (imgRow) imgRow.style.display = isImg ? 'grid' : 'none';
   if (dramaRow) dramaRow.style.display = isDrama ? 'block' : 'none';
-  if (promptCard) promptCard.style.display = isDrama ? 'none' : 'block';
-  if (specCard) specCard.style.display = isDrama ? 'none' : 'block';
+  if (fusionRow) fusionRow.style.display = isFusion ? 'block' : 'none';
+  if (promptCard) promptCard.style.display = (isDrama || isFusion) ? 'none' : 'block';
+  if (specCard) specCard.style.display = (isDrama || isFusion) ? 'none' : 'block';
   const bT2 = document.getElementById('tabBtnT2va');
   const bFl = document.getElementById('tabBtnFl2va');
   const bImg = document.getElementById('tabBtnImage');
   const bAv = document.getElementById('tabBtnAvatar');
   const bDrama = document.getElementById('tabBtnAutoDrama');
-  if (bT2) bT2.className = (!isFl && !isAv && !isImg && !isDrama) ? 'btn-primary' : 'btn-outline';
+  const bFusion = document.getElementById('tabBtnFusion');
+  if (bT2) bT2.className = (!isFl && !isAv && !isImg && !isDrama && !isFusion) ? 'btn-primary' : 'btn-outline';
   if (bFl) bFl.className = isFl ? 'btn-primary' : 'btn-outline';
   if (bImg) bImg.className = isImg ? 'btn-primary' : 'btn-outline';
   if (bAv) bAv.className = isAv ? 'btn-primary' : 'btn-outline';
   if (bDrama) bDrama.className = isDrama ? 'btn-primary' : 'btn-outline';
+  if (bFusion) bFusion.className = isFusion ? 'btn-primary' : 'btn-outline';
   const titleEl = document.getElementById('videoStudioTitle');
   const badgeEl = document.getElementById('videoStudioBadge');
   if (isDrama) {
@@ -4607,6 +4832,12 @@ function switchMiniMaxMode(mode) {
     if (drawer) drawer.style.display = 'block';
     loadDramaWorkflowEditor();
     pollAutoDramaStatus();
+    return;
+  }
+  if (isFusion) {
+    if (titleEl) titleEl.innerText = '🪄 AI 智能换脸 · 试衣换装 · 实景光影融合工坊 (MiniMax-H3-Image 33B 多图空间主语解耦)';
+    if (badgeEl) badgeEl.innerText = '免涂 Mask 像素级骨相锁脸 + 服装纹理剥离 + 实景环境光重打光';
+    syncFusionRoleDropdown();
     return;
   }
   const pEl = document.getElementById('videoPrompt');
@@ -4738,6 +4969,394 @@ function switchMiniMaxMode(mode) {
         pEl.value = 'Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.';
       }
     }
+  }
+}
+
+let currentFusionSubMode = 'tryon';
+let fusionSlotsB64 = ['', '', ''];
+
+function syncFusionRoleDropdown() {
+  const sel = document.getElementById('selFusionTargetRole');
+  if (!sel) return;
+  const roles = (Array.isArray(dramaCastState) && dramaCastState.length > 0)
+    ? dramaCastState
+    : [{id: 'A', name: '角色A'}, {id: 'B', name: '角色B'}, {id: 'C', name: '角色C'}, {id: 'D', name: '角色D'}, {id: 'E', name: '角色E'}];
+  const curVal = sel.value || 'A';
+  sel.innerHTML = roles.map(r => `<option value="${escapeHtmlAttr(r.id)}" ${r.id === curVal ? 'selected' : ''}>🎭 短剧角色${escapeHtmlAttr(r.id)}${r.name ? ' (' + escapeHtmlAttr(r.name) + ')' : ''}</option>`).join('');
+}
+
+function switchFusionSubMode(subMode) {
+  currentFusionSubMode = subMode;
+  const bTry = document.getElementById('btnFusionModeTryon');
+  const bSwap = document.getElementById('btnFusionModeFaceswap');
+  const bScene = document.getElementById('btnFusionModeScenefuse');
+  const activeStyle = 'padding:5px 12px;font-size:12px;font-weight:800;border-radius:7px;border:1.5px solid #c084fc;background:linear-gradient(135deg,#9333ea,#c026d3);color:#ffffff;cursor:pointer;';
+  const idleStyle = 'padding:5px 12px;font-size:12px;font-weight:700;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;cursor:pointer;';
+  if (bTry) bTry.style.cssText = subMode === 'tryon' ? activeStyle : idleStyle;
+  if (bSwap) bSwap.style.cssText = subMode === 'faceswap' ? activeStyle : idleStyle;
+  if (bScene) bScene.style.cssText = subMode === 'scenefuse' ? activeStyle : idleStyle;
+
+  const s1Title = document.getElementById('fusionSlot1Title');
+  const s2Title = document.getElementById('fusionSlot2Title');
+  const s2Icon = document.getElementById('fusionSlot2Icon');
+  const s2Main = document.getElementById('fusionSlot2MainHint');
+  const s2Sub = document.getElementById('fusionSlot2SubHint');
+  const s3Title = document.getElementById('fusionSlot3Title');
+  const s3Main = document.getElementById('fusionSlot3MainHint');
+  const framingSel = document.getElementById('fusionFramingSelect');
+  const lightSel = document.getElementById('fusionLightingSelect');
+  const hairSel = document.getElementById('fusionHairModeSelect');
+
+  if (subMode === 'faceswap') {
+    if (s1Title) s1Title.innerText = '🧑 槽位1：我的目标人脸 (<Picture 1> · 必传)';
+    if (s2Title) s2Title.innerText = '🖼️ 槽位2：被替换的目标原图 (<Picture 2> · 必传)';
+    if (s2Icon) s2Icon.innerText = '🖼️';
+    if (s2Main) s2Main.innerText = '点击上传【被替换的目标他人照片】';
+    if (s2Sub) s2Sub.innerText = '保留这张图的姿势、穿搭、构图与环境光影，仅将里面的脸无痕替换为槽位1的人脸';
+    if (s3Title) s3Title.innerText = '🏞️ 槽位3：额外替换新场景 (可选 · 留空则保留原图背景)';
+    if (s3Main) s3Main.innerText = '点击上传【新场景背景图】(可选)';
+    if (framingSel) framingSel.value = 'keep_target_frame';
+    if (lightSel) lightSel.value = 'keep_target_light';
+    if (hairSel) hairSel.value = 'keep_target_hair';
+  } else if (subMode === 'scenefuse') {
+    if (s1Title) s1Title.innerText = '🧑 槽位1：目标人物/人脸照 (<Picture 1> · 必传)';
+    if (s2Title) s2Title.innerText = '👗 槽位2：服装参考图片 (可选 · 不传则保持原穿搭)';
+    if (s2Icon) s2Icon.innerText = '👗';
+    if (s2Main) s2Main.innerText = '点击上传【服装参考图】(可选)';
+    if (s2Sub) s2Sub.innerText = '可同时指定新服装，也可留空直接把槽位1人物融入槽位3实景';
+    if (s3Title) s3Title.innerText = '🏞️ 槽位3：实景场景照片 (<Picture 3> · 必传)';
+    if (s3Main) s3Main.innerText = '点击上传【实景场景环境照片】(必传)';
+    if (framingSel && framingSel.value === 'keep_target_frame') framingSel.value = 'bust_half';
+    if (lightSel && lightSel.value === 'keep_target_light') lightSel.value = 'cinema_85mm_bokeh';
+    if (hairSel) hairSel.value = 'keep_face_hair';
+  } else {
+    if (s1Title) s1Title.innerText = '🧑 槽位1：目标人脸照片 (<Picture 1> · 必传)';
+    if (s2Title) s2Title.innerText = '👗 槽位2：服装参考图片 (<Picture 2> · 必传)';
+    if (s2Icon) s2Icon.innerText = '👗';
+    if (s2Main) s2Main.innerText = '点击上传【服装图 / 模特衣服照】';
+    if (s2Sub) s2Sub.innerText = '支持平铺衣服图、衣架图或他人穿搭照，自动剥离衣服穿到槽位1人物身上';
+    if (s3Title) s3Title.innerText = '🏞️ 槽位3：实景场景照片 (可选 · 叠加实景融合)';
+    if (s3Main) s3Main.innerText = '点击上传【场景环境照片】(可选)';
+    if (framingSel && framingSel.value === 'keep_target_frame') framingSel.value = 'bust_half';
+    if (lightSel && lightSel.value === 'keep_target_light') lightSel.value = 'cinema_85mm_bokeh';
+    if (hairSel) hairSel.value = 'keep_face_hair';
+  }
+}
+
+function onFusionSlotFileChange(slotIdx, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    setFusionSlotB64(slotIdx, ev.target.result);
+  };
+  reader.readAsDataURL(file);
+}
+
+function setFusionSlotB64(slotIdx, dataUrl) {
+  fusionSlotsB64[slotIdx] = dataUrl || '';
+  const imgEl = document.getElementById(`fusionSlot${slotIdx + 1}Img`);
+  const empEl = document.getElementById(`fusionSlot${slotIdx + 1}Empty`);
+  if (dataUrl) {
+    if (imgEl) { imgEl.src = dataUrl; imgEl.style.display = 'block'; }
+    if (empEl) empEl.style.display = 'none';
+  } else {
+    if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
+    if (empEl) empEl.style.display = 'block';
+  }
+}
+
+function clearFusionSlot(slotIdx) {
+  setFusionSlotB64(slotIdx, '');
+  const inp = document.getElementById(`inpFusionSlot${slotIdx + 1}`);
+  if (inp) inp.value = '';
+}
+
+async function loadCurrentPreviewIntoFusionSlot(slotIdx) {
+  const prevImg = document.getElementById('mmImagePreview');
+  if (prevImg && prevImg.style.display !== 'none' && prevImg.src) {
+    try {
+      const r = await fetch(prevImg.src);
+      const blob = await r.blob();
+      const reader = new FileReader();
+      reader.onload = ev => {
+        setFusionSlotB64(slotIdx, ev.target.result);
+        showGlobalCopyToast(`✅ 已将当前预览大图载入「槽位 ${slotIdx + 1}」！`);
+      };
+      reader.readAsDataURL(blob);
+      return;
+    } catch (e) {}
+  }
+  alert('请先在下方历史记录中点击选择一张已生成的图片，再点「📋取预览图」载入此槽位');
+}
+
+function buildFusionSubjectPrompt() {
+  const hasFace = Boolean(fusionSlotsB64[0]);
+  const hasSlot2 = Boolean(fusionSlotsB64[1]);
+  const hasScene = Boolean(fusionSlotsB64[2]);
+
+  const exprVal = ((document.getElementById('fusionExprSelect') || {}).value || 'natural_closed');
+  const gazeVal = ((document.getElementById('fusionGazeSelect') || {}).value || 'front_camera');
+  const bodyVal = ((document.getElementById('fusionBodySelect') || {}).value || 'standard');
+  const frameVal = ((document.getElementById('fusionFramingSelect') || {}).value || 'bust_half');
+  const lightVal = ((document.getElementById('fusionLightingSelect') || {}).value || 'cinema_85mm_bokeh');
+  const hairVal = ((document.getElementById('fusionHairModeSelect') || {}).value || 'keep_face_hair');
+  const accVal = ((document.getElementById('fusionAccessorySelect') || {}).value || 'auto_face');
+  const extraTxt = (((document.getElementById('fusionPropsActionInput') || {}).value) || '').trim();
+
+  const exprMap = {
+    natural_closed: 'serene, calm natural expression with relaxed gently closed lips (no teeth showing, ideal neutral mouth posture)',
+    gentle_smile: 'warm, subtle gentle closed-lip smile with expressive eyes',
+    boss_serious: 'commanding, sharp, authoritative serious expression with steady piercing gaze',
+    sly_smirk: 'subtle, clever, knowing half-smile with agile observant eyes',
+    sad_teary: 'emotional, melancholic expression with glistening slightly reddened eyes',
+    keep_orig: 'preserving the natural facial expression from <Picture 1>',
+  };
+  const gazeMap = {
+    front_camera: 'looking directly at the camera at eye level (frontal to slight 10-degree angle)',
+    side_15_right: 'head turned slightly 15 degrees looking toward an off-camera person on the right',
+    side_15_left: 'head turned slightly 15 degrees looking toward an off-camera person on the left',
+    keep_target: 'natural gaze direction matching the composition',
+  };
+  const bodyMap = {
+    standard: 'natural, well-proportioned body build',
+    boss_stocky: 'solid, stocky, mature heavyweight boss build with broad shoulders',
+    athletic_tall: 'tall, broad-shouldered, athletic muscular build',
+    slim_youth: 'slender, lean, refined youthful build',
+    curvy_tall: 'tall, graceful, slender and well-proportioned feminine silhouette',
+  };
+  const frameMap = {
+    bust_half: 'Medium close-up bust portrait (from chest up to top of head with natural headroom)',
+    waist_medium: 'Medium waist-up shot (from waist up, clearly showing the upper outfit and hand posture)',
+    closeup_face: 'Cinematic facial close-up portrait (focusing on facial features, eyes, and collar)',
+    full_body: 'Full-body to three-quarter cinematic shot naturally grounded in the environment',
+    keep_target_frame: 'Exact camera framing, shot scale, and composition angle preserved from <Picture 2>',
+  };
+  const lightMap = {
+    cinema_85mm_bokeh: 'Captured on an 85mm f/1.4 cinema portrait lens, shallow depth of field with soft creamy background bokeh, natural ambient rim light matching the environment color temperature, realistic skin texture.',
+    clear_35mm_scene: 'Captured on a 35mm cinema lens with deep focus, both the person and the surrounding architectural/scene details clearly visible, realistic spatial perspective and grounded shadows.',
+    dramatic_noir: 'Cinematic high-contrast chiaroscuro lighting, warm amber key light and cool rim light, rich atmospheric shadows and film grain.',
+    soft_natural: 'Soft, even, diffused natural lighting across both sides of the face, clean and transparent skin tone without harsh shadows.',
+    keep_target_light: 'Exact lighting direction, color grading, shadows, and ambient reflections matched seamlessly to <Picture 2>.',
+  };
+  const accMap = {
+    auto_face: '',
+    no_glasses: 'No eyeglasses on the face, completely unobstructed eyes and eyebrows.',
+    thin_glasses: 'Wearing refined thin metal-frame eyeglasses.',
+    sunglasses: 'Wearing stylish dark sunglasses.',
+    stubble_beard: 'With short, rugged青色/dark facial stubble on the chin and jawline.',
+    clean_shaven: 'Clean-shaven smooth jawline with no beard or mustache.',
+  };
+
+  const styleTail = `${frameMap[frameVal] || frameMap.bust_half}. Facial expression: ${exprMap[exprVal] || exprMap.natural_closed}, ${gazeMap[gazeVal] || gazeMap.front_camera}. Body build: ${bodyMap[bodyVal] || bodyMap.standard}. ${accMap[accVal] || ''} ${extraTxt ? 'Action, props & details: ' + extraTxt + '.' : ''} ${lightMap[lightVal] || lightMap.cinema_85mm_bokeh} Raw unedited cinema camera photograph, pure clean frame.`;
+
+  // 根据实际上传的槽位计算紧凑后的 <Picture 1..N> 编号
+  if (currentFusionSubMode === 'faceswap' && hasFace && hasSlot2) {
+    if (hasScene) {
+      // 3图：人脸 (<Picture 1>) + 目标人物动作穿搭 (<Picture 2>) + 新场景 (<Picture 3>)
+      const hairClause = hairVal === 'keep_target_hair'
+        ? "Keep the hairstyle and headwear from <Picture 2>, replacing only the facial features and facial bone structure with <Subject 1>."
+        : "Keep both the exact facial features and hairstyle of <Subject 1> from <Picture 1>.";
+      return (
+        "The person's face and identity in <Picture 1> is <Subject 1>. " +
+        "The body posture and clothing in <Picture 2> is <Subject 2>. " +
+        "The background environment and lighting in <Picture 3> is <Subject 3>. " +
+        `The target image shows <Subject 1> adopting the body posture and clothing of <Subject 2>, naturally placed inside <Subject 3>. ${hairClause} ` +
+        `<Subject 1>'s exact East Asian facial identity, eye shape, nose bridge, and skin tone remain 100% unchanged. ${styleTail}`
+      );
+    }
+    // 2图无痕换脸：人脸 (<Picture 1>) + 被替换目标图 (<Picture 2>)
+    if (hairVal === 'keep_target_hair') {
+      return (
+        "The facial identity, facial bone structure, eyes, nose, lips, and skin tone of the person in <Picture 1> is <Subject 1>. " +
+        "The body posture, hairstyle, headwear, clothing, and background environment in <Picture 2> is <Subject 2>. " +
+        "The target image shows <Subject 2> with the face seamlessly replaced by <Subject 1>. " +
+        "<Subject 1>'s exact facial features, eye spacing, nose, and identity remain 100% unchanged, while the hairstyle, headwear, clothing, pose, and background environment of <Subject 2> are preserved and naturally relit. " +
+        styleTail
+      );
+    }
+    return (
+      "The person (exact facial features, face shape, eyes, nose, and hairstyle) in <Picture 1> is <Subject 1>. " +
+      "The body posture, clothing, and background environment in <Picture 2> is <Subject 2>. " +
+      "The target image shows <Subject 1>'s head, face, and hairstyle seamlessly replacing the person's head in <Subject 2>, while preserving the clothing, body posture, and environment of <Subject 2>. " +
+      "<Subject 1>'s exact facial identity remains 100% unchanged, with natural neck transition and ambient lighting matching <Subject 2>. " +
+      styleTail
+    );
+  }
+
+  // 模式一 (人脸+服装) & 模式三 (人脸+[服装]+场景)
+  if (hasFace && hasSlot2 && hasScene) {
+    // 3图三合一：人脸 (<Picture 1>) + 服装 (<Picture 2>) + 场景 (<Picture 3>)
+    return (
+      "The person in <Picture 1> is <Subject 1>. " +
+      "The clothing and outfit shown in <Picture 2> is <Subject 2>. " +
+      "The environment, architecture, and lighting in <Picture 3> is <Subject 3>. " +
+      "The target image shows <Subject 1> wearing <Subject 2>, naturally integrated inside <Subject 3>. " +
+      "<Subject 1>'s exact facial features, face shape, hairstyle, and identity from <Picture 1> remain 100% unchanged. " +
+      "<Subject 2>'s garment design, fabric texture, color, and collar details from <Picture 2> are faithfully worn by <Subject 1>. " +
+      "<Subject 3>'s scene environment, spatial perspective, and ambient lighting color temperature naturally illuminate <Subject 1>. " +
+      styleTail
+    );
+  }
+
+  if (hasFace && hasSlot2 && !hasScene) {
+    // 2图：人脸 (<Picture 1>) + 服装 (<Picture 2>)
+    return (
+      "The person in <Picture 1> is <Subject 1>. " +
+      "The clothing and outfit shown in <Picture 2> is <Subject 2>. " +
+      "The target image shows <Subject 1> wearing <Subject 2> in a cohesive cinematic frame. " +
+      "<Subject 1>'s exact facial features, face shape, skin tone, hairstyle, and identity from <Picture 1> remain 100% unchanged, " +
+      "while <Subject 1>'s original clothes are completely replaced by <Subject 2> (preserving the exact garment style, fabric texture, color, and tailoring of <Picture 2>). " +
+      styleTail
+    );
+  }
+
+  if (hasFace && !hasSlot2 && hasScene) {
+    // 2图：人脸/人物 (<Picture 1>) + 场景图 (<Picture 2>，因为槽位2为空，所以槽位3成为第2张参考图 <Picture 2>)
+    return (
+      "The person in <Picture 1> is <Subject 1>. " +
+      "The real-world scene environment, architecture, and lighting in <Picture 2> is <Subject 2>. " +
+      "The target image shows <Subject 1> naturally integrated inside <Subject 2> with realistic spatial perspective, grounded shadows, and ambient rim lighting matching <Subject 2>. " +
+      "<Subject 1>'s exact facial features, face shape, hairstyle, and identity from <Picture 1> remain 100% unchanged. " +
+      styleTail
+    );
+  }
+
+  // 仅上传了槽位 1 (人脸/人物) + 文字控制项
+  return (
+    "The person in <Picture 1> is <Subject 1>. " +
+    "Generate a brand-new cinematic portrait of <Subject 1> keeping <Subject 1>'s exact facial identity, face shape, and core features from <Picture 1> 100% unchanged. " +
+    styleTail
+  );
+}
+
+async function startFusionStudioGenerate() {
+  const btn = document.getElementById('btnRunFusionStudio');
+  const stEl = document.getElementById('fusionStudioStatusText');
+  const mainSt = document.getElementById('videoGenStatus');
+  const pWrap = document.getElementById('videoProgressWrap');
+  const pBar = document.getElementById('videoProgressBar');
+
+  if (!fusionSlotsB64[0]) {
+    alert('请先在「槽位 1」上传目标人脸/人物照片！');
+    return;
+  }
+  if (currentFusionSubMode === 'faceswap' && !fusionSlotsB64[1]) {
+    alert('在「无痕换脸替换」模式下，请在「槽位 2」上传被替换的目标他人照片！');
+    return;
+  }
+
+  const activeRefs = fusionSlotsB64.filter(Boolean);
+  const resVal = ((document.getElementById('fusionResSelect') || {}).value || '2048x1152');
+  const [wStr, hStr] = resVal.split('x');
+  const batchCnt = parseInt(((document.getElementById('fusionBatchSelect') || {}).value || '1'), 10) || 1;
+  const fusionPrompt = buildFusionSubjectPrompt();
+
+  const payload = {
+    mode: 'image',
+    prompt: fusionPrompt,
+    resolution: resVal,
+    width: parseInt(wStr, 10) || 2048,
+    height: parseInt(hStr, 10) || 1152,
+    steps: 6,
+    seed: -1,
+    randomize_seed: true,
+    batch_count: batchCnt,
+    ref_images_b64: activeRefs,
+    edit_outfit: '',
+    edit_scene: '',
+    clean_matte: true,
+  };
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = `⏳ 正在执行 33B 多图空间解耦合成 (${batchCnt}张 · ${resVal})...`;
+  }
+  if (stEl) {
+    stEl.innerText = `⏳ 已提交 ${activeRefs.length} 张参考图至 MiniMax-H3-Image (33B + Heretic 32B)，正在执行 6 步极速主语解耦融合...`;
+    stEl.style.color = '#fbbf24';
+  }
+  if (pWrap) pWrap.style.display = 'block';
+  if (pBar) pBar.style.width = '10%';
+
+  try {
+    const r = await fetch('/api/video_generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (stEl) {
+        stEl.innerText = '❌ 合成启动失败: ' + (d.error || '未知错误');
+        stEl.style.color = '#ef4444';
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerText = '🪄 立即执行 AI 换脸 / 换装 / 场景融合';
+      }
+      return;
+    }
+    if (d.auto_switching) {
+      selectPresetModel('preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors');
+      if (stEl && d.message) {
+        stEl.innerText = d.message;
+      }
+    }
+    if (videoPollTimer) clearInterval(videoPollTimer);
+    videoPollTimer = setInterval(pollVideoStatus, 2000);
+  } catch (e) {
+    if (stEl) {
+      stEl.innerText = '❌ 请求异常: ' + e;
+      stEl.style.color = '#ef4444';
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = '🪄 立即执行 AI 换脸 / 换装 / 场景融合';
+    }
+  }
+}
+
+async function sendCurrentPreviewToDramaRole() {
+  const roleSel = document.getElementById('selFusionTargetRole');
+  const roleId = (roleSel && roleSel.value) ? roleSel.value : 'A';
+  const prevImg = document.getElementById('mmImagePreview');
+  if (!currentSelectedVideoName && (!prevImg || prevImg.style.display === 'none' || !prevImg.src)) {
+    alert('请先在上方生成或从右侧「本地历史」点选一张图片！');
+    return;
+  }
+  try {
+    const imgSrc = (prevImg && prevImg.src) ? prevImg.src : `/api/local_video_file?name=${encodeURIComponent(currentSelectedVideoName)}`;
+    const resp = await fetch(imgSrc);
+    const blob = await resp.blob();
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      const b64 = ev.target.result;
+      const r2 = await fetch('/api/drama_upload_char_photo', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role_id: roleId, image_b64: b64}),
+      });
+      const d2 = await r2.json();
+      if (!d2.ok) {
+        alert('锁入角色定妆卡槽失败: ' + (d2.error || '未知错误'));
+        return;
+      }
+      dramaCastPhotoCacheBust = Date.now();
+      let item = dramaCastState.find(c => c.id === roleId);
+      if (!item) {
+        item = {id: roleId, name: `角色${roleId}`, voice: roleId === 'A' ? 'ming:灵小柔' : 'ming:灵信远_中性', desc: '', user_uploaded: true};
+        dramaCastState.push(item);
+      } else {
+        item.user_uploaded = true;
+      }
+      syncCastToWorkflow();
+      renderDramaCastCards();
+      showGlobalCopyToast(`✅ 已将当前预览大图锁定为「短剧角色${roleId} (${item.name || ''})」的 16:9 定妆照！`);
+    };
+    reader.readAsDataURL(blob);
+  } catch (e) {
+    alert('锁入短剧角色异常: ' + e);
   }
 }
 
@@ -5533,8 +6152,14 @@ function setStopButtonsVisible(visible) {
 function setVideoBtnRunningState(running, customLabel) {
   const btnVid = document.getElementById('btnVideoGen');
   const btnImg = document.getElementById('btnImageOnlyGen');
-  const isImgTask = (currentMiniMaxMode === 'image') || /写真|图片|4K/i.test(customLabel || '');
+  const btnFus = document.getElementById('btnRunFusionStudio');
+  const fusSt = document.getElementById('fusionStudioStatusText');
+  const isImgTask = (currentMiniMaxMode === 'image') || (currentMiniMaxMode === 'fusion') || /写真|图片|4K/i.test(customLabel || '');
   if (running) {
+    if (btnFus && currentMiniMaxMode === 'fusion') {
+      btnFus.disabled = true;
+      btnFus.innerText = '⏳ 正在执行 33B 多图空间解耦合成...';
+    }
     if (isImgTask) {
       if (btnImg) {
         btnImg.setAttribute('data-running', '1');
@@ -5566,6 +6191,14 @@ function setVideoBtnRunningState(running, customLabel) {
       btnImg.style.background = 'linear-gradient(135deg, #ec4899, #9333ea)';
       btnImg.style.boxShadow = '0 6px 16px -4px rgba(236,72,153,0.45)';
       btnImg.innerText = currentMiniMaxMode === 'image' ? '📸 仅生成 4K 写真图片' : '📸 仅生成 4K 图片';
+    }
+    if (btnFus) {
+      btnFus.disabled = false;
+      btnFus.innerText = '🪄 立即执行 AI 换脸 / 换装 / 场景融合';
+    }
+    if (fusSt && currentMiniMaxMode === 'fusion') {
+      fusSt.innerText = '✅ 多图融合完成！已在下方大屏预览并保存至 ~/Movies/EasyColab/（可点右侧「📌 锁入该角色定妆卡槽」或「🗣️ 让TA开口说话」）';
+      fusSt.style.color = '#34d399';
     }
     if (btnVid) {
       btnVid.setAttribute('data-running', '0');
