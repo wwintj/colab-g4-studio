@@ -2529,7 +2529,7 @@ def _ensure_ming_talker(update_job_state: bool = True):
             except Exception:
                 pass
 
-        # 3. 修复 AudioVAE 在 transformers 5.x 下 post_init() 访问 all_tied_weights_keys 报错
+        # 3. 修复 AudioVAE 在 transformers 5.x 下 post_init() 访问 all_tied_weights_keys 报错，以及 PyTorch 2.14+ BComplex32 ISTFT 报错
         avae_py = os.path.join(talker_dir, "AudioVAE/modeling_audio_vae.py")
         if os.path.isfile(avae_py):
             try:
@@ -2540,6 +2540,36 @@ def _ensure_ming_talker(update_job_state: bool = True):
                         "        try:\n            self.post_init()\n        except Exception:\n            pass\n",
                     )
                     open(avae_py, "w", encoding="utf-8").write(avae_txt)
+            except Exception:
+                pass
+
+        istft_py = os.path.join(talker_dir, "AudioVAE/istft.py")
+        if os.path.isfile(istft_py):
+            try:
+                ist_txt = open(istft_py, "r", encoding="utf-8").read()
+                if ".float()" not in ist_txt:
+                    ist_txt = (
+                        ist_txt.replace("x_pred = self.out(x )", "x_pred = self.out(x).float()")
+                        .replace("x_pred = self.out(x)", "x_pred = self.out(x).float()")
+                        .replace("self.window[None, :, None]", "self.window.float()[None, :, None]")
+                        .replace("self.window.square()", "self.window.float().square()")
+                    )
+                    open(istft_py, "w", encoding="utf-8").write(ist_txt)
+            except Exception:
+                pass
+
+        istft_py = os.path.join(talker_dir, "AudioVAE/istft.py")
+        if os.path.isfile(istft_py):
+            try:
+                ist_txt = open(istft_py, "r", encoding="utf-8").read()
+                if ".float()" not in ist_txt:
+                    ist_txt = (
+                        ist_txt.replace("x_pred = self.out(x )", "x_pred = self.out(x).float()")
+                        .replace("x_pred = self.out(x)", "x_pred = self.out(x).float()")
+                        .replace("self.window[None, :, None]", "self.window.float()[None, :, None]")
+                        .replace("self.window.square()", "self.window.float().square()")
+                    )
+                    open(istft_py, "w", encoding="utf-8").write(ist_txt)
             except Exception:
                 pass
 
@@ -3087,10 +3117,39 @@ def _run_avatar_job(payload: dict):
             })
             tmp_out_dir = f"/tmp/longcat_out_{int(time.time())}"
             os.makedirs(tmp_out_dir, exist_ok=True)
-            out_prefix = os.path.join(tmp_out_dir, "avatar_final")
-            output_tensor = torch.from_numpy(all_generated_frames[:generated_frame_count])
-            save_video_ffmpeg(output_tensor, out_prefix, audio_path, fps=save_fps, quality=10)
-            del output_tensor, all_generated_frames, full_audio_emb, audio_emb, latent, ref_latent
+            out_mp4_p = os.path.join(tmp_out_dir, "avatar_final.mp4")
+            vid_np = np.ascontiguousarray(all_generated_frames[:generated_frame_count], dtype=np.uint8)
+            f_cnt, h_v, w_v, _ = vid_np.shape
+            ff_cmd = [
+                "ffmpeg", "-loglevel", "error", "-y",
+                "-f", "rawvideo", "-pix_fmt", "rgb24",
+                "-video_size", f"{w_v}x{h_v}", "-framerate", str(save_fps),
+                "-i", "pipe:0", "-i", audio_path,
+                "-t", f"{f_cnt / float(save_fps):.6f}",
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                "-af", "apad", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                out_mp4_p,
+            ]
+            ff_proc = subprocess.Popen(ff_cmd, stdin=subprocess.PIPE)
+            try:
+                assert ff_proc.stdin is not None
+                for st_i in range(0, f_cnt, 16):
+                    try:
+                        ff_proc.stdin.write(memoryview(vid_np[st_i : st_i + 16]).cast("B"))
+                    except BrokenPipeError:
+                        break
+                try:
+                    ff_proc.stdin.close()
+                except BrokenPipeError:
+                    pass
+                ff_proc.wait(timeout=120)
+            except Exception:
+                ff_proc.kill()
+                ff_proc.wait()
+                raise
+            del vid_np, all_generated_frames, full_audio_emb, audio_emb, latent, ref_latent
             gc.collect()
             torch.cuda.empty_cache()
 
@@ -3884,6 +3943,21 @@ def _ensure_img_ming_talker():
                         "        try:\n            self.post_init()\n        except Exception:\n            pass\n",
                     )
                     open(avae_py, "w", encoding="utf-8").write(avae_txt)
+            except Exception:
+                pass
+
+        istft_py = os.path.join(talker_dir, "AudioVAE/istft.py")
+        if os.path.isfile(istft_py):
+            try:
+                ist_txt = open(istft_py, "r", encoding="utf-8").read()
+                if ".float()" not in ist_txt:
+                    ist_txt = (
+                        ist_txt.replace("x_pred = self.out(x )", "x_pred = self.out(x).float()")
+                        .replace("x_pred = self.out(x)", "x_pred = self.out(x).float()")
+                        .replace("self.window[None, :, None]", "self.window.float()[None, :, None]")
+                        .replace("self.window.square()", "self.window.float().square()")
+                    )
+                    open(istft_py, "w", encoding="utf-8").write(ist_txt)
             except Exception:
                 pass
 
