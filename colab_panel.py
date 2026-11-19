@@ -8,9 +8,12 @@ Google Colab G4 本地可视化网页控制台 (http://127.0.0.1:18080)
   - 一键复制永久固定 API 地址 (http://127.0.0.1:30000/v1) 与在线快速对话测试
 """
 
+import base64
 import json
+import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -2099,10 +2102,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <div id="autoDramaDirectorRow" style="display:block;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.92) 100%);border:1.5px solid #f59e0b;border-radius:12px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 多分镜短剧全自动导演流水线 · 《溪边与市集白花簪》(11 镜 · 30.0 秒)</span>
-        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">免手输 Prompt · 三阶段自动切模型 · 0.1秒卡点混音合片</span>
+        <span id="dramaTitleHeader" style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 通用分镜短剧全自动工作流引擎 · 《溪边与市集白花簪》(11 镜 · 30.0 秒)</span>
+        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">支持粘贴任意剧本自动拆解 · 单镜独立精修重抽 · 0.1秒卡点混音合片</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button type="button" onclick="toggleDramaWorkflowEditor()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;">📜 粘贴新剧本 / 编辑工作流节点 ▾</button>
         <select id="dramaAspectSelect" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
           <option value="16:9" selected>📺 16:9 横屏电影剧集 (推荐)</option>
           <option value="9:16">📱 9:16 竖屏古装短剧</option>
@@ -2116,6 +2120,47 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <span>✨ 成片后自动 ReCaVSR 2K 超分</span>
         </label>
         <button type="button" onclick="toggleAutoDramaDirector()" style="padding:3px 8px;font-size:11px;border-radius:5px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">收起 ▲</button>
+      </div>
+    </div>
+
+    <!-- 可展开：通用剧本解析器 + 可视化角色/分镜工作流节点编辑器 -->
+    <div id="dramaWorkflowEditorDrawer" style="display:none;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(2,6,23,0.82);border:1px solid #38bdf8;">
+      <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:12px;">
+        <!-- 左栏：粘贴任意剧本自动解析为工作流 -->
+        <div style="display:flex;flex-direction:column;gap:8px;padding-right:10px;border-right:1px solid rgba(148,163,184,0.2);">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:12.5px;font-weight:800;color:#7dd3fc;">📜 1. 粘贴任意分镜剧本 → 自动拆解为工作流</span>
+            <input type="text" id="inpDramaProjectTitle" placeholder="剧目名称 (如：现代雨夜重逢)" style="padding:3px 8px;font-size:11.5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;width:165px;">
+          </div>
+          <textarea id="inpDramaRawScript" rows="10" placeholder="在此粘贴任意分镜剧本！支持标准格式：&#10;【全局设定】&#10;画风：...&#10;人物锁定：女主A：... 男主B：...&#10;【分镜】&#10;镜头01【时长】2.5秒&#10;【运镜】...&#10;【画面】...&#10;【对白】A：&quot;...&quot;&#10;&#10;点击下方「🔍 智能解析剧本并生成工作流节点」，系统会自动提取角色定妆卡、各镜首尾帧、自动分配 FL2VA/数字人引擎及卡点秒数！" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11.5px;line-height:1.45;resize:vertical;"></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#fcd34d;cursor:pointer;">
+              <input type="checkbox" id="chkDramaClearOldAssets" checked style="accent-color:#f59e0b;">
+              <span>🧹 解析新剧本时清空上一部剧的缓存素材</span>
+            </label>
+            <div style="display:flex;gap:6px;">
+              <button type="button" onclick="resetDefaultDramaWorkflow()" class="btn-outline" style="padding:4px 9px;font-size:11px;color:#94a3b8;">↺ 恢复内置古装11镜示例</button>
+              <button type="button" onclick="parseRawScriptToWorkflow()" class="btn-primary" style="padding:5px 12px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);">🔍 智能解析剧本生成工作流节点</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右栏：可视化图片节点与分镜视频节点表格 (可随时修改提示词/台词/秒数/引擎/单步重抽) -->
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;gap:6px;">
+              <button type="button" id="btnWfTabImg" onclick="switchDramaWfTab('img')" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #f472b6;background:rgba(244,114,182,0.18);color:#fbcfe8;cursor:pointer;">📸 定妆与首尾帧图片节点 (<span id="wfImgCount">15</span>)</button>
+              <button type="button" id="btnWfTabVid" onclick="switchDramaWfTab('vid')" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#94a3b8;cursor:pointer;">🎬 视频分镜与台词节点 (<span id="wfVidCount">11</span>)</button>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button type="button" onclick="addDramaWorkflowNode()" class="btn-outline" style="padding:4px 9px;font-size:11px;border-color:#10b981;color:#6ee7b7;">+ 新增当前节点</button>
+              <button type="button" onclick="saveDramaWorkflowEdits()" class="btn-primary" style="padding:4px 12px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#10b981,#059669);">💾 保存工作流修改</button>
+            </div>
+          </div>
+
+          <div id="wfNodesImgContainer" style="max-height:245px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px;"></div>
+          <div id="wfNodesVidContainer" style="max-height:245px;overflow-y:auto;display:none;flex-direction:column;gap:6px;padding-right:4px;"></div>
+        </div>
       </div>
     </div>
 
@@ -5994,11 +6039,300 @@ async function pollUpscaleStatus() {
 }
 
 let dramaPollTimer = null;
+let currentDramaWorkflow = null;
+let currentDramaWfTab = 'img';
 
 function toggleAutoDramaDirector() {
   const row = document.getElementById('autoDramaDirectorRow');
   if (!row) return;
   row.style.display = (row.style.display === 'none') ? 'block' : 'none';
+}
+
+async function toggleDramaWorkflowEditor() {
+  const drawer = document.getElementById('dramaWorkflowEditorDrawer');
+  if (!drawer) return;
+  if (drawer.style.display === 'none') {
+    drawer.style.display = 'block';
+    await loadDramaWorkflowEditor();
+  } else {
+    drawer.style.display = 'none';
+  }
+}
+
+function switchDramaWfTab(tab) {
+  currentDramaWfTab = tab === 'vid' ? 'vid' : 'img';
+  const imgC = document.getElementById('wfNodesImgContainer');
+  const vidC = document.getElementById('wfNodesVidContainer');
+  const bImg = document.getElementById('btnWfTabImg');
+  const bVid = document.getElementById('btnWfTabVid');
+  if (imgC) imgC.style.display = currentDramaWfTab === 'img' ? 'flex' : 'none';
+  if (vidC) vidC.style.display = currentDramaWfTab === 'vid' ? 'flex' : 'none';
+  if (bImg) {
+    bImg.style.borderColor = currentDramaWfTab === 'img' ? '#f472b6' : '#475569';
+    bImg.style.background = currentDramaWfTab === 'img' ? 'rgba(244,114,182,0.18)' : '#0f172a';
+    bImg.style.color = currentDramaWfTab === 'img' ? '#fbcfe8' : '#94a3b8';
+  }
+  if (bVid) {
+    bVid.style.borderColor = currentDramaWfTab === 'vid' ? '#38bdf8' : '#475569';
+    bVid.style.background = currentDramaWfTab === 'vid' ? 'rgba(56,189,248,0.18)' : '#0f172a';
+    bVid.style.color = currentDramaWfTab === 'vid' ? '#7dd3fc' : '#94a3b8';
+  }
+}
+
+function escapeHtmlAttr(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function renderDramaWfEditorTables() {
+  if (!currentDramaWorkflow) return;
+  const titleInp = document.getElementById('inpDramaProjectTitle');
+  const hdrEl = document.getElementById('dramaTitleHeader');
+  const imgTasks = currentDramaWorkflow.image_tasks || [];
+  const vidTasks = currentDramaWorkflow.video_tasks || [];
+  const totalDur = vidTasks.reduce((acc, v) => acc + (parseFloat(v.duration) || 3.0), 0).toFixed(1);
+  if (titleInp) titleInp.value = currentDramaWorkflow.title || '《溪边与市集白花簪》';
+  if (hdrEl) {
+    hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${currentDramaWorkflow.title || '《未命名短剧》'} (${vidTasks.length} 镜 · ${totalDur} 秒)`;
+  }
+  const cImgEl = document.getElementById('wfImgCount');
+  const cVidEl = document.getElementById('wfVidCount');
+  if (cImgEl) cImgEl.innerText = String(imgTasks.length);
+  if (cVidEl) cVidEl.innerText = String(vidTasks.length);
+
+  const imgC = document.getElementById('wfNodesImgContainer');
+  if (imgC) {
+    imgC.innerHTML = imgTasks.map((it, idx) => `
+      <div style="padding:7px 9px;border-radius:7px;background:#0f172a;border:1px solid #334155;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:180px;">
+            <span style="font-size:11px;font-weight:800;color:#f472b6;">#${idx + 1}</span>
+            <input type="text" value="${escapeHtmlAttr(it.label)}" onchange="currentDramaWorkflow.image_tasks[${idx}].label=this.value" style="padding:2px 6px;font-size:11.5px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#f8fafc;width:160px;" title="节点名称">
+            <input type="text" value="${escapeHtmlAttr(it.file)}" onchange="currentDramaWorkflow.image_tasks[${idx}].file=this.value" style="padding:2px 6px;font-size:11px;border-radius:4px;border:1px solid #334155;background:#020617;color:#94a3b8;width:125px;" title="保存文件名">
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span style="font-size:10.5px;color:#94a3b8;">参考图:</span>
+            <input type="text" value="${escapeHtmlAttr((it.refs || []).join(','))}" onchange="currentDramaWorkflow.image_tasks[${idx}].refs=this.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="如 char_A_half.jpg" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;width:165px;" title="锁脸/锁道具参考图文件名 (多个用英文逗号分隔)">
+            <button type="button" onclick="rerunSingleDramaStep('${escapeHtmlAttr(it.file)}')" style="padding:2px 7px;font-size:10.5px;border-radius:4px;border:1px solid #f59e0b;background:rgba(245,158,11,0.16);color:#fcd34d;cursor:pointer;" title="单独重新生成此张图片">🔄 重抽此图</button>
+            <button type="button" onclick="deleteDramaWorkflowNode('img', ${idx})" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #ef4444;background:transparent;color:#fca5a5;cursor:pointer;" title="删除此节点">✕</button>
+          </div>
+        </div>
+        <textarea rows="2" onchange="currentDramaWorkflow.image_tasks[${idx}].prompt=this.value" style="width:100%;padding:4px 7px;border-radius:5px;border:1px solid #334155;background:#020617;color:#e2e8f0;font-size:11px;line-height:1.4;resize:vertical;">${escapeHtmlAttr(it.prompt)}</textarea>
+      </div>
+    `).join('');
+  }
+
+  const vidC = document.getElementById('wfNodesVidContainer');
+  if (vidC) {
+    vidC.innerHTML = vidTasks.map((vt, idx) => `
+      <div style="padding:7px 9px;border-radius:7px;background:#0f172a;border:1px solid #334155;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <span style="font-size:11px;font-weight:800;color:#38bdf8;">镜#${idx + 1}</span>
+            <input type="text" value="${escapeHtmlAttr(vt.label)}" onchange="currentDramaWorkflow.video_tasks[${idx}].label=this.value" style="padding:2px 6px;font-size:11.5px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#f8fafc;width:150px;">
+            <span style="font-size:10.5px;color:#94a3b8;">时长(秒):</span>
+            <input type="number" step="0.1" min="0.5" max="15" value="${vt.duration || 3.0}" onchange="currentDramaWorkflow.video_tasks[${idx}].duration=parseFloat(this.value)||3.0" style="padding:2px 5px;font-size:11px;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#fde68a;width:52px;font-weight:700;">
+            <select onchange="currentDramaWorkflow.video_tasks[${idx}].engine=this.value;renderDramaWfEditorTables()" style="padding:2px 6px;font-size:11px;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#f8fafc;">
+              <option value="fl2va" ${vt.engine === 'fl2va' ? 'selected' : ''}>🎬 MiniMax-H3 FL2VA (首尾帧动作+环境音)</option>
+              <option value="avatar" ${vt.engine === 'avatar' ? 'selected' : ''}>🎭 LongCat-Avatar + Ming-3.0 (特写口型对白)</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span style="font-size:10.5px;color:#94a3b8;">首帧:</span>
+            <input type="text" value="${escapeHtmlAttr(vt.first_img || '')}" onchange="currentDramaWorkflow.video_tasks[${idx}].first_img=this.value.trim()" style="padding:2px 5px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;width:105px;" title="起幅首帧图片文件名">
+            <span style="font-size:10.5px;color:#94a3b8;">尾帧:</span>
+            <input type="text" value="${escapeHtmlAttr(vt.last_img || '')}" onchange="currentDramaWorkflow.video_tasks[${idx}].last_img=this.value.trim()" placeholder="可选" style="padding:2px 5px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;width:95px;" title="落幅尾帧图片文件名 (留空则单首帧)">
+            <button type="button" onclick="rerunSingleDramaStep('${escapeHtmlAttr(vt.file)}')" style="padding:2px 7px;font-size:10.5px;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="单独重新生成此镜视频">🎬 重跑此镜</button>
+            <button type="button" onclick="deleteDramaWorkflowNode('vid', ${idx})" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #ef4444;background:transparent;color:#fca5a5;cursor:pointer;">✕</button>
+          </div>
+        </div>
+        ${vt.engine === 'avatar' ? `
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:10.5px;color:#fcd34d;font-weight:700;">💬 台词与音色:</span>
+          <input type="text" value="${escapeHtmlAttr(vt.tts_voice || 'ming:灵小柔')}" onchange="currentDramaWorkflow.video_tasks[${idx}].tts_voice=this.value.trim()" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #f59e0b;background:#1e293b;color:#fde68a;width:115px;" title="Ming-3.0 音色 (如 ming:灵小柔 / ming:灵逍遥)">
+          <input type="text" value="${escapeHtmlAttr(vt.tts_text || '')}" onchange="currentDramaWorkflow.video_tasks[${idx}].tts_text=this.value" placeholder="输入该镜角色要说的台词 (支持 [Dissatisfaction-hnn] [Breathing] [Sigh] 气口)" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #f59e0b;background:#020617;color:#fef08a;flex:1;min-width:200px;">
+        </div>
+        ` : ''}
+        <textarea rows="2" onchange="currentDramaWorkflow.video_tasks[${idx}].prompt=this.value" style="width:100%;padding:4px 7px;border-radius:5px;border:1px solid #334155;background:#020617;color:#e2e8f0;font-size:11px;line-height:1.4;resize:vertical;">${escapeHtmlAttr(vt.prompt)}</textarea>
+      </div>
+    `).join('');
+  }
+}
+
+async function loadDramaWorkflowEditor() {
+  try {
+    const r = await fetch('/api/drama_workflow_get');
+    const d = await r.json();
+    if (d && d.ok && d.workflow) {
+      currentDramaWorkflow = d.workflow;
+      const rawEl = document.getElementById('inpDramaRawScript');
+      if (rawEl && !rawEl.value.trim() && d.workflow.raw_script) {
+        rawEl.value = d.workflow.raw_script;
+      }
+      renderDramaWfEditorTables();
+    }
+  } catch (e) {}
+}
+
+function addDramaWorkflowNode() {
+  if (!currentDramaWorkflow) return;
+  if (currentDramaWfTab === 'img') {
+    const n = (currentDramaWorkflow.image_tasks || []).length + 1;
+    currentDramaWorkflow.image_tasks.push({
+      file: `custom_img_${n}.jpg`,
+      label: `📷 自定义关键帧 #${n}`,
+      refs: ['char_A_half.jpg'],
+      prompt: 'Keep the exact face of <Picture 1>. 写实古装剧电影级画面，柔和阳光浅景深。',
+    });
+  } else {
+    const n = (currentDramaWorkflow.video_tasks || []).length + 1;
+    currentDramaWorkflow.video_tasks.push({
+      file: `shot${String(n).padStart(2, '0')}_raw.mp4`,
+      label: `🎞️ 镜${String(n).padStart(2, '0')}(3.0s):新分镜`,
+      engine: 'fl2va',
+      duration: 3.0,
+      first_img: `shot01_first.jpg`,
+      last_img: '',
+      tts_text: '',
+      tts_voice: 'ming:灵小柔',
+      mix_ambience: false,
+      prompt: '固定镜头，画面自然生动，电影级光影与真实环境音效，无背景音乐。',
+    });
+  }
+  renderDramaWfEditorTables();
+}
+
+function deleteDramaWorkflowNode(kind, idx) {
+  if (!currentDramaWorkflow) return;
+  if (kind === 'img') {
+    currentDramaWorkflow.image_tasks.splice(idx, 1);
+  } else {
+    currentDramaWorkflow.video_tasks.splice(idx, 1);
+  }
+  renderDramaWfEditorTables();
+}
+
+async function saveDramaWorkflowEdits() {
+  if (!currentDramaWorkflow) return;
+  const titleInp = document.getElementById('inpDramaProjectTitle');
+  if (titleInp && titleInp.value.trim()) {
+    currentDramaWorkflow.title = titleInp.value.trim();
+  }
+  const stEl = document.getElementById('dramaStatusText');
+  try {
+    const r = await fetch('/api/drama_workflow_save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({workflow: currentDramaWorkflow}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      renderDramaWfEditorTables();
+      await pollAutoDramaStatus();
+      if (stEl) {
+        stEl.innerText = '💾 工作流节点修改已保存！点击「🚀 一键全自动拍摄」或任意节点的「🔄 重抽」即可按最新配置执行';
+        stEl.style.color = '#34d399';
+      }
+    }
+  } catch (e) {}
+}
+
+async function parseRawScriptToWorkflow() {
+  const rawEl = document.getElementById('inpDramaRawScript');
+  const titleInp = document.getElementById('inpDramaProjectTitle');
+  const clearOld = Boolean(((document.getElementById('chkDramaClearOldAssets') || {}).checked) ?? true);
+  const stEl = document.getElementById('dramaStatusText');
+  const rawScript = (rawEl ? rawEl.value : '').trim();
+  if (!rawScript) {
+    alert('请先在左侧文本框粘贴您的分镜剧本内容！');
+    return;
+  }
+  if (stEl) {
+    stEl.innerText = '🔍 正在智能解析分镜剧本并拆解为角色定妆卡、首尾帧节点与视频分流节点...';
+    stEl.style.color = '#38bdf8';
+  }
+  try {
+    const r = await fetch('/api/drama_workflow_parse', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        raw_script: rawScript,
+        title: (titleInp ? titleInp.value : '').trim(),
+        clear_old_assets: clearOld,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (stEl) {
+        stEl.innerText = '❌ 剧本解析失败: ' + (d.error || '未知错误');
+        stEl.style.color = '#ef4444';
+      }
+      return;
+    }
+    currentDramaWorkflow = d.workflow;
+    renderDramaWfEditorTables();
+    await pollAutoDramaStatus();
+    if (stEl) {
+      stEl.innerText = d.message || '✅ 剧本已成功解析为工作流节点！可在上方查看或直接点击「🚀 一键全自动拍摄」';
+      stEl.style.color = '#34d399';
+    }
+  } catch (e) {
+    if (stEl) {
+      stEl.innerText = '❌ 解析异常: ' + e;
+      stEl.style.color = '#ef4444';
+    }
+  }
+}
+
+async function resetDefaultDramaWorkflow() {
+  try {
+    const r = await fetch('/api/drama_workflow_parse', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reset_default: true}),
+    });
+    const d = await r.json();
+    if (d.ok && d.workflow) {
+      currentDramaWorkflow = d.workflow;
+      renderDramaWfEditorTables();
+      await pollAutoDramaStatus();
+    }
+  } catch (e) {}
+}
+
+async function rerunSingleDramaStep(targetFile) {
+  if (!targetFile) return;
+  if (currentDramaWorkflow) {
+    await saveDramaWorkflowEdits();
+  }
+  const aspect = ((document.getElementById('dramaAspectSelect') || {}).value || '16:9').trim();
+  const stEl = document.getElementById('dramaStatusText');
+  if (stEl) {
+    stEl.innerText = `🔄 正在单独重跑节点: ${targetFile}...`;
+    stEl.style.color = '#fbbf24';
+  }
+  try {
+    const r = await fetch('/api/drama_workflow_rerun_one', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target_file: targetFile, aspect}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (stEl) {
+        stEl.innerText = '❌ ' + (d.error || '单步重跑启动失败');
+        stEl.style.color = '#ef4444';
+      }
+      return;
+    }
+    await pollAutoDramaStatus();
+    if (!dramaPollTimer) {
+      dramaPollTimer = setInterval(pollAutoDramaStatus, 2000);
+    }
+  } catch (e) {}
 }
 
 function renderDramaStepsGrid(stepsList) {
@@ -6026,9 +6360,13 @@ function renderDramaStepsGrid(stepsList) {
       col = '#fca5a5';
       icon = '❌';
     }
-    return `<div style="padding:5px 8px;border-radius:6px;background:${bg};border:1px solid ${bd};color:${col};display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${item.label || ''}">
-      <span>${icon}</span>
-      <span style="overflow:hidden;text-overflow:ellipsis;font-weight:${st === 'running' ? '700' : '500'};">${item.label || ''}</span>
+    const canRerun = item.file && item.file !== 'ancient_drama_30s_final.mp4';
+    return `<div style="padding:5px 7px;border-radius:6px;background:${bg};border:1px solid ${bd};color:${col};display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;overflow:hidden;" title="${escapeHtmlAttr(item.label || '')} (${escapeHtmlAttr(item.file || '')})">
+      <div style="display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;">
+        <span>${icon}</span>
+        <span style="overflow:hidden;text-overflow:ellipsis;font-weight:${st === 'running' ? '700' : '500'};">${item.label || ''}</span>
+      </div>
+      ${canRerun ? `<button type="button" onclick="rerunSingleDramaStep('${escapeHtmlAttr(item.file)}')" style="padding:1px 4px;font-size:10px;border-radius:3px;border:1px solid rgba(148,163,184,0.3);background:rgba(15,23,42,0.6);color:#cbd5e1;cursor:pointer;flex-shrink:0;" title="单独重抽此步">🔄</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -6452,6 +6790,10 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/api/drama_auto_status"):
             self._send_json(_get_drama_status_payload())
+            return
+
+        if self.path.startswith("/api/drama_workflow_get"):
+            self._send_json({"ok": True, "workflow": _load_drama_workflow()})
             return
 
         if self.path.startswith("/api/video_upscale_status"):
@@ -7625,64 +7967,505 @@ p.wait()
                 _DRAMA_STATE["final_video"] = final_p.name
                 _DRAMA_STATE["pct"] = 100
                 _DRAMA_STATE["error"] = ""
-                _DRAMA_STATE["message"] = f"🎉 30.0 秒完整古装短剧成片已重新合成：{final_p.name} (已保存至 ~/Movies/EasyColab/)"
+                _DRAMA_STATE["message"] = f"🎉 完整短剧成片已重新精剪混音合成：{final_p.name} (已保存至 ~/Movies/EasyColab/)"
                 self._send_json({"ok": True, "final_video": final_p.name, "message": _DRAMA_STATE["message"]})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/drama_workflow_save":
+            wf_in = payload.get("workflow")
+            if not isinstance(wf_in, dict):
+                self._send_json({"ok": False, "error": "无效的工作流 JSON 数据"})
+                return
+            _save_drama_workflow(wf_in)
+            _append_panel_log(f"💾 [工作流已保存] 剧目「{wf_in.get('title') or '未命名短剧'}」({len(wf_in.get('image_tasks') or [])} 个图片节点, {len(wf_in.get('video_tasks') or [])} 个视频分镜节点)")
+            self._send_json({"ok": True, "workflow": _load_drama_workflow()})
+            return
+
+        if self.path == "/api/drama_workflow_parse":
+            if payload.get("reset_default"):
+                wf_def = _get_default_drama_workflow()
+                _save_drama_workflow(wf_def)
+                self._send_json({"ok": True, "workflow": wf_def, "message": "✅ 已恢复内置 11 镜 30 秒古装短剧工作流示例"})
+                return
+            raw_script = str(payload.get("raw_script") or "").strip()
+            title_in = str(payload.get("title") or "").strip()
+            clear_old = bool(payload.get("clear_old_assets", True))
+            if not raw_script:
+                self._send_json({"ok": False, "error": "剧本内容不能为空"})
+                return
+            try:
+                wf_parsed = _parse_raw_script_to_workflow(raw_script, title=title_in)
+                if clear_old and DRAMA_WORK_DIR.is_dir():
+                    for old_f in DRAMA_WORK_DIR.glob("*"):
+                        if old_f.is_file() and old_f.name != "workflow.json":
+                            try:
+                                old_f.unlink()
+                            except Exception:
+                                pass
+                _save_drama_workflow(wf_parsed)
+                n_img = len(wf_parsed.get("image_tasks") or [])
+                n_vid = len(wf_parsed.get("video_tasks") or [])
+                tot_dur = round(sum(float(x.get("duration") or 3.0) for x in (wf_parsed.get("video_tasks") or [])), 1)
+                msg = f"✅ 已成功解析新剧本「{wf_parsed.get('title')}」：{n_img} 个定妆/首尾帧图片节点 + {n_vid} 个分镜视频节点 (总长 {tot_dur}s)"
+                _DRAMA_STATE["message"] = msg
+                _DRAMA_STATE["error"] = ""
+                _append_panel_log(f"🔍 [剧本工作流解析] {msg}")
+                self._send_json({"ok": True, "workflow": wf_parsed, "message": msg})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/drama_workflow_rerun_one":
+            if _DRAMA_STATE["running"]:
+                self._send_json({"ok": False, "error": "当前已有工作流任务正在运行中，请先等待完成或暂停"})
+                return
+            target_file = str(payload.get("target_file") or "").strip()
+            aspect = str(payload.get("aspect") or "16:9").strip()
+            if not target_file:
+                self._send_json({"ok": False, "error": "未指定要重跑的节点文件名"})
+                return
+            _DRAMA_STATE["running"] = True
+            _DRAMA_STATE["cancel"] = False
+            _DRAMA_STATE["error"] = ""
+            _DRAMA_STATE["active_file"] = target_file
+            _DRAMA_STATE["message"] = f"🔄 正在单独重抽节点: {target_file}..."
+            threading.Thread(
+                target=_run_single_drama_step_bg,
+                args=(target_file, aspect),
+                daemon=True,
+            ).start()
+            self._send_json({"ok": True, "message": f"已启动单节点重抽: {target_file}"})
             return
 
         self.send_error(404)
 
 
 DRAMA_WORK_DIR = LOCAL_MOVIES_DIR / "drama_30s_ancient"
-
-_DRAMA_STEP_DEFS = [
-    ("char_A_half.jpg", "① 图1:女主A半身(小粉花)"),
-    ("char_A_closeup.jpg", "② 图2:女主A锁脸特写"),
-    ("char_B_half.jpg", "③ 图3:男主B古装定妆"),
-    ("shot01_first.jpg", "📷 镜01首帧:溪边A歪头"),
-    ("shot02_first.jpg", "📷 镜02首帧:小鱼跃水面"),
-    ("shot02_last.jpg", "📷 镜02尾帧:转焦A弯眼笑"),
-    ("shot03_first.jpg", "📷 镜03首帧:全景A撩水"),
-    ("shot04_first.jpg", "📷 镜04首帧:溪边B逆光"),
-    ("shot05_first.jpg", "📷 镜05首帧:市集A前B随"),
-    ("shot06_first.jpg", "📷 镜06首帧:摊前捧白花簪"),
-    ("shot06_last.jpg", "📷 镜06尾帧:举簪招手唤B"),
-    ("shot07_first.jpg", "📷 镜07首帧:越肩A举簪"),
-    ("shot08_first.jpg", "📷 镜08首帧:灯笼B垂眼笑"),
-    ("shot09_11_first.jpg", "📷 镜09/11首帧:左侧插妥簪"),
-    ("shot10_first.jpg", "📷 镜10首帧:反打越肩B笑"),
-    ("shot07_raw.mp4", "🗣️ 镜07(1.7s):A「怎么样？」"),
-    ("shot09_raw.mp4", "🗣️ 镜09(1.7s):A「这发簪好看吗」"),
-    ("shot10_raw.mp4", "🗣️ 镜10(1.6s):B「好看。」"),
-    ("shot11_raw.mp4", "🗣️ 镜11(3.8s):A「哼～问你什么」"),
-    ("shot01_raw.mp4", "🎞️ 镜01(2.2s):溪边歪头笑"),
-    ("shot02_raw.mp4", "🎞️ 镜02(3.0s):小鱼跃水转焦"),
-    ("shot03_raw.mp4", "🎞️ 镜03(3.7s):A撩水泼洒笑"),
-    ("shot04_raw.mp4", "🎞️ 镜04(2.1s):B逆光浅笑"),
-    ("shot05_raw.mp4", "🎞️ 镜05(2.6s):市集倒退跟拍"),
-    ("shot06_raw.mp4", "🎞️ 镜06(5.3s):拿簪招手唤B"),
-    ("shot08_raw.mp4", "🎞️ 镜08(2.3s):B灯笼下浅笑"),
-    ("ancient_drama_30s_final.mp4", "🎬 30.0s 完整短剧混音合片"),
-]
+DRAMA_WORKFLOW_FILE = DRAMA_WORK_DIR / "workflow.json"
 
 _DRAMA_STATE: Dict[str, Any] = {
     "running": False,
     "cancel": False,
     "pct": 0,
     "active_file": "",
-    "message": "✅ 已预装全部 11 镜分镜脚本与锁脸提示词，点击右侧按钮即可全自动开机并从 0 拍完 30 秒完整短剧！",
+    "message": "✅ 已加载分镜短剧工作流（支持粘贴任意新剧本自动拆解、单镜独立重抽与 0.1s 卡点合片）！",
     "error": "",
     "final_video": "",
 }
 
 
-def _get_drama_status_payload() -> Dict[str, Any]:
+def _get_default_drama_workflow() -> Dict[str, Any]:
+    return {
+        "title": "《溪边与市集白花簪》",
+        "global_style": "写实真人，古装爱情短剧质感，电影级浅景深，阳光暖调，画面通透柔和。",
+        "ambience_source_file": "shot05_raw.mp4",
+        "image_tasks": [
+            {
+                "file": "char_A_half.jpg",
+                "label": "① 图1:女主A半身(小粉花)",
+                "refs": [],
+                "prompt": "写实真人摄影，古装爱情剧质感，85mm人像镜头，电影级浅景深，阳光暖调，画面通透柔和。一位19岁中国古装少女（女主A）的正面中近景半身定妆照，性格活泼俏皮、灵动甜美，鹅蛋脸，清澈有神的大眼睛，白皙细腻的真实皮肤纹理，带着俏皮明朗的浅笑。她梳着精致少女古装发髻，发间右侧固定簪着一朵小巧精致的浅粉色五瓣小花（右侧小粉花清晰可见，左侧发间无任何发饰），身穿浅青与淡粉交织的轻盈宋制齐胸衫裙，刺绣纹理清晰，自然户外暖阳，背景为干净柔和的浅绿色虚化光斑。",
+            },
+            {
+                "file": "char_A_closeup.jpg",
+                "label": "② 图2:女主A锁脸特写",
+                "refs": ["char_A_half.jpg"],
+                "prompt": "Keep the exact facial identity, hairstyle, and the small pink flower on the right side of the hair of the woman in <Picture 1>. 写实真人电影级面部特写镜头（Close-up），古装少女（女主A）直视镜头，五官与 <Picture 1> 完全一致，眼神灵动俏皮，嘴角微扬，细腻真实的皮肤质感，发间右侧依然簪着那朵小巧的浅粉色小花，左侧发间无发饰，柔和暖阳轮廓光，背景柔和虚化。",
+            },
+            {
+                "file": "char_B_half.jpg",
+                "label": "③ 图3:男主B古装定妆",
+                "refs": [],
+                "prompt": "写实真人摄影，古装爱情剧质感，85mm人像镜头，电影级浅景深，阳光暖调，画面通透柔和。一位23岁中国古装青年公子（男主B）的正面中近景半身定妆照，面容俊朗温润，剑眉星目，气质沉静温和、内敛克制，嘴角带着一丝温柔克制的浅笑。他束着整洁的古装墨发玉冠，身穿深藏青色与墨色交织的质感暗纹古装直裰长袍，真实细腻的皮肤纹理与发丝质感，柔和户外暖阳自后方打来形成金色发丝轮廓光，背景为柔和的深绿色林间虚化光斑。",
+            },
+            {
+                "file": "shot01_first.jpg",
+                "label": "📷 镜01首帧:溪边A歪头",
+                "refs": ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the exact face and right-side small pink hair flower of the woman in <Picture 1> and <Picture 2>, and the man in <Picture 3> in the blurred background. 写实古装剧电影画面，林间溪边，阳光暖调。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花）的面部特写占画面左侧，前景左缘有一片虚化的浅色树叶遮挡；A的头向她自己的右肩侧微微歪着，脸朝着镜头，双唇微张、眼神俏皮灵动地望向镜头方向；男主B（来自 <Picture 3>）在画面右后方远处虚化成一团深色古装身影。暖阳自A身后打来，发丝边缘有一圈明亮的金色轮廓光，背景是虚化的溪边绿色光斑，电影级浅景深。",
+            },
+            {
+                "file": "shot02_first.jpg",
+                "label": "📷 镜02首帧:小鱼跃水面",
+                "refs": ["char_A_half.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the woman from <Picture 1> in the soft out-of-focus background. 写实古装剧画面，机位贴近清澈溪水水面的超低角度镜头。焦点清晰落在前景水面上：一条灵动的小溪鱼正自清浅的溪水中跃起，在半空划出一道水线，水面溅起晶莹的水花与一圈涟漪；后景处于浅景深柔和虚化状态，女主A（来自 <Picture 1>，穿浅青淡粉古装裙，右侧发间有小粉花）蹲在溪边卵石滩上，裙摆铺开遮住双腿，正笑着把手伸向水面；男主B（来自 <Picture 2>）在更后方青苔大石处虚化。阳光洒在水面与树叶间，暖调通透。",
+            },
+            {
+                "file": "shot02_last.jpg",
+                "label": "📷 镜02尾帧:转焦A弯眼笑",
+                "refs": ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the exact face and outfit of the woman in <Picture 1> and <Picture 2>. 写实古装剧画面，机位贴近溪水水面的低角度镜头。前景溪水水面处于柔和虚化并带有余波涟漪；焦点清晰对准后景蹲在溪边卵石滩上的女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花），她裙摆铺开遮住双腿，手停在水面上方，笑得眉眼弯弯、俏皮可爱；男主B（来自 <Picture 3>）在更后方远处虚化。阳光透过树叶洒下温暖光斑。",
+            },
+            {
+                "file": "shot03_first.jpg",
+                "label": "📷 镜03首帧:全景A撩水",
+                "refs": ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the woman from <Picture 1> <Picture 2> and the man from <Picture 3>. 写实古装剧溪边全景镜头，画面左右两缘有虚化的翠绿树叶作前景框景。画面左中位置，女主A（来自 <Picture 1>，右侧发间有小粉花）站在清浅的溪水卵石滩边，正开心地笑着俯身用双手撩起溪水向镜头方向泼洒，晶莹的水花在阳光下发亮；画面右侧岸边的青苔大石上，男主B（来自 <Picture 3>，深色古装）安稳坐着，侧身温和地看着A，嘴角带着一丝克制温柔的笑意。溪水在两人前方缓缓流过，倒映着金色阳光。",
+            },
+            {
+                "file": "shot04_first.jpg",
+                "label": "📷 镜04首帧:溪边B逆光",
+                "refs": ["char_B_half.jpg"],
+                "prompt": "Keep the exact facial identity and outfit of the man in <Picture 1>. 写实古装剧电影级面部特写镜头，林间溪边。男主B（来自 <Picture 1>）的面部特写，他的目光温柔地望向画面左下方的方向，神情沉静温和，嘴角微露一丝克制的浅笑意，眼神柔和。温暖的阳光自他身后打来，墨发边缘有一圈金色轮廓光，背景是虚化的森林绿色光斑，电影级浅景深。",
+            },
+            {
+                "file": "shot05_first.jpg",
+                "label": "📷 镜05首帧:市集A前B随",
+                "refs": ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the exact woman from <Picture 1> <Picture 2> in front and the man from <Picture 3> walking behind her. 写实古装剧白天的古代市集街道，中景正面镜头。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花，左侧无发饰）走在前面处于画面中景，笑容明朗俏皮，正开心看向两旁摊位；男主B（来自 <Picture 3>，深色古装）跟在她身后两三步的距离，神情平静温和地目光落在她身上。街道两旁摊位林立、商贩与路人全部处于浅景深虚化状态，不看镜头；远处可见石拱桥与古代酒楼招牌，阳光明亮，街面有斑驳暖调光影。",
+            },
+            {
+                "file": "shot06_first.jpg",
+                "label": "📷 镜06首帧:摊前捧白花簪",
+                "refs": ["char_A_half.jpg", "char_A_closeup.jpg"],
+                "prompt": "Keep the exact face and outfit of the woman in <Picture 1> <Picture 2>. 写实古装剧古代市集小摊前的中近景镜头，摊位上方挂着一排色彩雅致的古风香囊与小饰物。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着一朵小粉花，左侧发间无发饰）站在摊前，正微微低头，双手小心捧着一支刚从摊上拿起的「白花发簪」（细长的簪杆，顶端是一朵精致的白色五瓣小花），神情专注欣喜地端详着发簪。背景为虚化的阳光市集街道，电影级暖调浅景深。",
+            },
+            {
+                "file": "shot06_last.jpg",
+                "label": "📷 镜06尾帧:举簪招手唤B",
+                "refs": ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the exact woman from <Picture 1> <Picture 2> and the man from <Picture 3> in the blurred background. 写实古装剧市集香囊小摊前的中近景镜头。女主A（来自 <Picture 1> <Picture 2>，右侧发间有小粉花）一只手把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）举在自己左侧头边比试，同时转头望向画面左后方，笑得明朗俏皮，另一只手抬起朝左后方招手示意；画面左后方背景中，男主B（来自 <Picture 3>）正应声走近停在她对面（处于浅景深柔和虚化中）。阳光暖调。",
+            },
+            {
+                "file": "shot07_first.jpg",
+                "label": "📷 镜07首帧:越肩A举簪",
+                "refs": ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the exact face of the woman in <Picture 1> <Picture 2>. 写实古装剧越肩镜头（Over-the-shoulder shot）。画面左侧前景是男主B（来自 <Picture 3>）虚化的深色古装后脑与左肩背；镜头越过B的肩膀对准对面的女主A（来自 <Picture 1> <Picture 2>，面部与上身清晰实焦）。A发间右侧簪着小粉花，她右手正把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）举在自己左侧发髻旁比试，笑得眉眼弯弯，眼神亮晶晶地望着对面的B。背景是虚化的市集香囊小摊，阳光暖调。",
+            },
+            {
+                "file": "shot08_first.jpg",
+                "label": "📷 镜08首帧:灯笼B垂眼笑",
+                "refs": ["char_B_half.jpg"],
+                "prompt": "Keep the exact facial identity of the man in <Picture 1>. 写实古装剧电影级面部特写镜头。男主B（来自 <Picture 1>）站在市集摊位前，眼帘微垂后刚抬起眼望向对面的A，嘴角缓缓扬起温柔浅笑，眼神里带着满满的纵容与宠溺。背景是浅景深虚化的红色与橙色市集灯笼温暖光斑，肤质细腻真实。",
+            },
+            {
+                "file": "shot09_11_first.jpg",
+                "label": "📷 镜09/11首帧:左侧插妥簪",
+                "refs": ["shot07_first.jpg", "char_A_closeup.jpg"],
+                "prompt": "Based on <Picture 1> and keeping the exact face of <Picture 2>, keep the same over-the-shoulder composition with the blurred dark shoulder of the man on the left foreground. 写实古装剧越肩近景特写镜头，保持与 <Picture 1> 完全相同的机位、背景和前景左侧虚化的男主肩背。画面中的女主A已经把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）稳稳插进了自己左侧发间（同时她右侧发间原本的小粉花依然保留），双手已自然放下不再举着，她眼睛发亮、嘴角带着俏皮灵动的神情望着对面的B。",
+            },
+            {
+                "file": "shot10_first.jpg",
+                "label": "📷 镜10首帧:反打越肩B笑",
+                "refs": ["char_A_half.jpg", "char_B_half.jpg"],
+                "prompt": "Keep the exact facial identity of the man in <Picture 2>. 写实古装剧反打越肩镜头（Reverse over-the-shoulder shot）。画面左侧前景是女主A（来自 <Picture 1>）虚化的古装发髻后脑（左侧隐约可见白花发簪轮廓）；镜头越过A的后脑清晰对准对面的男主B（来自 <Picture 2>）。B正专注地看着A，面带温柔认真又纵容的浅笑。温暖的阳光自B身后打来，在他脸庞和发丝边缘勾勒出暖融融的金色轮廓光，市集背景柔和虚化。",
+            },
+        ],
+        "video_tasks": [
+            {
+                "file": "shot01_raw.mp4",
+                "label": "🎞️ 镜01(2.2s):溪边歪头笑",
+                "engine": "fl2va",
+                "duration": 2.2,
+                "first_img": "shot01_first.jpg",
+                "last_img": "",
+                "tts_text": "",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": False,
+                "prompt": "固定镜头，机位与焦距完全静止。林间溪边，左侧女主A（右侧发间带小粉花）头向自己右肩微微歪着朝向镜头，她先是双唇微张像刚要说话，随即抿起嘴唇露出俏皮甜美的浅笑，眼神灵动地望向镜头方向；发丝在微风与身后金色阳光轮廓光中轻轻拂动，右后方男主B虚化身影安静不动。纯自然环境音效：清脆的溪水潺潺流动声与林间清幽鸟鸣声，无背景音乐，无人物说话。",
+            },
+            {
+                "file": "shot02_raw.mp4",
+                "label": "🎞️ 镜02(3.0s):小鱼跃水转焦",
+                "engine": "fl2va",
+                "duration": 3.0,
+                "first_img": "shot02_first.jpg",
+                "last_img": "shot02_last.jpg",
+                "tts_text": "",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": False,
+                "prompt": "固定低角度贴近水面镜头，机位完全静止。起幅焦点落在前景溪面：一条小鱼自溪水中灵动跃起，在半空划出一道自然弧线后落回水中，溅起水花与一圈涟漪；随后镜头焦点平滑转移到后景蹲在溪边卵石滩上的女主A身上，她裙摆铺开，正笑得眉眼弯弯，手停在水面上方。纯自然环境音效：小鱼跃出水面的清脆扑通水花声与溪水流动声，无背景音乐。",
+            },
+            {
+                "file": "shot03_raw.mp4",
+                "label": "🎞️ 镜03(3.7s):A撩水泼洒笑",
+                "engine": "fl2va",
+                "duration": 3.7,
+                "first_img": "shot03_first.jpg",
+                "last_img": "",
+                "tts_text": "",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": False,
+                "prompt": "固定全景镜头，机位完全静止，左右两缘有虚化绿叶前景。画面左中女主A在溪边开心地用双手撩起溪水向镜头方向泼洒出去，泼水的水花方向与手部动作一致，晶莹水花在阳光下飞溅发亮，泼完水她自己先眉眼弯弯地笑出声；画面右侧青苔大石上，男主B安稳坐着侧身看着A，神情温和，嘴角带一点宠溺笑意。溪水在前方缓缓流过。纯自然环境音效：双手撩水泼洒的水花声、少女清脆轻快的浅笑声、溪水流淌与林间鸟鸣声，无背景音乐。",
+            },
+            {
+                "file": "shot04_raw.mp4",
+                "label": "🎞️ 镜04(2.1s):B逆光浅笑",
+                "engine": "fl2va",
+                "duration": 2.1,
+                "first_img": "shot04_first.jpg",
+                "last_img": "",
+                "tts_text": "",
+                "tts_voice": "ming:灵逍遥",
+                "mix_ambience": False,
+                "prompt": "固定特写镜头，机位与焦距完全静止。林间溪边，男主B的面部特写，目光专注地望向画面左下方A的方向；他先是神情沉静平和，随即嘴角慢慢扬起，露出一抹温柔而克制的浅笑，眼神随之柔和下来；身后阳光勾勒出金色发丝轮廓光。纯自然环境音效：轻柔的溪水流动声与林间微风鸟鸣，无背景音乐，无对白。",
+            },
+            {
+                "file": "shot05_raw.mp4",
+                "label": "🎞️ 镜05(2.6s):市集倒退跟拍",
+                "engine": "fl2va",
+                "duration": 2.6,
+                "first_img": "shot05_first.jpg",
+                "last_img": "",
+                "tts_text": "",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": False,
+                "prompt": "镜头在主体前方一边平稳后退一边拍摄（倒退跟拍机位），正对女主A的表情与步伐，A始终保持中景大小。白天的古代市集街道，A走在前面，笑容明朗俏皮，边走边开心地左右张望两旁虚化的摊位，脚步轻快；男主B跟在她身后两三步的距离，神情平静温和地跟着她前行。两旁商贩与路人全部虚化且不看镜头，远处有石拱桥，阳光斑驳。纯自然环境音效：热闹的古代市集人群低语交谈声、轻快的脚步声与摊位杂声，无背景音乐。",
+            },
+            {
+                "file": "shot06_raw.mp4",
+                "label": "🎞️ 镜06(5.3s):拿簪招手唤B",
+                "engine": "fl2va",
+                "duration": 5.3,
+                "first_img": "shot06_first.jpg",
+                "last_img": "shot06_last.jpg",
+                "tts_text": "你快过来。",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": False,
+                "prompt": "固定中近景镜头，机位完全静止。市集香囊小摊前，女主A（右侧发间有小粉花）先低头双手捧着那支白花发簪（细簪杆顶端一朵白色五瓣小花）轻轻翻看端详，随后抬手把白花发簪举到自己左侧头边比试；接着她转头望向画面左后方，笑着朝男主B招了招手，动作俏皮可爱，并开口用甜美中文说道：\"你快过来。\"；男主B应声自画面左后方走近，在后段进入虚化背景停在A对面。音效包含市集环境人群杂声与女主清晰的中文台词\"你快过来\"，无背景音乐。",
+            },
+            {
+                "file": "shot07_raw.mp4",
+                "label": "🗣️ 镜07(1.7s):A「怎么样？」",
+                "engine": "avatar",
+                "duration": 1.7,
+                "first_img": "shot07_first.jpg",
+                "last_img": "",
+                "tts_text": "怎么样？",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": True,
+                "prompt": "固定越肩镜头，机位完全静止，左侧前景男主肩背保持虚化。画面中的古装少女A把白花发簪举在左侧头边，笑得眉眼弯弯，眼神亮晶晶地望着对面的B自然开口问话，伴随语流有灵动的微眨眼与俏皮期盼的神情，口型与语音精准同步，阳光暖调。",
+            },
+            {
+                "file": "shot08_raw.mp4",
+                "label": "🎞️ 镜08(2.3s):B灯笼下浅笑",
+                "engine": "fl2va",
+                "duration": 2.3,
+                "first_img": "shot08_first.jpg",
+                "last_img": "",
+                "tts_text": "",
+                "tts_voice": "ming:灵逍遥",
+                "mix_ambience": False,
+                "prompt": "固定特写镜头，机位与焦距完全静止。背景是虚化的红橙色市集灯笼光斑，男主B的面部特写：他先是微微垂下眼帘，像在认真端详对面A头侧比试的白花发簪，随即缓缓抬起眼看向A，嘴角扬起一抹温柔浅笑，眼神里带着满满的纵容。纯自然环境音效：轻柔的市集背景人群环境声，无背景音乐，无对白。",
+            },
+            {
+                "file": "shot09_raw.mp4",
+                "label": "🗣️ 镜09(1.7s):A「这发簪好看吗」",
+                "engine": "avatar",
+                "duration": 1.7,
+                "first_img": "shot09_11_first.jpg",
+                "last_img": "",
+                "tts_text": "这发簪好看吗？",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": True,
+                "prompt": "固定越肩镜头，机位完全静止，左侧前景男主肩背虚化。白花发簪稳稳插在女主A左侧发间，右侧小粉花保留。A眼睛发亮，兴奋又期待地望着对面的B开口追问，嘴角压不住甜美俏皮的笑意，伴随说话有自然的微挑眉和眨眼，口型精准同步。",
+            },
+            {
+                "file": "shot10_raw.mp4",
+                "label": "🗣️ 镜10(1.6s):B「好看。」",
+                "engine": "avatar",
+                "duration": 1.6,
+                "first_img": "shot10_first.jpg",
+                "last_img": "",
+                "tts_text": "好看。",
+                "tts_voice": "ming:灵逍遥",
+                "mix_ambience": True,
+                "prompt": "固定反打越肩镜头，机位完全静止，左侧前景女主后脑虚化。阳光自男主B身后打来形成暖融融的轮廓光，B专注地看着对面的A，眼神温柔纵容，含笑认真地开口回答，伴随说话有轻微温和的点头与眼神交流，口型自然准确。",
+            },
+            {
+                "file": "shot11_raw.mp4",
+                "label": "🗣️ 镜11(3.8s):A「哼～问你什么」",
+                "engine": "avatar",
+                "duration": 3.8,
+                "first_img": "shot09_11_first.jpg",
+                "last_img": "",
+                "tts_text": "[Dissatisfaction-hnn] 问你什么都说好看，男人的嘴，骗人的鬼。",
+                "tts_voice": "ming:灵小柔",
+                "mix_ambience": True,
+                "prompt": "固定越肩面部特写镜头，机位完全静止，左侧前景男主肩背虚化，女主A左侧发间插着白花发簪、右侧小粉花保留。A先是假装生气地板起脸、微微撇嘴佯装瞪了对面的B一眼，随即俏皮灵动地开口数落他，眼神灵动有戏，眉眼与头部伴随说话节奏有自然的微动作，说完自然收住，口型与牙齿清晰自然。",
+            },
+        ],
+    }
+
+
+def _load_drama_workflow() -> Dict[str, Any]:
     DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+    if DRAMA_WORKFLOW_FILE.is_file():
+        try:
+            wf = json.loads(DRAMA_WORKFLOW_FILE.read_text(encoding="utf-8"))
+            if isinstance(wf, dict) and wf.get("image_tasks") and wf.get("video_tasks"):
+                return wf
+        except Exception:
+            pass
+    wf = _get_default_drama_workflow()
+    _save_drama_workflow(wf)
+    return wf
+
+
+def _save_drama_workflow(wf: Dict[str, Any]):
+    DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+    DRAMA_WORKFLOW_FILE.write_text(json.dumps(wf, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str, Any]:
+    """
+    通用分镜剧本智能解析引擎：
+    支持解析任意包含【全局设定】+【分镜】镜头01【时长】...【运镜】...【画面】...【对白】...
+    或 镜1 / Shot 1 (3s): ... 格式的多镜头剧本，自动生成角色定妆节点、首尾关键帧节点与分流视频节点。
+    """
+    txt = raw_script.strip()
+    m_style = re.search(r"画风\s*[:：]\s*([^\n]+)", txt)
+    global_style = m_style.group(1).strip() if m_style else "写实真人电影级质感，85mm浅景深，自然柔和光影，细节清晰真实。"
+    m_char = re.search(r"人物(?:锁定|设定)?\s*[:：]\s*([^\n]+)", txt)
+    char_desc_line = m_char.group(1).strip() if m_char else ""
+
+    # 判断题材与时代特征 (古装 vs 现代)
+    is_ancient = any(k in txt for k in ("古装", "古代", "市集", "发簪", "仙侠", "公子", "长袍", "衣袂"))
+    era_tag = "中国古装剧质感，精致古装服饰与发髻" if is_ancient else "现代影视剧写真质感，自然时尚妆造"
+
+    # 1. 自动构建男女主定妆基准图节点
+    image_tasks: List[Dict[str, Any]] = [
+        {
+            "file": "char_A_half.jpg",
+            "label": "① 图1:角色A半身定妆",
+            "refs": [],
+            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角A（年轻女性，五官精致立体，真实细腻皮肤纹理，眼神灵动有戏）。{char_desc_line}",
+        },
+        {
+            "file": "char_A_closeup.jpg",
+            "label": "② 图2:角色A锁脸特写",
+            "refs": ["char_A_half.jpg"],
+            "prompt": f"Keep the exact facial identity, hairstyle, and accessories of the person in <Picture 1>. {global_style} 电影级面部特写镜头（Close-up），主角A直视镜头，五官与 <Picture 1> 完全一致，真实皮肤毛孔与光影。",
+        },
+        {
+            "file": "char_B_half.jpg",
+            "label": "③ 图3:角色B半身定妆",
+            "refs": [],
+            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角B（年轻男性，面容俊朗有气质，沉静内敛，真实细腻皮肤纹理与发丝光影）。{char_desc_line}",
+        },
+    ]
+
+    # 2. 切分所有镜头块
+    shot_blocks = re.split(r"(?=(?:镜头|镜|Shot\s*)\s*\d+)", txt, flags=re.IGNORECASE)
+    shot_blocks = [b.strip() for b in shot_blocks if re.match(r"^(?:镜头|镜|Shot\s*)\s*\d+", b.strip(), flags=re.IGNORECASE)]
+    if not shot_blocks:
+        # 兜底：按空行或段落切分
+        paras = [p.strip() for p in re.split(r"\n\s*\n", txt) if p.strip() and not p.strip().startswith("【")]
+        shot_blocks = [f"镜头{i:02d}【时长】3.0秒\n【画面】{p}" for i, p in enumerate(paras[:15], start=1)]
+
+    video_tasks: List[Dict[str, Any]] = []
+    ambience_src = ""
+
+    for idx, blk in enumerate(shot_blocks, start=1):
+        shot_id = f"shot{idx:02d}"
+        m_dur = re.search(r"(?:【时长】|时长\s*[:：]?|\()\s*(\d+(?:\.\d+)?)\s*(?:秒|s|S)", blk)
+        dur_s = round(float(m_dur.group(1)), 1) if m_dur else 3.0
+        dur_s = max(1.0, min(12.0, dur_s))
+
+        m_cam = re.search(r"【运镜】\s*([^\n【]+)", blk)
+        cam_txt = m_cam.group(1).strip() if m_cam else "固定镜头，机位平稳。"
+
+        m_vis = re.search(r"【画面】\s*([\s\S]*?)(?=【|$)", blk)
+        vis_txt = m_vis.group(1).strip().replace("\n", " ") if m_vis else blk.replace("\n", " ")
+
+        m_dlg = re.search(r"【对白】\s*([^\n【]+)", blk)
+        dlg_raw = m_dlg.group(1).strip() if m_dlg else ""
+        speaker_is_b = False
+        spoken_text = ""
+        if dlg_raw:
+            m_q = re.search(r"[“\"「『]([^”\"」』]+)[”\"」』]", dlg_raw)
+            spoken_text = m_q.group(1).strip() if m_q else re.sub(r"^[^:：]+[:：]\s*", "", dlg_raw).strip()
+            if re.match(r"^\s*(?:男主|B|男)", dlg_raw, flags=re.IGNORECASE):
+                speaker_is_b = True
+            if spoken_text.startswith(("哼～", "哼~", "哼，")):
+                spoken_text = "[Dissatisfaction-hnn] " + spoken_text.lstrip("哼～~， ")
+
+        # 判断该镜出现的角色参考图
+        has_a = any(k in vis_txt for k in ("A", "女主", "她", "少女"))
+        has_b = any(k in vis_txt for k in ("B", "男主", "他", "公子"))
+        if has_a and has_b:
+            refs = ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"]
+            ref_hint = "Keep the woman from <Picture 1> <Picture 2> and the man from <Picture 3>. "
+        elif has_b and not has_a:
+            refs = ["char_B_half.jpg"]
+            ref_hint = "Keep the exact facial identity of the man in <Picture 1>. "
+        else:
+            refs = ["char_A_half.jpg", "char_A_closeup.jpg"]
+            ref_hint = "Keep the exact facial identity of the woman in <Picture 1> <Picture 2>. "
+
+        first_img_fn = f"{shot_id}_first.jpg"
+        short_vis = vis_txt[:10].replace("，", "").replace("。", "")
+        image_tasks.append({
+            "file": first_img_fn,
+            "label": f"📷 镜{idx:02d}首帧:{short_vis}",
+            "refs": refs,
+            "prompt": f"{ref_hint}{global_style} {cam_txt} {vis_txt}",
+        })
+
+        # 判断是否需要尾帧 (如含“焦点先落在...随后转到...”或 >4.5s 的连续多动作镜头)
+        last_img_fn = ""
+        if ("随后" in vis_txt or "接着" in vis_txt) and (not spoken_text or dur_s >= 4.5):
+            last_img_fn = f"{shot_id}_last.jpg"
+            after_part = re.split(r"随后|接着", vis_txt, maxsplit=1)[-1].strip()
+            image_tasks.append({
+                "file": last_img_fn,
+                "label": f"📷 镜{idx:02d}尾帧:{after_part[:10]}",
+                "refs": refs,
+                "prompt": f"{ref_hint}{global_style} {cam_txt} {after_part}",
+            })
+
+        # 智能路由：有对白且时长 <= 4.5s 的近景/越肩镜头走 LongCat-Avatar + Ming-3.0；其余动作与环境音镜头走 MiniMax-H3 FL2VA
+        use_avatar = bool(spoken_text) and dur_s <= 4.5
+        if not use_avatar and not ambience_src:
+            ambience_src = f"{shot_id}_raw.mp4"
+
+        tts_voice = "ming:灵逍遥" if speaker_is_b else "ming:灵小柔"
+        vid_label = (
+            f"🗣️ 镜{idx:02d}({dur_s}s):{'B' if speaker_is_b else 'A'}「{spoken_text[:7]}」"
+            if use_avatar
+            else f"🎞️ 镜{idx:02d}({dur_s}s):{short_vis}"
+        )
+        video_tasks.append({
+            "file": f"{shot_id}_raw.mp4",
+            "label": vid_label,
+            "engine": "avatar" if use_avatar else "fl2va",
+            "duration": dur_s,
+            "first_img": first_img_fn,
+            "last_img": last_img_fn,
+            "tts_text": spoken_text,
+            "tts_voice": tts_voice,
+            "mix_ambience": use_avatar,
+            "prompt": f"{cam_txt} {vis_txt}" + ("" if spoken_text else " 纯自然环境音效，无背景音乐，无人物说话。"),
+        })
+
+    if not title:
+        title = f"《自定义分镜短剧·{len(video_tasks)}镜》"
+    elif not title.startswith("《"):
+        title = f"《{title}》"
+
+    return {
+        "title": title,
+        "global_style": global_style,
+        "ambience_source_file": ambience_src or (video_tasks[0]["file"] if video_tasks else "shot01_raw.mp4"),
+        "raw_script": raw_script,
+        "image_tasks": image_tasks,
+        "video_tasks": video_tasks,
+    }
+
+
+def _get_drama_status_payload() -> Dict[str, Any]:
+    wf = _load_drama_workflow()
     steps_out = []
     done_cnt = 0
     active_fn = _DRAMA_STATE.get("active_file") or ""
-    for fn, lbl in _DRAMA_STEP_DEFS:
+    all_defs = [(it["file"], it["label"]) for it in (wf.get("image_tasks") or [])]
+    all_defs += [(vt["file"], vt["label"]) for vt in (wf.get("video_tasks") or [])]
+    tot_dur = round(sum(float(vt.get("duration") or 3.0) for vt in (wf.get("video_tasks") or [])), 1)
+    all_defs.append(("ancient_drama_30s_final.mp4", f"🎬 {tot_dur}s 完整短剧混音合片"))
+
+    for fn, lbl in all_defs:
         p = DRAMA_WORK_DIR / fn
         is_done = p.is_file() and p.stat().st_size > 8192
         if is_done:
@@ -7694,13 +8477,14 @@ def _get_drama_status_payload() -> Dict[str, Any]:
         else:
             st = "pending"
         steps_out.append({"file": fn, "label": lbl, "status": st})
-    tot_cnt = len(_DRAMA_STEP_DEFS)
+    tot_cnt = len(all_defs)
     pct = _DRAMA_STATE["pct"] if _DRAMA_STATE["running"] else (int(round(done_cnt * 100.0 / max(1, tot_cnt))) if done_cnt > 0 else 0)
     return {
         "running": _DRAMA_STATE["running"],
         "pct": pct,
         "done_count": done_cnt,
         "total_count": tot_cnt,
+        "title": wf.get("title") or "《分镜短剧》",
         "message": _DRAMA_STATE["message"],
         "error": _DRAMA_STATE["error"],
         "final_video": _DRAMA_STATE["final_video"],
@@ -7985,26 +8769,28 @@ def _drama_run_fl2va_step(
 
 def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: bool = False) -> Path:
     """
-    将 11 个分镜视频按剧本精确秒数 (总计 30.0 秒) 裁切对齐，
-    并将镜 05 的市集环境底噪自动以 -16dB 铺入镜 07/09/10/11 数字人对白背景，输出 1280x720 (或 720x1280) 25fps 完整短剧成片。
+    将工作流中的所有分镜视频按各自配置的 duration 秒数裁切对齐，
+    并将环境底噪源自动以 -16dB 铺入数字人对白背景，输出 1280x720 (或 720x1280) 25fps 完整短剧成片。
     """
+    wf = _load_drama_workflow()
+    vid_tasks = wf.get("video_tasks") or []
+    if not vid_tasks:
+        raise RuntimeError("当前工作流没有任何视频分镜节点")
+
+    tot_dur = round(sum(float(vt.get("duration") or 3.0) for vt in vid_tasks), 1)
     _DRAMA_STATE["active_file"] = "ancient_drama_30s_final.mp4"
     _DRAMA_STATE["pct"] = 95
-    _DRAMA_STATE["message"] = "🎞️ 正在执行 FFmpeg 0.1 秒级卡点裁切 + 市集环境底噪混音 + 30.0 秒完整古装短剧封装..."
-    _append_panel_log("🎞️ [自动导演·阶段四] 开始按剧本精确秒数 (2.2s~5.3s，总计 30.0s) 精剪混音并封装成片...")
+    _DRAMA_STATE["message"] = f"🎞️ 正在执行 FFmpeg 0.1 秒级卡点裁切 + 环境底噪混音 + {tot_dur}s 完整短剧封装..."
+    _append_panel_log(f"🎞️ [自动导演·阶段四] 开始按工作流配置的 {len(vid_tasks)} 个分镜秒数 (总计 {tot_dur}s) 精剪混音并封装成片...")
 
     shot_specs = [
-        ("shot01_raw.mp4", 2.2, False, "镜01"),
-        ("shot02_raw.mp4", 3.0, False, "镜02"),
-        ("shot03_raw.mp4", 3.7, False, "镜03"),
-        ("shot04_raw.mp4", 2.1, False, "镜04"),
-        ("shot05_raw.mp4", 2.6, False, "镜05"),
-        ("shot06_raw.mp4", 5.3, False, "镜06"),
-        ("shot07_raw.mp4", 1.7, True, "镜07"),
-        ("shot08_raw.mp4", 2.3, False, "镜08"),
-        ("shot09_raw.mp4", 1.7, True, "镜09"),
-        ("shot10_raw.mp4", 1.6, True, "镜10"),
-        ("shot11_raw.mp4", 3.8, True, "镜11"),
+        (
+            str(vt.get("file") or ""),
+            float(vt.get("duration") or 3.0),
+            bool(vt.get("mix_ambience")) or (str(vt.get("engine")) == "avatar"),
+            str(vt.get("label") or vt.get("file") or ""),
+        )
+        for vt in vid_tasks
     ]
 
     missing = [lbl for fn, _, _, lbl in shot_specs if not (work_dir / fn).is_file()]
@@ -8015,23 +8801,32 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
     norm_dir = work_dir / "norm_clips"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
-    # 从镜05提取市集环境底噪音频 (供镜07/09/10/11越肩对白铺底，确保市集背景声不断流)
+    # 提取环境底噪音频 (优先使用 workflow 配置的 ambience_source_file，否则取第一个 fl2va 镜头)
+    amb_src_fn = str(wf.get("ambience_source_file") or "shot05_raw.mp4")
+    amb_src_p = work_dir / amb_src_fn
+    if not amb_src_p.is_file():
+        fl2va_cands = [work_dir / str(vt.get("file")) for vt in vid_tasks if str(vt.get("engine")) != "avatar" and (work_dir / str(vt.get("file"))).is_file()]
+        if fl2va_cands:
+            amb_src_p = fl2va_cands[0]
+
     amb_wav = norm_dir / "market_ambience_bed.wav"
-    shot05_p = work_dir / "shot05_raw.mp4"
-    try:
-        subprocess.run(
-            [
-                "ffmpeg", "-y", "-v", "error",
-                "-stream_loop", "3",
-                "-i", str(shot05_p),
-                "-vn", "-ac", "2", "-ar", "44100",
-                "-t", "10.0",
-                str(amb_wav),
-            ],
-            check=True,
-            timeout=30,
-        )
-    except Exception:
+    if amb_src_p.is_file():
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-stream_loop", "3",
+                    "-i", str(amb_src_p),
+                    "-vn", "-ac", "2", "-ar", "44100",
+                    "-t", "12.0",
+                    str(amb_wav),
+                ],
+                check=True,
+                timeout=30,
+            )
+        except Exception:
+            amb_wav = Path("/nonexistent_amb.wav")
+    else:
         amb_wav = Path("/nonexistent_amb.wav")
 
     norm_files: List[Path] = []
@@ -8082,7 +8877,7 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
 
     ts = time.strftime("%Y%m%d_%H%M%S")
     final_work_p = work_dir / "ancient_drama_30s_final.mp4"
-    final_gallery_p = LOCAL_MOVIES_DIR / f"ancient_drama_11shots_30s_{ts}.mp4"
+    final_gallery_p = LOCAL_MOVIES_DIR / f"drama_workflow_{len(vid_tasks)}shots_{int(round(tot_dur))}s_{ts}.mp4"
 
     subprocess.run(
         [
@@ -8098,11 +8893,11 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
         timeout=90,
     )
     shutil.copy2(final_work_p, final_gallery_p)
-    _append_panel_log(f"🎉 [自动导演·合片完成] 30.0 秒 11 镜古装短剧成片已生成 → {final_gallery_p}")
+    _append_panel_log(f"🎉 [自动导演·合片完成] {tot_dur} 秒 {len(vid_tasks)} 镜完整短剧成片已生成 → {final_gallery_p}")
 
     if auto_2k:
         try:
-            _append_panel_log(f"✨ [自动导演·ReCaVSR] 正在将 30 秒成片 {final_gallery_p.name} 提交云端 ReCaVSR 2K 超分...")
+            _append_panel_log(f"✨ [自动导演·ReCaVSR] 正在将成片 {final_gallery_p.name} 提交云端 ReCaVSR 2K 超分...")
             cfg = _load_endpoint_cfg()
             req_up = urllib.request.Request(
                 f"{_get_recavsr_base_url()}/v1/video/upscale",
@@ -8126,111 +8921,109 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
     return final_gallery_p
 
 
-def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_2k: bool = False):
-    """三阶段全自动执行《溪边与市集白花簪》11 镜 30 秒古装短剧拍摄与剪辑合片"""
+def _run_single_drama_step_bg(target_file: str, aspect: str = "16:9"):
+    """单独重新生成工作流中的某一张定妆/关键帧图片或某一条分镜视频"""
     DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
-    tot_steps = len(_DRAMA_STEP_DEFS)
+    wf = _load_drama_workflow()
+    img_res = "1536x2048" if aspect == "9:16" else "2048x1536"
+    vid_res = "480x832" if aspect == "9:16" else "832x480"
+    try:
+        for it in (wf.get("image_tasks") or []):
+            if it.get("file") == target_file:
+                _drama_wait_for_engine(
+                    target_engine="minimax-h3-image",
+                    repo="Comfy-Org/MiniMax-H3-Image",
+                    folder="MiniMax-H3-Image",
+                    pattern="*.safetensors",
+                    label="📸 MiniMax-H3-Image (33B · 4K锁脸定妆与首尾帧引擎)",
+                )
+                _drama_run_image_step(
+                    it["file"],
+                    it.get("label") or it["file"],
+                    it.get("prompt") or "",
+                    it.get("refs") or [],
+                    img_res,
+                    resume=False,
+                    step_idx=1,
+                    tot_steps=1,
+                )
+                _DRAMA_STATE["active_file"] = ""
+                _DRAMA_STATE["message"] = f"✅ 已单独重抽完成图片节点: {it.get('label') or target_file}"
+                return
+
+        for vt in (wf.get("video_tasks") or []):
+            if vt.get("file") == target_file:
+                eng = str(vt.get("engine") or "fl2va")
+                if eng == "avatar":
+                    _drama_wait_for_engine(
+                        target_engine="longcat-avatar-1.6",
+                        repo="meituan-longcat/LongCat-Video-Avatar-1.6",
+                        folder="LongCat-Video-Avatar-1.6",
+                        pattern="base_model/*.safetensors",
+                        label="🎭 LongCat-Video-Avatar-1.6 + Ming-3.0 (越肩对白驱动引擎)",
+                    )
+                    _drama_run_avatar_step(
+                        vt["file"],
+                        vt.get("label") or vt["file"],
+                        vt.get("first_img") or "",
+                        vt.get("tts_text") or "",
+                        vt.get("tts_voice") or "ming:灵小柔",
+                        vt.get("prompt") or "",
+                        vid_res,
+                        resume=False,
+                        step_idx=1,
+                        tot_steps=1,
+                    )
+                else:
+                    _drama_wait_for_engine(
+                        target_engine="minimax-h3",
+                        repo="MiniMaxAI/MiniMax-H3",
+                        folder="MiniMax-H3",
+                        pattern="FL2VA/*.safetensors",
+                        label="🎬 MiniMax-H3 (58B · FL2VA 首尾帧有声视频引擎)",
+                    )
+                    _drama_run_fl2va_step(
+                        vt["file"],
+                        vt.get("label") or vt["file"],
+                        vt.get("first_img") or "",
+                        vt.get("last_img") or None,
+                        vt.get("prompt") or "",
+                        vid_res,
+                        resume=False,
+                        step_idx=1,
+                        tot_steps=1,
+                    )
+                _DRAMA_STATE["active_file"] = ""
+                _DRAMA_STATE["message"] = f"✅ 已单独重跑完成视频分镜: {vt.get('label') or target_file}（可点「🎞️ 仅用已有分镜重新合成成片」更新全片）"
+                return
+
+        raise RuntimeError(f"在当前工作流中未找到节点 {target_file}")
+    except Exception as e:
+        _DRAMA_STATE["active_file"] = ""
+        _DRAMA_STATE["error"] = str(e)
+        _DRAMA_STATE["message"] = str(e)
+        _append_panel_log(f"⚠️ [单步重抽中断] {e}")
+    finally:
+        _DRAMA_STATE["running"] = False
+
+
+def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_2k: bool = False):
+    """三阶段全自动执行当前工作流 (workflow.json) 中的所有定妆图、分镜首尾帧、分流视频生成与剪辑合片"""
+    DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+    wf = _load_drama_workflow()
+    img_tasks = wf.get("image_tasks") or []
+    vid_tasks = wf.get("video_tasks") or []
+    avatar_tasks = [vt for vt in vid_tasks if str(vt.get("engine")) == "avatar"]
+    fl2va_tasks = [vt for vt in vid_tasks if str(vt.get("engine")) != "avatar"]
+    tot_steps = len(img_tasks) + len(vid_tasks) + 1
     img_res = "1536x2048" if aspect == "9:16" else "2048x1536"
     vid_res = "480x832" if aspect == "9:16" else "832x480"
 
     try:
-        # ==================== 阶段一 & 阶段二：MiniMax-H3-Image 生成 3 张定妆照 + 12 张分镜首尾帧 ====================
-        image_tasks = [
-            (
-                "char_A_half.jpg",
-                "① 图1:女主A半身定妆(右侧小粉花)",
-                [],
-                "写实真人摄影，古装爱情剧质感，85mm人像镜头，电影级浅景深，阳光暖调，画面通透柔和。一位19岁中国古装少女（女主A）的正面中近景半身定妆照，性格活泼俏皮、灵动甜美，鹅蛋脸，清澈有神的大眼睛，白皙细腻的真实皮肤纹理，带着俏皮明朗的浅笑。她梳着精致少女古装发髻，发间右侧固定簪着一朵小巧精致的浅粉色五瓣小花（右侧小粉花清晰可见，左侧发间无任何发饰），身穿浅青与淡粉交织的轻盈宋制齐胸衫裙，刺绣纹理清晰，自然户外暖阳，背景为干净柔和的浅绿色虚化光斑。",
-            ),
-            (
-                "char_A_closeup.jpg",
-                "② 图2:女主A锁脸面部特写",
-                ["char_A_half.jpg"],
-                "Keep the exact facial identity, hairstyle, and the small pink flower on the right side of the hair of the woman in <Picture 1>. 写实真人电影级面部特写镜头（Close-up），古装少女（女主A）直视镜头，五官与 <Picture 1> 完全一致，眼神灵动俏皮，嘴角微扬，细腻真实的皮肤质感，发间右侧依然簪着那朵小巧的浅粉色小花，左侧发间无发饰，柔和暖阳轮廓光，背景柔和虚化。",
-            ),
-            (
-                "char_B_half.jpg",
-                "③ 图3:男主B古装半身定妆",
-                [],
-                "写实真人摄影，古装爱情剧质感，85mm人像镜头，电影级浅景深，阳光暖调，画面通透柔和。一位23岁中国古装青年公子（男主B）的正面中近景半身定妆照，面容俊朗温润，剑眉星目，气质沉静温和、内敛克制，嘴角带着一丝温柔克制的浅笑。他束着整洁的古装墨发玉冠，身穿深藏青色与墨色交织的质感暗纹古装直裰长袍，真实细腻的皮肤纹理与发丝质感，柔和户外暖阳自后方打来形成金色发丝轮廓光，背景为柔和的深绿色林间虚化光斑。",
-            ),
-            (
-                "shot01_first.jpg",
-                "镜01首帧:溪边A歪头逆光特写",
-                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
-                "Keep the exact face and right-side small pink hair flower of the woman in <Picture 1> and <Picture 2>, and the man in <Picture 3> in the blurred background. 写实古装剧电影画面，林间溪边，阳光暖调。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花）的面部特写占画面左侧，前景左缘有一片虚化的浅色树叶遮挡；A的头向她自己的右肩侧微微歪着，脸朝着镜头，双唇微张、眼神俏皮灵动地望向镜头方向；男主B（来自 <Picture 3>）在画面右后方远处虚化成一团深色古装身影。暖阳自A身后打来，发丝边缘有一圈明亮的金色轮廓光，背景是虚化的溪边绿色光斑，电影级浅景深。",
-            ),
-            (
-                "shot02_first.jpg",
-                "镜02首帧:低角度溪面小鱼跃起",
-                ["char_A_half.jpg", "char_B_half.jpg"],
-                "Keep the woman from <Picture 1> in the soft out-of-focus background. 写实古装剧画面，机位贴近清澈溪水水面的超低角度镜头。焦点清晰落在前景水面上：一条灵动的小溪鱼正自清浅的溪水中跃起，在半空划出一道水线，水面溅起晶莹的水花与一圈涟漪；后景处于浅景深柔和虚化状态，女主A（来自 <Picture 1>，穿浅青淡粉古装裙，右侧发间有小粉花）蹲在溪边卵石滩上，裙摆铺开遮住双腿，正笑着把手伸向水面；男主B（来自 <Picture 2>）在更后方青苔大石处虚化。阳光洒在水面与树叶间，暖调通透。",
-            ),
-            (
-                "shot02_last.jpg",
-                "镜02尾帧:转焦后景A眉眼弯弯",
-                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
-                "Keep the exact face and outfit of the woman in <Picture 1> and <Picture 2>. 写实古装剧画面，机位贴近溪水水面的低角度镜头。前景溪水水面处于柔和虚化并带有余波涟漪；焦点清晰对准后景蹲在溪边卵石滩上的女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花），她裙摆铺开遮住双腿，手停在水面上方，笑得眉眼弯弯、俏皮可爱；男主B（来自 <Picture 3>）在更后方远处虚化。阳光透过树叶洒下温暖光斑。",
-            ),
-            (
-                "shot03_first.jpg",
-                "镜03首帧:溪边全景A俯身撩水",
-                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
-                "Keep the woman from <Picture 1> <Picture 2> and the man from <Picture 3>. 写实古装剧溪边全景镜头，画面左右两缘有虚化的翠绿树叶作前景框景。画面左中位置，女主A（来自 <Picture 1>，右侧发间有小粉花）站在清浅的溪水卵石滩边，正开心地笑着俯身用双手撩起溪水向镜头方向泼洒，晶莹的水花在阳光下发亮；画面右侧岸边的青苔大石上，男主B（来自 <Picture 3>，深色古装）安稳坐着，侧身温和地看着A，嘴角带着一丝克制温柔的笑意。溪水在两人前方缓缓流过，倒映着金色阳光。",
-            ),
-            (
-                "shot04_first.jpg",
-                "镜04首帧:溪边男主B逆光特写",
-                ["char_B_half.jpg"],
-                "Keep the exact facial identity and outfit of the man in <Picture 1>. 写实古装剧电影级面部特写镜头，林间溪边。男主B（来自 <Picture 1>）的面部特写，他的目光温柔地望向画面左下方的方向，神情沉静温和，嘴角微露一丝克制的浅笑意，眼神柔和。温暖的阳光自他身后打来，墨发边缘有一圈金色轮廓光，背景是虚化的森林绿色光斑，电影级浅景深。",
-            ),
-            (
-                "shot05_first.jpg",
-                "镜05首帧:古代市集A在前B跟随",
-                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
-                "Keep the exact woman from <Picture 1> <Picture 2> in front and the man from <Picture 3> walking behind her. 写实古装剧白天的古代市集街道，中景正面镜头。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着小粉花，左侧无发饰）走在前面处于画面中景，笑容明朗俏皮，正开心看向两旁摊位；男主B（来自 <Picture 3>，深色古装）跟在她身后两三步的距离，神情平静温和地目光落在她身上。街道两旁摊位林立、商贩与路人全部处于浅景深虚化状态，不看镜头；远处可见石拱桥与古代酒楼招牌，阳光明亮，街面有斑驳暖调光影。",
-            ),
-            (
-                "shot06_first.jpg",
-                "镜06首帧:香囊摊前A双手捧白花簪",
-                ["char_A_half.jpg", "char_A_closeup.jpg"],
-                "Keep the exact face and outfit of the woman in <Picture 1> <Picture 2>. 写实古装剧古代市集小摊前的中近景镜头，摊位上方挂着一排色彩雅致的古风香囊与小饰物。女主A（来自 <Picture 1> <Picture 2>，右侧发间簪着一朵小粉花，左侧发间无发饰）站在摊前，正微微低头，双手小心捧着一支刚从摊上拿起的「白花发簪」（细长的簪杆，顶端是一朵精致的白色五瓣小花），神情专注欣喜地端详着发簪。背景为虚化的阳光市集街道，电影级暖调浅景深。",
-            ),
-            (
-                "shot06_last.jpg",
-                "镜06尾帧:A举簪比试转头朝B招手",
-                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
-                "Keep the exact woman from <Picture 1> <Picture 2> and the man from <Picture 3> in the blurred background. 写实古装剧市集香囊小摊前的中近景镜头。女主A（来自 <Picture 1> <Picture 2>，右侧发间有小粉花）一只手把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）举在自己左侧头边比试，同时转头望向画面左后方，笑得明朗俏皮，另一只手抬起朝左后方招手示意；画面左后方背景中，男主B（来自 <Picture 3>）正应声走近停在她对面（处于浅景深柔和虚化中）。阳光暖调。",
-            ),
-            (
-                "shot07_first.jpg",
-                "镜07首帧:越肩A把白花簪举在头侧",
-                ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"],
-                "Keep the exact face of the woman in <Picture 1> <Picture 2>. 写实古装剧越肩镜头（Over-the-shoulder shot）。画面左侧前景是男主B（来自 <Picture 3>）虚化的深色古装后脑与左肩背；镜头越过B的肩膀对准对面的女主A（来自 <Picture 1> <Picture 2>，面部与上身清晰实焦）。A发间右侧簪着小粉花，她右手正把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）举在自己左侧发髻旁比试，笑得眉眼弯弯，眼神亮晶晶地望着对面的B。背景是虚化的市集香囊小摊，阳光暖调。",
-            ),
-            (
-                "shot08_first.jpg",
-                "镜08首帧:市集灯笼光斑B特写",
-                ["char_B_half.jpg"],
-                "Keep the exact facial identity of the man in <Picture 1>. 写实古装剧电影级面部特写镜头。男主B（来自 <Picture 1>）站在市集摊位前，眼帘微垂后刚抬起眼望向对面的A，嘴角缓缓扬起温柔浅笑，眼神里带着满满的纵容与宠溺。背景是浅景深虚化的红色与橙色市集灯笼温暖光斑，肤质细腻真实。",
-            ),
-            (
-                "shot09_11_first.jpg",
-                "镜09/11首帧:白花发簪插妥在A左侧发间",
-                ["shot07_first.jpg", "char_A_closeup.jpg"],
-                "Based on <Picture 1> and keeping the exact face of <Picture 2>, keep the same over-the-shoulder composition with the blurred dark shoulder of the man on the left foreground. 写实古装剧越肩近景特写镜头，保持与 <Picture 1> 完全相同的机位、背景和前景左侧虚化的男主肩背。画面中的女主A已经把那支「白花发簪」（细簪杆顶端一朵白色五瓣小花）稳稳插进了自己左侧发间（同时她右侧发间原本的小粉花依然保留），双手已自然放下不再举着，她眼睛发亮、嘴角带着俏皮灵动的神情望着对面的B。",
-            ),
-            (
-                "shot10_first.jpg",
-                "镜10首帧:反打越肩男主B逆光含笑",
-                ["char_A_half.jpg", "char_B_half.jpg"],
-                "Keep the exact facial identity of the man in <Picture 2>. 写实古装剧反打越肩镜头（Reverse over-the-shoulder shot）。画面左侧前景是女主A（来自 <Picture 1>）虚化的古装发髻后脑（左侧隐约可见白花发簪轮廓）；镜头越过A的后脑清晰对准对面的男主B（来自 <Picture 2>）。B正专注地看着A，面带温柔认真又纵容的浅笑。温暖的阳光自B身后打来，在他脸庞和发丝边缘勾勒出暖融融的金色轮廓光，市集背景柔和虚化。",
-            ),
-        ]
-
+        # ==================== 阶段一 & 阶段二：MiniMax-H3-Image 生成所有定妆照 + 分镜首尾关键帧 ====================
         need_any_img = any(
-            not (resume and (DRAMA_WORK_DIR / fn).is_file() and (DRAMA_WORK_DIR / fn).stat().st_size > 8192)
-            for fn, _, _, _ in image_tasks
+            not (resume and (DRAMA_WORK_DIR / it["file"]).is_file() and (DRAMA_WORK_DIR / it["file"]).stat().st_size > 8192)
+            for it in img_tasks
         )
         if need_any_img:
             _drama_wait_for_engine(
@@ -8242,49 +9035,23 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
             )
 
         step_cursor = 1
-        for fn, lbl, refs, prm in image_tasks:
-            _drama_run_image_step(fn, lbl, prm, refs, img_res, resume, step_cursor, tot_steps)
+        for it in img_tasks:
+            _drama_run_image_step(
+                it["file"],
+                it.get("label") or it["file"],
+                it.get("prompt") or "",
+                it.get("refs") or [],
+                img_res,
+                resume,
+                step_cursor,
+                tot_steps,
+            )
             step_cursor += 1
 
-        # ==================== 阶段三-A：LongCat-Video-Avatar-1.6 + Ming-3.0 生成 4 个越肩特写对白镜头 ====================
-        avatar_tasks = [
-            (
-                "shot07_raw.mp4",
-                "镜07(1.7s):A举簪问「怎么样？」",
-                "shot07_first.jpg",
-                "怎么样？",
-                "ming:灵小柔",
-                "固定越肩镜头，机位完全静止，左侧前景男主肩背保持虚化。画面中的古装少女A把白花发簪举在左侧头边，笑得眉眼弯弯，眼神亮晶晶地望着对面的B自然开口问话，伴随语流有灵动的微眨眼与俏皮期盼的神情，口型与语音精准同步，阳光暖调。",
-            ),
-            (
-                "shot09_raw.mp4",
-                "镜09(1.7s):A插簪问「这发簪好看吗？」",
-                "shot09_11_first.jpg",
-                "这发簪好看吗？",
-                "ming:灵小柔",
-                "固定越肩镜头，机位完全静止，左侧前景男主肩背虚化。白花发簪稳稳插在女主A左侧发间，右侧小粉花保留。A眼睛发亮，兴奋又期待地望着对面的B开口追问，嘴角压不住甜美俏皮的笑意，伴随说话有自然的微挑眉和眨眼，口型精准同步。",
-            ),
-            (
-                "shot10_raw.mp4",
-                "镜10(1.6s):B含笑答「好看。」",
-                "shot10_first.jpg",
-                "好看。",
-                "ming:灵逍遥",
-                "固定反打越肩镜头，机位完全静止，左侧前景女主后脑虚化。阳光自男主B身后打来形成暖融融的轮廓光，B专注地看着对面的A，眼神温柔纵容，含笑认真地开口回答，伴随说话有轻微温和的点头与眼神交流，口型自然准确。",
-            ),
-            (
-                "shot11_raw.mp4",
-                "镜11(3.8s):A撇嘴「哼～问你什么都说好看...」",
-                "shot09_11_first.jpg",
-                "[Dissatisfaction-hnn] 问你什么都说好看，男人的嘴，骗人的鬼。",
-                "ming:灵小柔",
-                "固定越肩面部特写镜头，机位完全静止，左侧前景男主肩背虚化，女主A左侧发间插着白花发簪、右侧小粉花保留。A先是假装生气地板起脸、微微撇嘴佯装瞪了对面的B一眼，随即俏皮灵动地开口数落他，眼神灵动有戏，眉眼与头部伴随说话节奏有自然的微动作，说完自然收住，口型与牙齿清晰自然。",
-            ),
-        ]
-
+        # ==================== 阶段三-A：LongCat-Video-Avatar-1.6 + Ming-3.0 集中生成所有数字人对白镜头 ====================
         need_any_avatar = any(
-            not (resume and (DRAMA_WORK_DIR / fn).is_file() and (DRAMA_WORK_DIR / fn).stat().st_size > 20480)
-            for fn, _, _, _, _, _ in avatar_tasks
+            not (resume and (DRAMA_WORK_DIR / vt["file"]).is_file() and (DRAMA_WORK_DIR / vt["file"]).stat().st_size > 20480)
+            for vt in avatar_tasks
         )
         if need_any_avatar:
             _drama_wait_for_engine(
@@ -8295,66 +9062,25 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
                 label="🎭 LongCat-Video-Avatar-1.6 + Ming-3.0 (越肩对白驱动引擎)",
             )
 
-        for fn, lbl, ref_fn, tts_txt, tts_v, vis_prm in avatar_tasks:
-            _drama_run_avatar_step(fn, lbl, ref_fn, tts_txt, tts_v, vis_prm, vid_res, resume, step_cursor, tot_steps)
+        for vt in avatar_tasks:
+            _drama_run_avatar_step(
+                vt["file"],
+                vt.get("label") or vt["file"],
+                vt.get("first_img") or "",
+                vt.get("tts_text") or "",
+                vt.get("tts_voice") or "ming:灵小柔",
+                vt.get("prompt") or "",
+                vid_res,
+                resume,
+                step_cursor,
+                tot_steps,
+            )
             step_cursor += 1
 
-        # ==================== 阶段三-B：MiniMax-H3 (FL2VA) 生成 7 个动作与原生环境音镜头 ====================
-        fl2va_tasks = [
-            (
-                "shot01_raw.mp4",
-                "镜01(2.2s):溪边A歪头抿唇浅笑",
-                "shot01_first.jpg",
-                None,
-                "固定镜头，机位与焦距完全静止。林间溪边，左侧女主A（右侧发间带小粉花）头向自己右肩微微歪着朝向镜头，她先是双唇微张像刚要说话，随即抿起嘴唇露出俏皮甜美的浅笑，眼神灵动地望向镜头方向；发丝在微风与身后金色阳光轮廓光中轻轻拂动，右后方男主B虚化身影安静不动。纯自然环境音效：清脆的溪水潺潺流动声与林间清幽鸟鸣声，无背景音乐，无人物说话。",
-            ),
-            (
-                "shot02_raw.mp4",
-                "镜02(3.0s):小鱼跃水溅水花+转焦A",
-                "shot02_first.jpg",
-                "shot02_last.jpg",
-                "固定低角度贴近水面镜头，机位完全静止。起幅焦点落在前景溪面：一条小鱼自溪水中灵动跃起，在半空划出一道自然弧线后落回水中，溅起水花与一圈涟漪；随后镜头焦点平滑转移到后景蹲在溪边卵石滩上的女主A身上，她裙摆铺开，正笑得眉眼弯弯，手停在水面上方。纯自然环境音效：小鱼跃出水面的清脆扑通水花声与溪水流动声，无背景音乐。",
-            ),
-            (
-                "shot03_raw.mp4",
-                "镜03(3.7s):溪边全景A撩水泼洒笑出声",
-                "shot03_first.jpg",
-                None,
-                "固定全景镜头，机位完全静止，左右两缘有虚化绿叶前景。画面左中女主A在溪边开心地用双手撩起溪水向镜头方向泼洒出去，泼水的水花方向与手部动作一致，晶莹水花在阳光下飞溅发亮，泼完水她自己先眉眼弯弯地笑出声；画面右侧青苔大石上，男主B安稳坐着侧身看着A，神情温和，嘴角带一点宠溺笑意。溪水在前方缓缓流过。纯自然环境音效：双手撩水泼洒的水花声、少女清脆轻快的浅笑声、溪水流淌与林间鸟鸣声，无背景音乐。",
-            ),
-            (
-                "shot04_raw.mp4",
-                "镜04(2.1s):溪边男主B逆光温柔浅笑",
-                "shot04_first.jpg",
-                None,
-                "固定特写镜头，机位与焦距完全静止。林间溪边，男主B的面部特写，目光专注地望向画面左下方A的方向；他先是神情沉静平和，随即嘴角慢慢扬起，露出一抹温柔而克制的浅笑，眼神随之柔和下来；身后阳光勾勒出金色发丝轮廓光。纯自然环境音效：轻柔的溪水流动声与林间微风鸟鸣，无背景音乐，无对白。",
-            ),
-            (
-                "shot05_raw.mp4",
-                "镜05(2.6s):古代市集倒退跟拍A与B",
-                "shot05_first.jpg",
-                None,
-                "镜头在主体前方一边平稳后退一边拍摄（倒退跟拍机位），正对女主A的表情与步伐，A始终保持中景大小。白天的古代市集街道，A走在前面，笑容明朗俏皮，边走边开心地左右张望两旁虚化的摊位，脚步轻快；男主B跟在她身后两三步的距离，神情平静温和地跟着她前行。两旁商贩与路人全部虚化且不看镜头，远处有石拱桥，阳光斑驳。纯自然环境音效：热闹的古代市集人群低语交谈声、轻快的脚步声与摊位杂声，无背景音乐。",
-            ),
-            (
-                "shot06_raw.mp4",
-                "镜06(5.3s):香囊摊前拿簪比试招手「你快过来」",
-                "shot06_first.jpg",
-                "shot06_last.jpg",
-                "固定中近景镜头，机位完全静止。市集香囊小摊前，女主A（右侧发间有小粉花）先低头双手捧着那支白花发簪（细簪杆顶端一朵白色五瓣小花）轻轻翻看端详，随后抬手把白花发簪举到自己左侧头边比试；接着她转头望向画面左后方，笑着朝男主B招了招手，动作俏皮可爱，并开口用甜美中文说道：\"你快过来。\"；男主B应声自画面左后方走近，在后段进入虚化背景停在A对面。音效包含市集环境人群杂声与女主清晰的中文台词\"你快过来\"，无背景音乐。",
-            ),
-            (
-                "shot08_raw.mp4",
-                "镜08(2.3s):灯笼光斑B垂眼端详再抬眼笑",
-                "shot08_first.jpg",
-                None,
-                "固定特写镜头，机位与焦距完全静止。背景是虚化的红橙色市集灯笼光斑，男主B的面部特写：他先是微微垂下眼帘，像在认真端详对面A头侧比试的白花发簪，随即缓缓抬起眼看向A，嘴角扬起一抹温柔浅笑，眼神里带着满满的纵容。纯自然环境音效：轻柔的市集背景人群环境声，无背景音乐，无对白。",
-            ),
-        ]
-
+        # ==================== 阶段三-B：MiniMax-H3 (FL2VA) 集中生成所有动作与原生环境音镜头 ====================
         need_any_fl2va = any(
-            not (resume and (DRAMA_WORK_DIR / fn).is_file() and (DRAMA_WORK_DIR / fn).stat().st_size > 20480)
-            for fn, _, _, _, _ in fl2va_tasks
+            not (resume and (DRAMA_WORK_DIR / vt["file"]).is_file() and (DRAMA_WORK_DIR / vt["file"]).stat().st_size > 20480)
+            for vt in fl2va_tasks
         )
         if need_any_fl2va:
             _drama_wait_for_engine(
@@ -8365,17 +9091,27 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
                 label="🎬 MiniMax-H3 (58B · FL2VA 首尾帧有声视频引擎)",
             )
 
-        for fn, lbl, f_img, l_img, prm in fl2va_tasks:
-            _drama_run_fl2va_step(fn, lbl, f_img, l_img, prm, vid_res, resume, step_cursor, tot_steps)
+        for vt in fl2va_tasks:
+            _drama_run_fl2va_step(
+                vt["file"],
+                vt.get("label") or vt["file"],
+                vt.get("first_img") or "",
+                vt.get("last_img") or None,
+                vt.get("prompt") or "",
+                vid_res,
+                resume,
+                step_cursor,
+                tot_steps,
+            )
             step_cursor += 1
 
-        # ==================== 阶段四：FFmpeg 0.1s 精准卡点 + 市集环境底噪混音 + 30.0s 成片封装 ====================
+        # ==================== 阶段四：FFmpeg 0.1s 精准卡点 + 环境底噪混音 + 成片封装 ====================
         final_p = _drama_assemble_30s_movie(DRAMA_WORK_DIR, aspect=aspect, auto_2k=auto_2k)
         _DRAMA_STATE["active_file"] = ""
         _DRAMA_STATE["final_video"] = final_p.name
         _DRAMA_STATE["pct"] = 100
         _DRAMA_STATE["error"] = ""
-        _DRAMA_STATE["message"] = f"🎉 全自动拍摄与精剪完成！30.0 秒 11 镜古装短剧成片已保存至 ~/Movies/EasyColab/{final_p.name}"
+        _DRAMA_STATE["message"] = f"🎉 全自动工作流拍摄与精剪完成！完整短剧成片已保存至 ~/Movies/EasyColab/{final_p.name}"
     except Exception as e:
         _DRAMA_STATE["active_file"] = ""
         _DRAMA_STATE["error"] = str(e)
