@@ -7350,7 +7350,59 @@ p.wait()
         self.send_error(404)
 
 
+def _ensure_macos_launch_agent():
+    """在 macOS 上自动写入 LaunchAgent 配置，确保重启电脑后 18080 控制台与 30000 网关开机自启"""
+    if sys.platform != "darwin":
+        return
+    try:
+        plist_dir = Path.home() / "Library" / "LaunchAgents"
+        plist_path = plist_dir / "com.easycolab.panel.plist"
+        if plist_path.is_file():
+            return
+        plist_dir.mkdir(parents=True, exist_ok=True)
+        py_bin = str(Path(sys.executable).resolve())
+        panel_py = str(Path(__file__).resolve())
+        work_dir = str(Path(__file__).resolve().parent)
+        log_path = str(Path(__file__).resolve().parent / ".colab_panel_daemon.log")
+        plist_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.easycolab.panel</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{py_bin}</string>
+        <string>{panel_py}</string>
+        <string>--no-browser</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{work_dir}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{log_path}</string>
+    <key>StandardErrorPath</key>
+    <string>{log_path}</string>
+</dict>
+</plist>
+"""
+        plist_path.write_text(plist_xml, encoding="utf-8")
+    except Exception:
+        pass
+
+
 def main():
+    _ensure_macos_launch_agent()
     # 确保 127.0.0.1:30000 本地固定转发网关已启动
     from deploy_colab_model import ensure_local_proxy_running
     ensure_local_proxy_running(30000)
