@@ -2230,11 +2230,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 第 3 步 (仅一行极简操作栏)：一句话补充要求(选填) + 画幅(默认自动跟随原图比例) + 🪄 一键开始合成 + 停止 + 锁入短剧角色 -->
+    <!-- 第 3 步 (仅一行极简操作栏)：一句话补充要求(选填) + 发型选择(默认保留右侧时尚发型) + 画幅(默认自动跟随原图比例) + 🪄 一键开始合成 + 停止 + 锁入短剧角色 -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <input type="text" id="fusionPropsActionInput" placeholder="💬 补充要求 (选填，不填即自动合成；也可写如：保留白吊带与高腰牛仔裤坐姿、拿威士忌杯...)" style="flex:1;min-width:230px;padding:8px 12px;font-size:12.5px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+      <input type="text" id="fusionPropsActionInput" placeholder="💬 补充要求 (选填，不填即自动合成；也可写如：保留白吊带与高腰牛仔裤坐姿、拿威士忌杯...)" style="flex:1;min-width:210px;padding:8px 12px;font-size:12.5px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+      <select id="fusionHairModeSelect" style="padding:8px 10px;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid #ec4899;background:#0f172a;color:#fbcfe8;" title="选择合成后使用哪张图的发型">
+        <option value="keep_target_hair" selected>👑 用右侧目标图的发型 (只换脸·推荐)</option>
+        <option value="keep_face_hair">💇 用左侧人脸照的发型 (连头发一起换)</option>
+      </select>
       <select id="fusionResSelect" style="padding:8px 10px;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid #c084fc;background:#0f172a;color:#f8fafc;">
-        <option value="auto" selected>📐 自动匹配参考图比例 (横/竖自适应·推荐)</option>
+        <option value="auto" selected>📐 自动匹配参考图比例 (推荐)</option>
         <option value="1152x2048">📱 9:16 竖屏写真 (1152×2048)</option>
         <option value="2048x1152">📺 16:9 横屏剧集 (2048×1152)</option>
         <option value="3552x4736">🖼️ 3:4 4K超清竖版 (3552×4736)</option>
@@ -2317,13 +2321,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <option value="clear_35mm_scene">🏞️ 35mm场景清晰融入</option>
             <option value="dramatic_noir">🕯️ 港风暗调高反差光影</option>
             <option value="soft_natural">☀️ 柔和均匀自然光</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:10.5px;color:#cbd5e1;display:block;margin-bottom:3px;">💇 发型保留策略</label>
-          <select id="fusionHairModeSelect" style="width:100%;padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-            <option value="keep_face_hair" selected>💇 使用【人脸照】的发型</option>
-            <option value="keep_target_hair">👑 保留【被换脸原图】的发型/头饰</option>
           </select>
         </div>
         <div>
@@ -5282,7 +5279,7 @@ function switchFusionSubMode(subMode) {
     if (s3Main) s3Main.innerText = '点击上传【场景环境照片】';
     if (framingSel) framingSel.value = 'keep_target_frame';
     if (lightSel) lightSel.value = 'clear_35mm_scene';
-    if (hairSel) hairSel.value = 'keep_face_hair';
+    if (hairSel) hairSel.value = 'keep_target_hair';
   } else {
     if (grid) grid.style.gridTemplateColumns = '1fr 1.65fr';
     if (s3Card) s3Card.style.display = 'none';
@@ -5290,7 +5287,7 @@ function switchFusionSubMode(subMode) {
     if (s2Title) s2Title.innerText = '👗 第二步：上传服装/穿搭参考图 (支持多张)';
     if (framingSel) framingSel.value = 'keep_target_frame';
     if (lightSel) lightSel.value = 'keep_target_light';
-    if (hairSel) hairSel.value = 'keep_face_hair';
+    if (hairSel) hairSel.value = 'keep_target_hair';
   }
   renderFusionTargetCards();
 }
@@ -5366,7 +5363,7 @@ function buildFusionRefsAndPrompt(targetListForJob) {
   const bodyVal = ((document.getElementById('fusionBodySelect') || {}).value || 'standard');
   const frameVal = ((document.getElementById('fusionFramingSelect') || {}).value || 'keep_target_frame');
   const lightVal = ((document.getElementById('fusionLightingSelect') || {}).value || 'keep_target_light');
-  const hairVal = ((document.getElementById('fusionHairModeSelect') || {}).value || 'keep_face_hair');
+  const hairVal = ((document.getElementById('fusionHairModeSelect') || {}).value || 'keep_target_hair');
   const accVal = ((document.getElementById('fusionAccessorySelect') || {}).value || 'auto_face');
   const extraTxt = (((document.getElementById('fusionPropsActionInput') || {}).value) || '').trim();
 
@@ -5440,10 +5437,11 @@ function buildFusionRefsAndPrompt(targetListForJob) {
     if (hairVal === 'keep_target_hair') {
       const prompt = (
         "Edit <Picture 1>. The person sitting or standing in <Picture 1> is <Subject 1>. " +
-        "The face (exact slim V-shaped/oval face contour, narrow jawline, chin proportion, cheekbones, eyes, nose, mouth, and natural expression) of the person in <Picture 2> is <Subject 2>. " +
-        "Replace the face and facial contour of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. " +
-        "Keep <Subject 2>'s exact slim face shape, narrow jawline contour, facial features, and natural expression from <Picture 2> 100% unchanged (do not inherit the wider face shape or jaw width from <Picture 1>), " +
-        "while 100% preserving the exact body posture, arm and hand gesture, leg position, hairstyle, headwear, complete clothing outfit (both upper top and lower pants/jeans/skirt), camera framing, and clean studio/background environment from <Picture 1>. " +
+        "The facial identity, slim oval face contour, narrow chin, facial bone structure, eyebrows, eyes, nose, lips, and natural smile/expression of the person in <Picture 2> is <Subject 2>. " +
+        "Replace ONLY the internal facial features and slim oval face contour of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, " +
+        "while 100% PRESERVING the exact hairstyle, hair volume, hair length, and headwear from <Picture 1>! " +
+        "Do NOT use the tied-back or original hair from <Picture 2>; keep the exact hairstyle, seated/standing body pose, raised arm and hand gesture, leg position, complete clothing outfit (both upper garment and lower pants/jeans/skirt), camera framing, and clean studio/background environment from <Picture 1>, " +
+        "combined seamlessly with <Subject 2>'s exact facial features, slim jawline, and natural expression from <Picture 2>. " +
         styleTail
       );
       return {refs, prompt};
