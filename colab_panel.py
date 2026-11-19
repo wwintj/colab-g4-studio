@@ -8564,6 +8564,18 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
     }
     body = json.dumps(job_payload).encode("utf-8")
 
+    # 记录提交前的旧文件名，防止极速轮询在云端线程刚启动前误读上一张图的 latest_video
+    prev_latest = ""
+    try:
+        st_req0 = urllib.request.Request("http://127.0.0.1:30000/v1/video/status", headers=headers, method="GET")
+        with urllib.request.urlopen(st_req0, timeout=8) as sr0:
+            sd0 = json.loads(sr0.read().decode("utf-8"))
+            v0 = sd0.get("completed_videos") or ([sd0["latest_video"]] if sd0.get("latest_video") else [])
+            if v0:
+                prev_latest = os.path.basename(str(v0[-1]))
+    except Exception:
+        pass
+
     # 若云端上一任务尚未彻底收尾，最多等待 30 秒
     for _ in range(20):
         _drama_check_cancel()
@@ -8576,9 +8588,10 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
             break
         time.sleep(2)
 
-    time.sleep(1.2)
+    time.sleep(1.5)
     remote_fname = ""
-    for _ in range(600):
+    saw_running_or_new = False
+    for poll_i in range(600):
         _drama_check_cancel()
         time.sleep(1.5)
         try:
@@ -8593,6 +8606,7 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
 
         msg = str(sd.get("message") or "")
         if sd.get("running"):
+            saw_running_or_new = True
             if msg:
                 _DRAMA_STATE["message"] = f"🎬 [{step_label}] {msg}"
                 _append_panel_log(f"[自动导演] {step_label}: {msg}")
@@ -8600,18 +8614,31 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
 
         vids = sd.get("completed_videos") or ([sd["latest_video"]] if sd.get("latest_video") else []) or (sd.get("history") or [])[:1]
         if vids:
-            remote_fname = os.path.basename(str(vids[-1]))
-            break
+            cand_fname = os.path.basename(str(vids[-1]))
+            if cand_fname != prev_latest or saw_running_or_new or poll_i >= 4:
+                remote_fname = cand_fname
+                break
 
     if not remote_fname:
         raise RuntimeError(f"{step_label} 未获取到生成文件名")
 
     _DRAMA_STATE["message"] = f"⬇️ [{step_label}] 正在 16 线程极速回传 {remote_fname}..."
     local_dl = LOCAL_MOVIES_DIR / remote_fname
+    # 若前端 pollVideoStatus 正在并发回传同一个文件 (_VIDEO_DL_LOCK 被占用)，耐心等待其落盘或自动重试
+    for _ in range(30):
+        _drama_check_cancel()
+        if local_dl.is_file() and local_dl.stat().st_size > 4096:
+            break
+        if _VIDEO_DL_STATE.get("active"):
+            time.sleep(1.0)
+            continue
+        _download_remote_video_to_local(remote_fname, 0.0)
+        if local_dl.is_file() and local_dl.stat().st_size > 4096:
+            break
+        time.sleep(1.2)
+
     if not (local_dl.is_file() and local_dl.stat().st_size > 4096):
-        ok = _download_remote_video_to_local(remote_fname, 0.0)
-        if not ok or not local_dl.is_file():
-            raise RuntimeError(f"{step_label} 回传文件 {remote_fname} 失败")
+        raise RuntimeError(f"{step_label} 回传文件 {remote_fname} 失败")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(local_dl, out_path)
