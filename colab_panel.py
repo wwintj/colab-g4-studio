@@ -2084,18 +2084,75 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
 <!-- 单独一行：EasyColab 宽屏全高布局 · MiniMax-H3 (33B · 原生BF16 · 无审查) 多模态有声视频创作工作台 -->
 <div class="card" id="minimaxVideoBox" style="margin-bottom:16px;border:1px solid rgba(59,130,246,0.35);background:linear-gradient(180deg, rgba(30,41,59,0.98) 0%, rgba(15,23,42,0.98) 100%);">
-  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <span id="videoStudioTitle" style="font-size:16px;font-weight:800;color:#f8fafc;">🎬 MiniMax-H3 & LongCat-Avatar 多模态有声视频创作工作台</span>
-      <span id="videoStudioBadge" style="font-size:11.5px;background:rgba(16,185,129,0.16);color:#34d399;padding:3px 10px;border-radius:999px;font-weight:600;">32kHz 原生立体声音轨 + 破限 32B 视觉编码器</span>
+  <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span id="videoStudioTitle" style="font-size:16.5px;font-weight:900;color:#f8fafc;">🎬 MiniMax-H3 & LongCat-Avatar 全流程影视与视觉创作中心</span>
+        <span id="videoStudioBadge" style="font-size:11.5px;background:rgba(16,185,129,0.16);color:#34d399;padding:3px 10px;border-radius:999px;font-weight:700;">①生图定妆 ➔ ②换脸换装融景 ➔ ③④⑤单镜视频 ➔ ⑥全剧自动导演</span>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <button type="button" id="tabBtnT2va" class="btn-primary" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('t2va')">✨ 文生音视频 (T2VA)</button>
-      <button type="button" id="tabBtnFl2va" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fl2va')">🖼️ 首尾帧生音视频 (FL2VA)</button>
-      <button type="button" id="tabBtnImage" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('image')">📸 4K无审查写真 / 免Mask换装 (H3-Image)</button>
-      <button type="button" id="tabBtnAvatar" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('avatar')">🎭 数字人音频驱动 (LongCat-Avatar)</button>
-      <button type="button" id="tabBtnAutoDrama" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('drama')">🎬 短剧分镜全自动导演台</button>
-      <button type="button" id="tabBtnFusion" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fusion')">🪄 智能换脸 · 换装 · 场景融合</button>
+
+    <!-- 6 大功能按创作流水线序列一字排开 (6列等宽醒目导航卡：01生图 -> 02换脸换装融景 -> 03文生视频 -> 04首尾帧视频 -> 05数字人说话 -> 06全自动短剧导演) -->
+    <div style="display:grid;grid-template-columns:repeat(6, minmax(0, 1fr));gap:8px;width:100%;">
+      <!-- 01: 4K写真生图 -->
+      <button type="button" id="tabBtnImage" onclick="switchMiniMaxMode('image')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(244,114,182,0.22);color:#f472b6;">01 · 图像创作</span>
+          <span style="font-size:14px;">📸</span>
+        </div>
+        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">4K 写真生图</div>
+        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">H3-Image · 文本直出大图</div>
+      </button>
+
+      <!-- 02: 智能换脸·换装·场景融合 -->
+      <button type="button" id="tabBtnFusion" onclick="switchMiniMaxMode('fusion')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(192,132,252,0.22);color:#c084fc;">02 · 角色合成</span>
+          <span style="font-size:14px;">🪄</span>
+        </div>
+        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">换脸·换装·融景</div>
+        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">人脸+服装+实景三合一</div>
+      </button>
+
+      <!-- 03: 文生音视频 (T2VA) -->
+      <button type="button" id="tabBtnT2va" onclick="switchMiniMaxMode('t2va')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #3b82f6;background:linear-gradient(135deg,rgba(37,99,235,0.35),rgba(15,23,42,0.95));box-shadow:0 6px 16px -4px rgba(59,130,246,0.45);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(59,130,246,0.28);color:#93c5fd;">03 · 纯文生视频</span>
+          <span style="font-size:14px;">✨</span>
+        </div>
+        <div style="font-size:13px;font-weight:800;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">文生有声视频</div>
+        <div style="font-size:10.5px;color:#bfdbfe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">T2VA · 提示词直出音视频</div>
+      </button>
+
+      <!-- 04: 首尾帧生音视频 (FL2VA) -->
+      <button type="button" id="tabBtnFl2va" onclick="switchMiniMaxMode('fl2va')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(56,189,248,0.22);color:#38bdf8;">04 · 图生视频</span>
+          <span style="font-size:14px;">🖼️</span>
+        </div>
+        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">首尾帧有声视频</div>
+        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FL2VA · 首尾图精准运镜</div>
+      </button>
+
+      <!-- 05: 数字人音频驱动 (LongCat-Avatar) -->
+      <button type="button" id="tabBtnAvatar" onclick="switchMiniMaxMode('avatar')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.22);color:#34d399;">05 · 口型配音</span>
+          <span style="font-size:14px;">🎭</span>
+        </div>
+        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">数字人配音说话</div>
+        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">LongCat + Ming3.0 驱动</div>
+      </button>
+
+      <!-- 06: 短剧分镜全自动导演台 -->
+      <button type="button" id="tabBtnAutoDrama" onclick="switchMiniMaxMode('drama')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.24);color:#fbbf24;">06 · 全剧集总控</span>
+          <span style="font-size:14px;">🎬</span>
+        </div>
+        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">短剧全自动导演</div>
+        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">多角色锁脸+全剧自动合片</div>
+      </button>
     </div>
   </div>
 
@@ -4771,18 +4828,22 @@ function switchMiniMaxMode(mode) {
   if (fusionRow) fusionRow.style.display = isFusion ? 'block' : 'none';
   if (promptCard) promptCard.style.display = (isDrama || isFusion) ? 'none' : 'block';
   if (specCard) specCard.style.display = (isDrama || isFusion) ? 'none' : 'block';
-  const bT2 = document.getElementById('tabBtnT2va');
-  const bFl = document.getElementById('tabBtnFl2va');
-  const bImg = document.getElementById('tabBtnImage');
-  const bAv = document.getElementById('tabBtnAvatar');
-  const bDrama = document.getElementById('tabBtnAutoDrama');
-  const bFusion = document.getElementById('tabBtnFusion');
-  if (bT2) bT2.className = (!isFl && !isAv && !isImg && !isDrama && !isFusion) ? 'btn-primary' : 'btn-outline';
-  if (bFl) bFl.className = isFl ? 'btn-primary' : 'btn-outline';
-  if (bImg) bImg.className = isImg ? 'btn-primary' : 'btn-outline';
-  if (bAv) bAv.className = isAv ? 'btn-primary' : 'btn-outline';
-  if (bDrama) bDrama.className = isDrama ? 'btn-primary' : 'btn-outline';
-  if (bFusion) bFusion.className = isFusion ? 'btn-primary' : 'btn-outline';
+  const tabConfigs = [
+    {id: 'tabBtnImage', active: isImg, border: '#ec4899', bg: 'linear-gradient(135deg,rgba(236,72,153,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(236,72,153,0.45)'},
+    {id: 'tabBtnFusion', active: isFusion, border: '#c084fc', bg: 'linear-gradient(135deg,rgba(168,85,247,0.38),rgba(15,23,42,0.95))', shadow: 'rgba(168,85,247,0.48)'},
+    {id: 'tabBtnT2va', active: (!isFl && !isAv && !isImg && !isDrama && !isFusion), border: '#3b82f6', bg: 'linear-gradient(135deg,rgba(37,99,235,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(59,130,246,0.45)'},
+    {id: 'tabBtnFl2va', active: isFl, border: '#38bdf8', bg: 'linear-gradient(135deg,rgba(14,165,233,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(56,189,248,0.45)'},
+    {id: 'tabBtnAvatar', active: isAv, border: '#10b981', bg: 'linear-gradient(135deg,rgba(16,185,129,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(16,185,129,0.45)'},
+    {id: 'tabBtnAutoDrama', active: isDrama, border: '#f59e0b', bg: 'linear-gradient(135deg,rgba(245,158,11,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(245,158,11,0.48)'},
+  ];
+  tabConfigs.forEach(tc => {
+    const el = document.getElementById(tc.id);
+    if (!el) return;
+    el.style.borderColor = tc.active ? tc.border : '#334155';
+    el.style.background = tc.active ? tc.bg : 'rgba(15,23,42,0.75)';
+    el.style.boxShadow = tc.active ? `0 8px 20px -4px ${tc.shadow}` : 'none';
+    el.style.transform = tc.active ? 'translateY(-1px)' : 'none';
+  });
   const titleEl = document.getElementById('videoStudioTitle');
   const badgeEl = document.getElementById('videoStudioBadge');
   if (isDrama) {
