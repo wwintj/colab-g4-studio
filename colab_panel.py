@@ -2094,12 +2094,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button type="button" id="tabBtnFl2va" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fl2va')">🖼️ 首尾帧生音视频 (FL2VA)</button>
       <button type="button" id="tabBtnImage" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('image')">📸 4K无审查写真 / 免Mask换装 (H3-Image)</button>
       <button type="button" id="tabBtnAvatar" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('avatar')">🎭 数字人音频驱动 (LongCat-Avatar)</button>
-      <button type="button" id="tabBtnAutoDrama" class="btn-outline" style="padding:5px 14px;font-size:12.5px;border-color:#f59e0b;background:rgba(245,158,11,0.16);color:#fcd34d;font-weight:700;" onclick="toggleAutoDramaDirector()">🎬 11镜30秒短剧全自动导演台</button>
+      <button type="button" id="tabBtnAutoDrama" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('drama')">🎬 11镜30秒短剧全自动导演台</button>
     </div>
   </div>
 
-  <!-- 11镜30秒古装短剧全自动导演流水线面板 -->
-  <div id="autoDramaDirectorRow" style="display:block;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.92) 100%);border:1.5px solid #f59e0b;border-radius:12px;">
+  <!-- 11镜30秒古装短剧全自动导演流水线面板 (仅在选中第 5 个标签 drama 时显示) -->
+  <div id="autoDramaDirectorRow" style="display:none;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.92) 100%);border:1.5px solid #f59e0b;border-radius:12px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span id="dramaTitleHeader" style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 通用分镜短剧全自动工作流引擎 · 《溪边与市集白花簪》(11 镜 · 30.0 秒)</span>
@@ -2119,7 +2119,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <input type="checkbox" id="chkDramaAuto2K" style="accent-color:#8b5cf6;">
           <span>✨ 成片后自动 ReCaVSR 2K 超分</span>
         </label>
-        <button type="button" onclick="toggleAutoDramaDirector()" style="padding:3px 8px;font-size:11px;border-radius:5px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">收起 ▲</button>
       </div>
     </div>
 
@@ -2504,7 +2503,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- ==================== 第 2 行 (紧凑两排横条布局)：🎛️ 规格与采样参数 + 开始生成按钮 ==================== -->
-  <div style="padding:12px 16px;margin-bottom:14px;background:#0f172a;border:1px solid var(--border);border-radius:14px;">
+  <div id="specSectionCard" style="padding:12px 16px;margin-bottom:14px;background:#0f172a;border:1px solid var(--border);border-radius:14px;">
     <!-- 顶部紧凑标题栏 + 实时状态文字同行显示 -->
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(51,65,85,0.6);">
       <div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:800;color:#f8fafc;">
@@ -3849,12 +3848,14 @@ function selectDriveFolder(folderName, firstFile) {
       if (chk) chk.style.display = active ? 'inline' : 'none';
     });
   }
-  if (folderName.startsWith('LongCat-Video-Avatar')) {
-    switchMiniMaxMode('avatar');
-  } else if (folderName === 'MiniMax-H3-Image') {
-    switchMiniMaxMode('image');
-  } else if (folderName.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image')) {
-    switchMiniMaxMode('t2va');
+  if (currentMiniMaxMode !== 'drama') {
+    if (folderName.startsWith('LongCat-Video-Avatar')) {
+      switchMiniMaxMode('avatar');
+    } else if (folderName === 'MiniMax-H3-Image') {
+      switchMiniMaxMode('image');
+    } else if (folderName.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image')) {
+      switchMiniMaxMode('t2va');
+    }
   }
   syncDriveFolderHighlight(folderName);
 }
@@ -4526,25 +4527,40 @@ const H3_IMAGE_RES_OPTIONS_HTML = `
 function switchMiniMaxMode(mode) {
   const prevMode = currentMiniMaxMode;
   currentMiniMaxMode = mode;
+  const isT2 = mode === 't2va';
   const isFl = mode === 'fl2va';
   const isAv = mode === 'avatar';
   const isImg = mode === 'image';
+  const isDrama = mode === 'drama';
   const flRow = document.getElementById('fl2vaImageRow');
   const avRow = document.getElementById('avatarControlRow');
   const imgRow = document.getElementById('h3ImageControlRow');
+  const dramaRow = document.getElementById('autoDramaDirectorRow');
+  const promptCard = document.getElementById('promptSectionCard');
+  const specCard = document.getElementById('specSectionCard');
   if (flRow) flRow.style.display = isFl ? 'grid' : 'none';
   if (avRow) avRow.style.display = isAv ? 'grid' : 'none';
   if (imgRow) imgRow.style.display = isImg ? 'grid' : 'none';
+  if (dramaRow) dramaRow.style.display = isDrama ? 'block' : 'none';
+  if (promptCard) promptCard.style.display = isDrama ? 'none' : 'block';
+  if (specCard) specCard.style.display = isDrama ? 'none' : 'block';
   const bT2 = document.getElementById('tabBtnT2va');
   const bFl = document.getElementById('tabBtnFl2va');
   const bImg = document.getElementById('tabBtnImage');
   const bAv = document.getElementById('tabBtnAvatar');
-  if (bT2) bT2.className = (!isFl && !isAv && !isImg) ? 'btn-primary' : 'btn-outline';
+  const bDrama = document.getElementById('tabBtnAutoDrama');
+  if (bT2) bT2.className = (!isFl && !isAv && !isImg && !isDrama) ? 'btn-primary' : 'btn-outline';
   if (bFl) bFl.className = isFl ? 'btn-primary' : 'btn-outline';
   if (bImg) bImg.className = isImg ? 'btn-primary' : 'btn-outline';
   if (bAv) bAv.className = isAv ? 'btn-primary' : 'btn-outline';
+  if (bDrama) bDrama.className = isDrama ? 'btn-primary' : 'btn-outline';
   const titleEl = document.getElementById('videoStudioTitle');
   const badgeEl = document.getElementById('videoStudioBadge');
+  if (isDrama) {
+    if (titleEl) titleEl.innerText = '🎬 通用分镜短剧全自动工作流导演台 (H3-Image 锁脸 + LongCat-Avatar 对白 + H3-FL2VA 动作)';
+    if (badgeEl) badgeEl.innerText = '任意剧本智能拆解 + 可视化分镜节点编辑 + 单步独立重抽 + 0.1秒卡点混音合片';
+    return;
+  }
   const pEl = document.getElementById('videoPrompt');
   const pSecTitle = document.getElementById('promptSectionTitle');
   const fourBtns = document.getElementById('fourBoxActionBtns');
@@ -6044,9 +6060,7 @@ let currentDramaWorkflow = null;
 let currentDramaWfTab = 'img';
 
 function toggleAutoDramaDirector() {
-  const row = document.getElementById('autoDramaDirectorRow');
-  if (!row) return;
-  row.style.display = (row.style.display === 'none') ? 'block' : 'none';
+  switchMiniMaxMode('drama');
 }
 
 async function toggleDramaWorkflowEditor() {
@@ -6472,6 +6486,10 @@ async function pollAutoDramaStatus() {
     const pct = Math.max(0, Math.min(100, parseInt(d.pct || 0, 10)));
     if (pBar) pBar.style.width = `${pct}%`;
     if (d.running) {
+      if (!window._dramaRunningSwitched && currentMiniMaxMode !== 'drama') {
+        window._dramaRunningSwitched = true;
+        switchMiniMaxMode('drama');
+      }
       if (btnStart) {
         btnStart.disabled = true;
         btnStart.innerText = `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26} 步 · ${pct}%)...`;
