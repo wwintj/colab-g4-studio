@@ -2727,10 +2727,18 @@ def _run_avatar_job(payload: dict):
         m_split = re.match(r"^(?:([\s\S]*?)\n+)?\s*(?:台词如下|说话内容如下|对白如下|台词内容|开口说话|说话内容|台词|对白)\s*[:：]\s*([\s\S]+)$", visual_prompt)
         if m_split and m_split.group(2) and m_split.group(2).strip():
             visual_prompt = (m_split.group(1) or "").strip() or (
-                "固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、轻轻点头和呼吸起伏，嘴型与语音高度同步，面部柔和暖光，五官清晰稳定，过渡丝滑真实。"
+                "固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、挑眉、轻轻点头和呼吸起伏，嘴型与语音高度同步，牙齿与唇形清晰自然，面部柔和暖光，五官清晰稳定，过渡丝滑真实。"
             )
             if not tts_text:
                 tts_text = m_split.group(2).strip()
+
+        # 若用户直接复用 4K 写真静态生图提示词 (不含任何说话/微表情描述)，自动注入自然语流神态与眼神联动引导词
+        if not any(k in visual_prompt.lower() for k in ("说话", "开口", "播报", "speaking", "talking", "眨眼", "blink", "嘴型", "口型")):
+            visual_prompt = (
+                visual_prompt.rstrip("。.,， ")
+                + "。画面中的人物直视镜头自然生动地开口说话，眼神灵动有神，伴随说话语流节奏有自然的微眨眼、挑眉与轻微头部摆动，口型与语音精准同步，牙齿与唇形自然清晰 "
+                "(speaking naturally and expressively toward the camera, natural eye contact, subtle blinks, expressive eyebrow and head movement matching speech cadence)。"
+            )
 
         tts_note = ""
         if audio_b64:
@@ -2841,6 +2849,7 @@ def _run_avatar_job(payload: dict):
             audio_guidance_scale = 1.0
             height, width = (768, 1280) if resolution == "720p" else (480, 832)
             negative_prompt = (
+                "static frozen face, stiff mouth, distorted teeth, weird teeth, warped face, unnatural lip sync, asymmetrical eyes, "
                 "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, "
                 "overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, "
                 "poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, "
@@ -2853,7 +2862,7 @@ def _run_avatar_job(payload: dict):
             if is_clean_tts_audio:
                 JOB_STATE.update({
                     "pct": 6,
-                    "message": f"🎭 [LongCat-Avatar-1.6] 正在直接提取无损 TTS 气口与 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
+                    "message": f"🎭 [LongCat-Avatar-1.6] 正在直接提取无损 TTS 气口并执行 -23 LUFS 响度对齐 ({stage_1.upper()} · {num_segments}段){tts_note}...",
                 })
                 try:
                     import librosa
@@ -2863,11 +2872,36 @@ def _run_avatar_job(payload: dict):
             else:
                 JOB_STATE.update({
                     "pct": 6,
-                    "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并提取 Whisper-v3 唇形特征 ({stage_1.upper()} · {num_segments}段){tts_note}...",
+                    "message": f"🎭 [LongCat-Avatar-1.6] 正在使用 Kim_Vocal_2 分离人声并执行 -23 LUFS 响度对齐 ({stage_1.upper()} · {num_segments}段){tts_note}...",
                 })
                 speech_array, sr = separate_vocals(vocal_separator, audio_path, duration=audio_process_duration)
             if speech_array.size == 0:
                 raise RuntimeError("未能从音频中检测到有效人声 (No vocal detected)")
+
+            # 在填充静音尾巴前，对有效语音段执行 -23.0 LUFS 标准响度对齐 (防止音量过小张不开嘴或音量过大嘴型崩裂)
+            try:
+                speech_f32 = speech_array.astype(np.float32)
+                norm_done = False
+                if len(speech_f32) >= int(sr * 0.45):
+                    try:
+                        import pyloudnorm as pyln
+                        meter = pyln.Meter(sr)
+                        lufs = float(meter.integrated_loudness(speech_f32))
+                        if not math.isnan(lufs) and not math.isinf(lufs) and abs(lufs) < 90.0:
+                            speech_f32 = pyln.normalize.loudness(speech_f32, lufs, -23.0).astype(np.float32)
+                            norm_done = True
+                    except Exception:
+                        pass
+                if not norm_done:
+                    rms = float(np.sqrt(np.mean(np.square(speech_f32)) + 1e-12))
+                    if rms > 1e-4:
+                        speech_f32 = speech_f32 * (0.071 / rms)
+                peak = float(np.max(np.abs(speech_f32))) if speech_f32.size > 0 else 0.0
+                if peak > 0.98:
+                    speech_f32 = speech_f32 * (0.98 / peak)
+                speech_array = speech_f32
+            except Exception:
+                pass
 
             source_duration = len(speech_array) / sr
             added_sample_nums = math.ceil((audio_process_duration - source_duration) * sr)
@@ -2946,6 +2980,12 @@ def _run_avatar_job(payload: dict):
                 del output
 
                 h_out, w_out = video_array.shape[1], video_array.shape[2]
+                # 记录首段基准帧的色彩均值与标准差，用于后续多段续写时跨段锁色 (彻底防止长视频多段变暗或色温漂移)
+                _ref_frame_f32 = video_array[0].astype(np.float32)
+                _ref_color_mean = _ref_frame_f32.mean(axis=(0, 1), keepdims=True)
+                _ref_color_std = _ref_frame_f32.std(axis=(0, 1), keepdims=True) + 1e-5
+                del _ref_frame_f32
+
                 current_video = [PIL.Image.fromarray(img) for img in video_array[-num_cond_frames:]]
                 ref_latent = latent[:, :, :1].clone()
                 total_output_frames = len(video_array) + max(0, num_segments - 1) * (num_frames - num_cond_frames)
@@ -2972,7 +3012,7 @@ def _run_avatar_job(payload: dict):
                         "step": glob_done,
                         "total_steps": glob_tot,
                         "pct": seg_base_pct,
-                        "message": f"🎬 [LongCat-Avatar-1.6] 正在生成第 {segment_idx + 1}/{num_segments} 段 (KV Cache 加速已启用) · 总计 {glob_done}/{glob_tot} 步 (总进度 {seg_base_pct}%)",
+                        "message": f"🎬 [LongCat-Avatar-1.6] 正在生成第 {segment_idx + 1}/{num_segments} 段 (KV Cache + 滑窗锁色已启用) · 总计 {glob_done}/{glob_tot} 步 (总进度 {seg_base_pct}%)",
                     })
 
                     output, latent = pipe.generate_avc(
@@ -2991,16 +3031,42 @@ def _run_avatar_job(payload: dict):
                         output_type="both",
                         use_kv_cache=True,
                         offload_kv_cache=False,
-                        enhance_hf=False,
+                        enhance_hf=True,
                         audio_emb=audio_emb,
                         ref_latent=ref_latent,
                         ref_img_index=10,
-                        mask_frame_range=0,
+                        mask_frame_range=3,
                         use_distill=True,
                     )
                     output = output[0]
                     new_video_array = (output * 255).astype(np.uint8)
                     del output
+
+                    # 1. 跨段色彩与亮度锁定 (对齐首段基准帧均值/方差，防止多段累积变暗或偏色)
+                    try:
+                        seg_f32 = new_video_array.astype(np.float32)
+                        cur_mean = seg_f32.mean(axis=(0, 1, 2), keepdims=True)
+                        cur_std = seg_f32.std(axis=(0, 1, 2), keepdims=True) + 1e-5
+                        matched_f32 = (seg_f32 - cur_mean) * (_ref_color_std[None, ...] / cur_std) + _ref_color_mean[None, ...]
+                        seg_f32 = seg_f32 * 0.15 + matched_f32 * 0.85
+                        new_video_array = np.clip(seg_f32, 0, 255).astype(np.uint8)
+                        del seg_f32, matched_f32
+                    except Exception:
+                        pass
+
+                    # 2. 滑窗交界处 6 帧线性交叉淡入淡出，消除段间微跳帧
+                    blend_k = min(6, num_cond_frames, generated_frame_count)
+                    if blend_k > 0:
+                        for b_i in range(blend_k):
+                            alpha = float(b_i + 1) / float(blend_k + 1)
+                            prev_idx = generated_frame_count - blend_k + b_i
+                            cond_idx = num_cond_frames - blend_k + b_i
+                            all_generated_frames[prev_idx] = np.clip(
+                                all_generated_frames[prev_idx].astype(np.float32) * (1.0 - alpha)
+                                + new_video_array[cond_idx].astype(np.float32) * alpha,
+                                0,
+                                255,
+                            ).astype(np.uint8)
 
                     appended_frames = new_video_array[num_cond_frames:]
                     next_frame_count = generated_frame_count + len(appended_frames)
