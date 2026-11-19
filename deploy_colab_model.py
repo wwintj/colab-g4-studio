@@ -3144,7 +3144,7 @@ def _run_avatar_job(payload: dict):
                         output_type="both",
                         use_kv_cache=True,
                         offload_kv_cache=False,
-                        enhance_hf=True,
+                        enhance_hf=False,
                         audio_emb=audio_emb,
                         ref_latent=ref_latent,
                         ref_img_index=10,
