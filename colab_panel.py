@@ -2102,12 +2102,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <div id="autoDramaDirectorRow" style="display:none;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.92) 100%);border:1.5px solid #f59e0b;border-radius:12px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="dramaTitleHeader" style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 通用分镜短剧全自动工作流引擎 · 《溪边与市集白花簪》(11 镜 · 30.0 秒)</span>
+        <span id="dramaTitleHeader" style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 通用分镜短剧全自动工作流引擎</span>
         <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">支持外部 AI 生成任意时长剧本直接粘贴 · 单镜独立重抽 · 0.1秒卡点合片</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button type="button" id="btnCopyExtAiTop" onclick="copyExternalAiScriptPrompt(this)" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;transition:all 0.2s;" title="一键复制发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi 的分镜剧本生成指令">🤖 复制外部 AI 编剧指令</button>
-        <button type="button" onclick="toggleDramaWorkflowEditor()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;">📜 粘贴新剧本 / 编辑工作流节点 ▾</button>
+        <button type="button" onclick="toggleDramaWorkflowEditor()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;">📜 展开/收起剧本与角色工作流工作台 ▾</button>
         <select id="dramaAspectSelect" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
           <option value="16:9" selected>📺 16:9 横屏电影剧集 (推荐)</option>
           <option value="9:16">📱 9:16 竖屏短剧</option>
@@ -2123,8 +2123,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 可展开：通用剧本解析器 + 外部AI提示词生成器 + 可视化角色/分镜工作流节点编辑器 -->
-    <div id="dramaWorkflowEditorDrawer" style="display:none;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(2,6,23,0.82);border:1px solid #38bdf8;">
+    <!-- 默认展开：通用剧本解析器 + 外部AI提示词生成器 + 可视化角色/分镜工作流节点编辑器 -->
+    <div id="dramaWorkflowEditorDrawer" style="display:block;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(2,6,23,0.82);border:1px solid #38bdf8;">
       <!-- 顶部：外部在线 AI (ChatGPT / Claude / DeepSeek / Gemini / Kimi) 编剧指令一键生成器 -->
       <div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(88,28,135,0.22);border:1px dashed #a855f7;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:6px;flex:1;flex-wrap:wrap;">
@@ -4603,6 +4603,10 @@ function switchMiniMaxMode(mode) {
   if (isDrama) {
     if (titleEl) titleEl.innerText = '🎬 通用分镜短剧全自动工作流导演台 (H3-Image 锁脸 + LongCat-Avatar 对白 + H3-FL2VA 动作)';
     if (badgeEl) badgeEl.innerText = '任意剧本智能拆解 + 可视化分镜节点编辑 + 单步独立重抽 + 0.1秒卡点混音合片';
+    const drawer = document.getElementById('dramaWorkflowEditorDrawer');
+    if (drawer) drawer.style.display = 'block';
+    loadDramaWorkflowEditor();
+    pollAutoDramaStatus();
     return;
   }
   const pEl = document.getElementById('videoPrompt');
@@ -6956,6 +6960,14 @@ async function pollAutoDramaStatus() {
     }
     const pct = Math.max(0, Math.min(100, parseInt(d.pct || 0, 10)));
     if (pBar) pBar.style.width = `${pct}%`;
+    const hdrEl = document.getElementById('dramaTitleHeader');
+    if (hdrEl && d.title && d.shot_count && d.total_duration) {
+      hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${d.title} (${d.shot_count} 镜 · ${d.total_duration} 秒)`;
+    }
+    const btnRemux = document.getElementById('btnRemuxAutoDrama');
+    if (btnRemux && d.total_duration) {
+      btnRemux.innerText = `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)`;
+    }
     if (d.running) {
       if (videoPollTimer) {
         clearInterval(videoPollTimer);
@@ -7045,13 +7057,14 @@ loadLocalVideoHistory(true);
 (async () => {
   let dramaIsRunning = false;
   try {
+    await loadDramaWorkflowEditor();
+    await pollAutoDramaStatus();
     const rd = await fetch('/api/drama_auto_status');
     const dd = await rd.json();
     if (dd && Array.isArray(dd.steps)) renderDramaStepsGrid(dd.steps);
     if (dd && dd.running) {
       dramaIsRunning = true;
       if (!dramaPollTimer) {
-        pollAutoDramaStatus();
         dramaPollTimer = setInterval(pollAutoDramaStatus, 2000);
       }
     }
