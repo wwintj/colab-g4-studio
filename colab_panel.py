@@ -9474,17 +9474,26 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
     except Exception:
         pass
 
-    # 若云端上一任务尚未彻底收尾，最多等待 30 秒
-    for _ in range(20):
+    # 若云端上一任务尚未彻底收尾 (HTTP 409 或 already_running)，耐心等待其释放 GPU 后自动提交
+    for _ in range(60):
         _drama_check_cancel()
-        req = urllib.request.Request("http://127.0.0.1:30000/v1/video/generations", data=body, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            res = json.loads(resp.read().decode("utf-8"))
+        try:
+            req = urllib.request.Request("http://127.0.0.1:30000/v1/video/generations", data=body, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                res = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as he:
+            if he.code == 409:
+                time.sleep(3)
+                continue
+            raise
         if not res.get("ok"):
+            if "正在生成" in str(res.get("error") or "") or "busy" in str(res.get("error") or "").lower():
+                time.sleep(3)
+                continue
             raise RuntimeError(f"{step_label} 提交失败: {res.get('error')}")
         if not res.get("already_running"):
             break
-        time.sleep(2)
+        time.sleep(2.5)
 
     time.sleep(1.5)
     remote_fname = ""
