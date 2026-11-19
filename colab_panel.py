@@ -5467,18 +5467,18 @@ function buildFusionRefsAndPrompt(targetListForJob) {
     curvy_tall: 'tall, graceful, slender and well-proportioned feminine silhouette',
   };
   const frameMap = {
-    keep_target_frame: '100% preserve the exact camera framing, shot scale, seated/standing body pose, arm and hand placement, and leg posture from <Picture 1>',
-    waist_medium: 'Three-quarter to waist-up fashion portrait clearly showcasing the complete upper garment, waistline, lower pants/skirt pairing, and body posture',
+    keep_target_frame: '100% preserve the exact camera framing, shot scale, body pose, hand placement, and leg posture from <Picture 1>',
+    waist_medium: 'Three-quarter to waist-up portrait showcasing the upper and lower clothing outfit and body posture',
     bust_half: 'Medium close-up bust portrait (from chest up to top of head with natural headroom)',
     closeup_face: 'Cinematic facial close-up portrait (focusing on facial features, eyes, and collar)',
     full_body: 'Full-body to three-quarter cinematic shot naturally grounded in the environment',
   };
   const lightMap = {
-    keep_target_light: '100% preserve the clean background environment, studio lighting, shadows, and color grading from <Picture 1>.',
+    keep_target_light: '100% preserve the exact original background environment, ambient lighting, shadows, and color grading from <Picture 1>.',
     cinema_85mm_bokeh: 'Captured on an 85mm f/1.4 cinema portrait lens, shallow depth of field with soft creamy background bokeh, natural ambient rim light, realistic skin texture.',
     clear_35mm_scene: 'Captured on a 35mm cinema lens with deep focus, both the person and the surrounding architectural/scene details clearly visible, realistic spatial perspective.',
     dramatic_noir: 'Cinematic high-contrast chiaroscuro lighting, warm amber key light and cool rim light, rich atmospheric shadows.',
-    soft_natural: 'Soft, even, diffused natural studio lighting across the face and body, clean and transparent skin tone.',
+    soft_natural: 'Soft, even, diffused natural lighting across the face and body, clean and transparent skin tone.',
   };
   const accMap = {
     auto_face: '',
@@ -5489,10 +5489,19 @@ function buildFusionRefsAndPrompt(targetListForJob) {
     clean_shaven: 'Clean-shaven smooth jawline with no beard or mustache.',
   };
 
-  const styleTail = `${frameMap[frameVal] || frameMap.keep_target_frame}. Facial expression: ${exprMap[exprVal] || exprMap.keep_orig}, ${gazeMap[gazeVal] || gazeMap.keep_target}. Body build: ${bodyMap[bodyVal] || bodyMap.standard}. ${accMap[accVal] || ''} ${extraTxt ? 'Additional requirements: ' + extraTxt + '.' : ''} ${lightMap[lightVal] || lightMap.keep_target_light} High-resolution real-life photograph, delicate skin texture.`;
+  const extraMods = [
+    frameVal !== 'keep_target_frame' ? frameMap[frameVal] : '',
+    exprVal !== 'keep_orig' ? `Facial expression: ${exprMap[exprVal]}` : '',
+    gazeVal !== 'keep_target' ? `Gaze: ${gazeMap[gazeVal]}` : '',
+    bodyVal !== 'standard' ? `Body build: ${bodyMap[bodyVal]}` : '',
+    accMap[accVal] || '',
+    extraTxt ? `Additional requirements: ${extraTxt}` : '',
+    lightVal !== 'keep_target_light' ? lightMap[lightVal] : '',
+  ].filter(Boolean).join('. ');
+  const styleTail = extraMods ? ` ${extraMods}.` : '';
 
   // 情形 A：人脸 + 1张服装/姿势目标图 (+ 可选场景图)
-  // 将【服装/姿势目标图】放在 image_1 (<Picture 1> = 待编辑的空间与姿势底图)，将【目标人脸照】放在 image_2 (<Picture 2> = 脸型与五官身份源)！
+  // 将【服装/姿势目标图】放在 image_1 (<Picture 1> = 待编辑的空间与姿势底图)，将【严苛裁切至下巴的纯人脸照】放在 image_2 (<Picture 2> = 脸型与五官身份源)！
   if (hasFace && targets.length === 1) {
     const poseOrOutfitB64 = targets[0];
     if (hasScene) {
@@ -5502,10 +5511,10 @@ function buildFusionRefsAndPrompt(targetListForJob) {
         : "Keep <Subject 2>'s exact slim face shape, narrow jawline contour, facial features, warm expression, and hairstyle from <Picture 2> 100% unchanged.";
       const prompt = (
         "Edit <Picture 1>. The person, body posture, hand gesture, and clothing outfit in <Picture 1> is <Subject 1>. " +
-        "The person (exact slim V-shaped/oval face contour, narrow jawline, chin proportion, eyes, nose, lips, expression, and hairstyle) in <Picture 2> is <Subject 2>. " +
+        "The face in <Picture 2> is <Subject 2>. " +
         "The background environment and lighting in <Picture 3> is <Subject 3>. " +
-        `Replace the head and face of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, and place the figure naturally inside <Subject 3> (<Picture 3>). ${hairInstruction} ` +
-        "Completely discard the original face shape or wider cheek contour of <Picture 1>, while 100% preserving the exact body posture, arm/hand gesture, and complete clothing outfit from <Picture 1>, relit naturally by <Picture 3>. " +
+        `Replace the face of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, and place the figure naturally inside <Subject 3> (<Picture 3>). ${hairInstruction} ` +
+        "100% preserve the exact body posture, hand/leg gesture, and complete clothing outfit from <Picture 1>, relit naturally by <Picture 3>." +
         styleTail
       );
       return {refs, prompt};
@@ -5514,23 +5523,22 @@ function buildFusionRefsAndPrompt(targetListForJob) {
     const refs = [poseOrOutfitB64, faceB64];
     if (hairVal === 'keep_target_hair') {
       const prompt = (
-        "Edit <Picture 1>. The person sitting or standing in <Picture 1> is <Subject 1>. " +
-        "The facial identity, slim oval face contour, narrow chin, facial bone structure, eyebrows, eyes, nose, lips, and natural smile/expression of the person in <Picture 2> is <Subject 2>. " +
-        "Replace ONLY the internal facial features and slim oval face contour of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, " +
-        "while 100% PRESERVING the exact hairstyle, hair volume, hair length, and headwear from <Picture 1>! " +
-        "Do NOT use the tied-back or original hair from <Picture 2>; keep the exact hairstyle, seated/standing body pose, raised arm and hand gesture, leg position, complete clothing outfit (both upper garment and lower pants/jeans/skirt), camera framing, and clean studio/background environment from <Picture 1>, " +
-        "combined seamlessly with <Subject 2>'s exact facial features, slim jawline, and natural expression from <Picture 2>. " +
+        "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. " +
+        "The face in <Picture 2> is <Subject 2>. " +
+        "Replace ONLY the face of <Subject 1> in <Picture 1> with the face <Subject 2> from <Picture 2>. " +
+        "Keep <Subject 2>'s exact facial features, slim V-shaped oval face contour, eyes, nose, and natural smile/expression from <Picture 2>, " +
+        "while keeping EVERYTHING ELSE in <Picture 1> (the exact background scene, outdoor/indoor environment, architecture, water, bridge, trees, ambient lighting, seated/standing body pose, hand and leg positions, headwear/hat, hairstyle, complete clothing outfit, jacket/top, skirt/pants, stockings, shoes, and full camera framing) 100% preserved and unchanged." +
         styleTail
       );
       return {refs, prompt};
     }
 
     const prompt = (
-      "Edit <Picture 1>. The person sitting or standing in <Picture 1> is <Subject 1>. " +
-      "The person (exact slim V-shaped/oval face contour, narrow jawline, chin proportion, facial features, natural expression, and hairstyle) in <Picture 2> is <Subject 2>. " +
-      "Replace the head, face shape, facial features, and hairstyle of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. " +
-      "Keep <Subject 2>'s exact slim V-shaped/oval face contour, narrow jawline, facial features, natural expression, and hairstyle from <Picture 2> 100% unchanged (completely discard the original face shape and hair of <Picture 1>), " +
-      "while 100% preserving the exact seated/standing body posture, raised arm and hand gesture, leg position, complete clothing outfit (both upper garment and lower pants/jeans/skirt), camera framing, and background environment from <Picture 1>. " +
+      "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. " +
+      "The face and hairstyle in <Picture 2> is <Subject 2>. " +
+      "Replace ONLY the head, face, and hairstyle of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. " +
+      "Keep <Subject 2>'s exact facial features, slim V-shaped oval face contour, hairstyle, and natural smile/expression from <Picture 2>, " +
+      "while keeping EVERYTHING ELSE in <Picture 1> (the exact background scene, outdoor/indoor environment, architecture, water, bridge, trees, ambient lighting, seated/standing body pose, hand and leg positions, complete clothing outfit, jacket/top, skirt/pants, stockings, shoes, and full camera framing) 100% preserved and unchanged." +
       styleTail
     );
     return {refs, prompt};
@@ -5743,6 +5751,9 @@ async function startFusionStudioGenerate() {
   if (fBar) fBar.style.width = '8%';
 
   try {
+    if (fusionFaceUseCrop && (fusionFaceOrigB64 || fusionSlotsB64[0])) {
+      await autoDetectAndFocusFaceSlot0(fusionFaceOrigB64 || fusionSlotsB64[0]);
+    }
     let prevLatest = '';
     try {
       const r0 = await fetch('/api/video_status');
@@ -9634,14 +9645,13 @@ p.wait()
                 fh = float(det_json["h"]) * ih
                 cx = fx + fw / 2.0
                 cy = fy + fh / 2.0
-                was_distant = (float(det_json["h"]) < 0.36) or (float(det_json["w"]) < 0.32)
+                was_distant = (float(det_json["h"]) < 0.55) or (float(det_json["w"]) < 0.45)
 
-                # 以人脸中心向外扩展 1.15 倍半径，完整包含脸部、发际线、耳朵与下巴，剥离多余全身衣服与背景
-                radius = max(fw, fh) * 1.15
-                x1 = max(0, int(round(cx - radius)))
-                y1 = max(0, int(round(cy - radius * 1.15)))
-                x2 = min(iw, int(round(cx + radius)))
-                y2 = min(ih, int(round(cy + radius * 0.95)))
+                # 严格紧贴下巴 (fy + fh * 1.04) 与左右耳廓 (cx ± fw * 0.65) 裁切纯脸部特写，100% 切掉原图脖子以下的衣领/毛衣与大面积背景，彻底杜绝原图衣服或白底污染目标画面！
+                x1 = max(0, int(round(cx - fw * 0.65)))
+                y1 = max(0, int(round(fy - fh * 0.38)))
+                x2 = min(iw, int(round(cx + fw * 0.65)))
+                y2 = min(ih, int(round(fy + fh * 1.04)))
                 crop_im = im.crop((x1, y1, x2, y2))
                 if crop_im.width < 768:
                     new_h = max(64, int(round(768 * crop_im.height / max(1, crop_im.width))))
