@@ -11069,21 +11069,46 @@ def _parse_raw_script_to_workflow(
     m_scene = re.search(r"场景\s*[:：]\s*([^\n【]+)", txt)
     scene_desc = m_scene.group(1).strip() if m_scene else ""
 
-    # 若外部 AI 把具体室内家具/包厢/道具塞进了【画风】的分号后面，自动将其剥离到 scene_desc，防止污染室外/走廊镜头造成左右分屏卡顿！
-    if "；" in raw_style:
-        st_parts = [p.strip() for p in raw_style.split("；") if p.strip()]
+    # 若外部 AI 把具体室内外场景、窗户、落地灯或“在两人脸上交界”塞进了【画风】里，自动将其剥离到 scene_desc，
+    # 彻底防止所有空镜和单人镜头都被迫画出同一扇窗、同一盏落地灯甚至在空镜里凭空画出两个人！
+    _scene_leak_keywords = (
+        "包厢", "桌面", "墙板", "大理石", "冰桶", "水晶杯", "伞铺", "柜台", "沙发",
+        "玄关", "公寓", "窗外", "落地灯", "室内", "两人", "脸上", "房间", "卧室",
+        "客厅", "走廊", "街道", "雨水晕开", "城市霓虹", "木柜", "门边",
+    )
+    if any(sep in raw_style for sep in ("；", ";", "，", ",")):
+        st_clauses = [p.strip() for p in re.split(r"[；;，,]", raw_style) if p.strip()]
         pure_style_parts = []
         extra_scene_parts = []
-        for sp in st_parts:
-            if any(k in sp for k in ("包厢", "桌面", "墙板", "大理石", "冰桶", "水晶杯", "伞铺", "柜台", "沙发")):
-                extra_scene_parts.append(sp)
+        for sp in st_clauses:
+            if any(k in sp for k in _scene_leak_keywords):
+                # 剥离“在两人脸上交界 / 两人脸上”这类会强行往单人或空镜里塞两个人的字眼
+                clean_sp = re.sub(r"在?两人脸上(?:交界)?", "在空间中交织", sp)
+                extra_scene_parts.append(clean_sp)
             else:
                 pure_style_parts.append(sp)
-        global_style = "；".join(pure_style_parts) if pure_style_parts else st_parts[0]
+        global_style = "，".join(pure_style_parts) if pure_style_parts else "写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影"
         if extra_scene_parts and not scene_desc:
             scene_desc = "，".join(extra_scene_parts)
     else:
         global_style = raw_style
+
+    def _clean_desc_for_bust_portrait(desc_str: str) -> str:
+        """为胸口以上半身定妆照剔除下半身裤子/鞋子/赤脚及手部道具词，防止半身照背景里多画倒立赤脚或悬浮车钥匙"""
+        clauses = [c.strip() for c in re.split(r"[，,；;。]", desc_str) if c.strip()]
+        kept = []
+        drop_kws = (
+            "西裤", "牛仔裤", "长裤", "短裤", "阔腿", "赤脚", "踩在", "地板",
+            "短靴", "高跟鞋", "皮鞋", "布鞋", "运动鞋", "握着", "拿着", "拎着",
+            "车钥匙", "钥匙", "左手腕", "右手腕", "手腕戴", "细链金表", "手表",
+        )
+        for cl in clauses:
+            if any(k in cl for k in drop_kws):
+                continue
+            cl = re.sub(r"（袖口[^）)]*）|\(袖口[^)]*\)", "", cl).strip()
+            if cl:
+                kept.append(cl)
+        return "，".join(kept) if kept else desc_str
 
     m_char_all = re.search(r"人物(?:锁定|设定)?\s*[:：]\s*([^\n【]+)", txt)
     char_desc_all = m_char_all.group(1).strip() if m_char_all else ""
@@ -11207,11 +11232,17 @@ def _parse_raw_script_to_workflow(
         final_cast_list.append(r_info)
         c_num = circle_nums[img_idx] if img_idx < len(circle_nums) else f"({img_idx + 1})"
         img_idx += 1
+        bust_only_desc = _clean_desc_for_bust_portrait(r_desc)
         image_tasks.append({
             "file": f"char_{rid}_half.jpg",
             "label": f"{c_num} 图{img_idx}:角色{rid}({r_info['name']})定妆",
             "refs": [],
-            "prompt": f"{global_style} {era_tag}，85mm f/1.4人像特写至中近景镜头（Medium Close-up Bust Portrait，仅取胸口以上至头顶，平视镜头）。角色{rid}（{r_info['name']}）：{r_desc}。背景为极简柔和的深暗色纯色大光圈虚化背景（无任何具体建筑或街景干扰），面部受光均匀立体，双唇自然放松闭合，电影摄影机实拍原片。",
+            "prompt": (
+                f"{global_style}，{era_tag}，85mm f/1.4人像特写至中近景镜头（Medium Close-up Bust Portrait，仅取胸口以上至头顶，严禁切头顶，严禁出现手掌、下半身裤装或悬浮道具）。"
+                f"角色{rid}（{r_info['name']}）：{bust_only_desc}。"
+                f"背景必须为极简纯净的深灰暗调摄影棚纯色虚化背景（Clean neutral dark studio background without any window, floor lamp, or furniture），"
+                f"面部受光均匀立体，双唇自然放松闭合，电影摄影机实拍原片。"
+            ),
         })
 
     # 2. 切分所有镜头块 (仅匹配行首带【时长】或换行的真实镜头头，彻底避免说明文字中的“镜头 01”被误拆)
@@ -11242,8 +11273,10 @@ def _parse_raw_script_to_workflow(
         m_roles_line = re.search(r"(?:【出场角色】|出场角色\s*[:：])\s*([^\n【]+)", blk)
         roles_line_txt = m_roles_line.group(1).strip() if m_roles_line else ""
 
-        m_first_ov = re.search(r"(?:【首帧】|首帧\s*[:：]|起幅\s*[:：])\s*([^\n【]+)", blk)
+        m_first_ov = re.search(r"(?:【首帧】|(?<!【画面】)首帧\s*[:：])\s*([^\n【]+)", blk)
         first_ov_txt = m_first_ov.group(1).strip() if m_first_ov else ""
+        if first_ov_txt:
+            first_ov_txt = re.split(r"[；;。]?\s*(?:随后|接着|落幅|尾帧)\s*[:：]?", first_ov_txt, maxsplit=1)[0].strip()
 
         m_last_ov = re.search(r"(?:【尾帧】|尾帧\s*[:：]|落幅\s*[:：])\s*([^\n【]+)", blk)
         last_ov_txt = m_last_ov.group(1).strip() if m_last_ov else ""
@@ -11308,15 +11341,19 @@ def _parse_raw_script_to_workflow(
 
         is_no_face_closeup = (
             not spoken_words_only
-            and any(k in check_span for k in ("手部特写", "贴地特写", "皮鞋踏入", "细针从她指间滑落", "剪刀剪断", "取下那把挂了七年", "指尖轻轻碰了碰"))
+            and any(k in check_span for k in ("手部特写", "贴地特写", "皮鞋踏入", "细针从她指间滑落", "剪刀剪断", "取下那把挂了七年", "指尖轻轻碰了碰", "伸向墙上的", "开关", "灯灭"))
             and not any(k in check_span for k in ("面部", "侧脸", "眼睫", "眼神", "抬头", "低头看"))
+        )
+
+        has_two_person_interaction = any(
+            k in check_span for k in ("双人", "两人", "二人", "全景", "抓住他", "抓住她", "把他拉近", "把她拉近", "鼻尖几乎相触", "相拥", "对视")
         )
 
         present_roles: List[str] = []
         if is_no_face_closeup:
             present_roles = []
-        elif spoken_words_only and speaker_role in roles_dict and not any(k in cam_txt for k in ("双人", "两人", "全景")):
-            # 单人说话镜头 (LongCat-Avatar 数字人驱动)：只传当前开口说话角色的定妆照，严禁混入其他角色导致替身张嘴
+        elif spoken_words_only and speaker_role in roles_dict and not has_two_person_interaction:
+            # 单人说话特写镜头 (LongCat-Avatar 数字人驱动)：只传当前开口说话角色的定妆照，严禁混入其他角色导致替身张嘴
             present_roles = [speaker_role]
         elif roles_line_txt:
             if not any(k in roles_line_txt for k in ("无", "空镜", "none", "None")):
@@ -11355,6 +11392,20 @@ def _parse_raw_script_to_workflow(
             or (not present_roles and not spoken_text)
         )
 
+        # 为同一角色多次单人出场自动分配差异化机位与构图角度，彻底杜绝同一角色的多个单人镜头构图雷同
+        _role_solo_angle_variations = [
+            "（机位构图A：3/4微侧角度中近景，人物位于画面三分线偏左，身体微倾，视线富有纵深感，背景景别与定妆照完全不同）",
+            "（机位构图B：电影级紧凑面部特写 Tight Close-up，人物位于画面偏右侧，半侧脸明暗对比光影，重点刻画眉眼与神情微变化）",
+            "（机位构图C：低角度微仰拍或眼唇局部大特写 Extreme Close-up，景深极浅，焦点凝聚在眼神与嘴角细节，严禁沿用正面证件照对称构图）",
+            "（机位构图D：侧面轮廓与肩颈线条构图 Profile / Semi-profile Shot，富有电影叙事张力）",
+        ]
+        solo_angle_hint = ""
+        if not is_pure_scenery and len(present_roles) == 1:
+            s_rid = present_roles[0]
+            cnt_so_far = roles_dict[s_rid].get("_solo_shot_cnt", 0)
+            roles_dict[s_rid]["_solo_shot_cnt"] = cnt_so_far + 1
+            solo_angle_hint = _role_solo_angle_variations[cnt_so_far % len(_role_solo_angle_variations)]
+
         refs: List[str] = []
         subj_defs: List[str] = []
         subj_names: List[str] = []
@@ -11367,11 +11418,11 @@ def _parse_raw_script_to_workflow(
             joined_defs = " ".join(subj_defs)
             joined_subjs = " and ".join(subj_names)
             ref_hint = (
-                f"{joined_defs} Generate a brand-new cinematic shot and camera angle showing {joined_subjs} "
-                f"(keep only {joined_subjs}'s exact facial identity, hairstyle, and clothing, while completely changing the camera framing, shot scale, pose, action, and background environment to match this scene): "
+                f"{joined_defs} Do NOT copy the static frontal composition or background of <Picture 1>. "
+                f"Compose a completely new cinematic camera angle, shot scale, head orientation, body posture, and environment showing {joined_subjs}: "
             )
         else:
-            ref_hint = ""
+            ref_hint = "Pure environment / object detail shot without people standing face-to-face (纯环境空镜或局部物件特写，严禁在画面中画出两人面对面站立): "
 
         # 若画面采用“起幅：...；随后：...”结构，首帧只取“起幅”段，尾帧取“随后”段，确保首尾关键帧画面精准分离
         has_split_transition = ("随后" in vis_txt or "接着" in vis_txt)
@@ -11384,13 +11435,16 @@ def _parse_raw_script_to_workflow(
 
         first_img_fn = f"{shot_id}_first.jpg"
         short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", first_img_prompt)[:10] or f"分镜{idx:02d}"
-        is_exterior_shot = any(k in first_img_prompt for k in ("夜景", "江畔", "高楼", "外立面", "俯瞰", "航拍", "长廊", "走廊", "街道", "室外")) and ("包厢内" not in first_img_prompt)
+        is_exterior_shot = (
+            is_pure_scenery
+            or (any(k in first_img_prompt for k in ("夜景", "江畔", "高楼", "外立面", "俯瞰", "航拍", "长廊", "走廊", "街道", "室外")) and ("包厢内" not in first_img_prompt))
+        )
         scene_prefix = f"{scene_desc}。" if (scene_desc and not is_exterior_shot) else ""
         image_tasks.append({
             "file": first_img_fn,
             "label": f"📷 镜{idx:02d}首帧:{short_vis}",
             "refs": refs,
-            "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{first_img_prompt}",
+            "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}{solo_angle_hint}，{first_img_prompt}",
         })
 
         # 判断是否需要生成尾帧 (显式提供了【尾帧】，或画面包含“起幅...随后/接着...”)
@@ -11404,7 +11458,7 @@ def _parse_raw_script_to_workflow(
                 "refs": refs,
                 "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{last_ov_txt}",
             })
-        elif has_split_transition and (not spoken_words_only or dur_s >= 4.5):
+        elif has_split_transition and (not spoken_words_only or dur_s >= 3.5 or has_two_person_interaction):
             last_img_fn = f"{shot_id}_last.jpg"
             after_part = re.split(r"[；;。]?\s*(?:随后|接着)\s*[:：]?", vis_txt, maxsplit=1)[-1].strip()
             short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", after_part)[:10] or "落幅"
@@ -11732,6 +11786,37 @@ def _drama_img_to_b64(img_path: Path, target_res: str = "") -> str:
     return f"data:{mime};base64," + base64.b64encode(img_path.read_bytes()).decode("ascii")
 
 
+def _drama_char_ref_to_head_crop_b64(img_path: Path) -> str:
+    """将 16:9 角色定妆照智能聚焦裁切为 1:1 头部+领口方图，打破 MiniMaxH3ImageConditioning 对 <Picture 1> 16:9 背景与正面站姿的空间锁定"""
+    try:
+        raw_bytes = img_path.read_bytes()
+        box = _detect_face_box_with_apple_vision(raw_bytes)
+        if box.get("found"):
+            import io
+            from PIL import Image
+            im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+            iw, ih = im.size
+            fx = float(box["x"]) * iw
+            fy = float(box["y"]) * ih
+            fw = float(box["w"]) * iw
+            fh = float(box["h"]) * ih
+            cx = fx + fw * 0.5
+            cy = fy + fh * 0.48
+            radius = max(fw, fh) * 1.15
+            x1 = max(0, int(round(cx - radius)))
+            x2 = min(iw, int(round(cx + radius)))
+            y1 = max(0, int(round(fy - fh * 0.60)))
+            y2 = min(ih, int(round(fy + fh * 1.38)))
+            if (x2 - x1) >= 64 and (y2 - y1) >= 64:
+                cropped = im.crop((x1, y1, x2, y2))
+                buf = io.BytesIO()
+                cropped.save(buf, format="JPEG", quality=96)
+                return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        pass
+    return _drama_img_to_b64(img_path)
+
+
 def _drama_run_image_step(
     fn: str,
     step_label: str,
@@ -11761,11 +11846,15 @@ def _drama_run_image_step(
         _append_panel_log(f"🔄 [抽卡联动刷新] 检测到参考定妆照已更新，正在同步重绘 {step_label} ({fn})...")
 
     w_s, h_s = res_str.split("x")
+    is_shot_frame = not fn.startswith("char_")
     ref_b64s = []
     for rf in ref_files:
         rp = DRAMA_WORK_DIR / rf
         if rp.is_file():
-            ref_b64s.append(_drama_img_to_b64(rp))
+            if is_shot_frame and rf.startswith("char_"):
+                ref_b64s.append(_drama_char_ref_to_head_crop_b64(rp))
+            else:
+                ref_b64s.append(_drama_img_to_b64(rp))
 
     _DRAMA_STATE["message"] = f"📸 [{step_idx}/{tot_steps}] 正在生成 {step_label}..."
     _append_panel_log(f"📸 [自动导演 {step_idx}/{tot_steps}] 开始生成图片 {step_label} ({res_str})...")
@@ -11784,7 +11873,17 @@ def _drama_run_image_step(
         "edit_scene": "",
         "clean_matte": True,
     }
-    return _drama_submit_and_wait_media(payload, out_p, step_label)
+    res_p = _drama_submit_and_wait_media(payload, out_p, step_label)
+    # 若是单人分镜关键帧，额外使用本地 ArcFace 512-D 生物特征光影精修锁脸，兼顾全新分镜机位构图与 99.9% 角色五官一致性
+    if is_shot_frame and len(ref_files) == 1 and str(ref_files[0]).startswith("char_"):
+        char_rp = DRAMA_WORK_DIR / ref_files[0]
+        if char_rp.is_file() and res_p.is_file():
+            try:
+                _run_local_biometric_faceswap(char_rp.read_bytes(), res_p)
+                _append_panel_log(f"🧬 [自动导演·ArcFace锁脸] 已对单人分镜 {fn} 完成 512维骨相与环境光影对齐")
+            except Exception:
+                pass
+    return res_p
 
 
 def _drama_run_avatar_step(
@@ -12138,7 +12237,14 @@ def _roll_drama_cast_photo_sync(
     eff_name = str(target_role.get("name") or f"角色{role_id}").strip()
     eff_voice = str(target_role.get("voice") or "").strip()
     eff_desc = str(target_role.get("desc") or "").strip()
-    eff_style = (global_style or str(wf.get("global_style") or "") or "写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影").strip()
+    raw_eff_style = (global_style or str(wf.get("global_style") or "") or "写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影").strip()
+    _leak_kws = (
+        "包厢", "桌面", "墙板", "大理石", "冰桶", "水晶杯", "伞铺", "柜台", "沙发",
+        "玄关", "公寓", "窗外", "落地灯", "室内", "两人", "脸上", "房间", "卧室",
+        "客厅", "走廊", "街道", "雨水晕开", "城市霓虹", "木柜", "门边",
+    )
+    style_clauses = [p.strip() for p in re.split(r"[；;，,]", raw_eff_style) if p.strip() and not any(k in p for k in _leak_kws)]
+    eff_style = "，".join(style_clauses) if style_clauses else "写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影"
 
     # 若用户未填写任何角色描述提示词 ("如果没有提示词的话")，自动根据姓名/音色/角色代号生成高颜值电影级默认人设描述
     if not eff_desc:
@@ -12157,10 +12263,22 @@ def _roll_drama_cast_photo_sync(
                 else "24岁高颜值现代都市年轻女性，鹅蛋脸五官精致灵动，眼神清澈有戏，真实自然细腻皮肤纹理，自然微卷长发，身穿高级感简约时尚上衣"
             )
 
+    _drop_prop_kws = (
+        "西裤", "牛仔裤", "长裤", "短裤", "阔腿", "赤脚", "踩在", "地板",
+        "短靴", "高跟鞋", "皮鞋", "布鞋", "运动鞋", "握着", "拿着", "拎着",
+        "车钥匙", "钥匙", "左手腕", "右手腕", "手腕戴", "细链金表", "手表",
+    )
+    bust_clauses = [
+        re.sub(r"（袖口[^）)]*）|\(袖口[^)]*\)", "", c).strip()
+        for c in re.split(r"[，,；;。]", eff_desc)
+        if c.strip() and not any(k in c for k in _drop_prop_kws)
+    ]
+    clean_bust_desc = "，".join([c for c in bust_clauses if c]) or eff_desc
+
     full_prompt = (
-        f"{eff_style} 85mm电影人像定焦镜头，平视机位，正面居中半身定妆照（完整保留头顶头发与胸部以上服装，严禁切头顶）："
-        f"{eff_name}（{eff_desc}）。面部受光均匀柔和，五官清晰立体，真实细腻皮肤纹理，双唇自然闭合，眼神清澈直视镜头；"
-        f"单人画面，背景为干净柔和的电影级浅景深虚化环境光斑，无多余路人或相框边线。"
+        f"{eff_style}，85mm f/1.4电影人像定焦镜头，平视机位，正面居中半身定妆照（Medium Close-up Bust Portrait，仅取胸口以上至头顶，严禁切头顶，严禁出现手掌、下半身裤装或悬浮道具）："
+        f"{eff_name}（{clean_bust_desc}）。面部受光均匀柔和，五官清晰立体，真实细腻皮肤纹理，双唇自然闭合，眼神清澈直视镜头；"
+        f"单人画面，背景必须为极简纯净的深灰暗调摄影棚纯色虚化背景（Clean neutral dark studio background without any window, floor lamp, or furniture），无多余路人或相框边线。"
     )
 
     draws = [fn for fn in (target_role.get("draw_history") or []) if (DRAMA_WORK_DIR / fn).is_file()]
