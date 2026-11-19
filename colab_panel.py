@@ -2094,22 +2094,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button type="button" id="tabBtnFl2va" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('fl2va')">🖼️ 首尾帧生音视频 (FL2VA)</button>
       <button type="button" id="tabBtnImage" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('image')">📸 4K无审查写真 / 免Mask换装 (H3-Image)</button>
       <button type="button" id="tabBtnAvatar" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('avatar')">🎭 数字人音频驱动 (LongCat-Avatar)</button>
-      <button type="button" id="tabBtnAutoDrama" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('drama')">🎬 11镜30秒短剧全自动导演台</button>
+      <button type="button" id="tabBtnAutoDrama" class="btn-outline" style="padding:5px 14px;font-size:12.5px;" onclick="switchMiniMaxMode('drama')">🎬 短剧分镜全自动导演台</button>
     </div>
   </div>
 
-  <!-- 11镜30秒古装短剧全自动导演流水线面板 (仅在选中第 5 个标签 drama 时显示) -->
+  <!-- 通用多分镜短剧全自动导演流水线面板 (仅在选中第 5 个标签 drama 时显示 · 不限分镜数与总时长) -->
   <div id="autoDramaDirectorRow" style="display:none;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.92) 100%);border:1.5px solid #f59e0b;border-radius:12px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span id="dramaTitleHeader" style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 通用分镜短剧全自动工作流引擎 · 《溪边与市集白花簪》(11 镜 · 30.0 秒)</span>
-        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">支持粘贴任意剧本自动拆解 · 单镜独立精修重抽 · 0.1秒卡点混音合片</span>
+        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">支持外部 AI 生成任意时长剧本直接粘贴 · 单镜独立重抽 · 0.1秒卡点合片</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button type="button" onclick="copyExternalAiScriptPrompt()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;" title="一键复制发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi 的分镜剧本生成指令">🤖 复制外部 AI 编剧指令</button>
         <button type="button" onclick="toggleDramaWorkflowEditor()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;">📜 粘贴新剧本 / 编辑工作流节点 ▾</button>
         <select id="dramaAspectSelect" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
           <option value="16:9" selected>📺 16:9 横屏电影剧集 (推荐)</option>
-          <option value="9:16">📱 9:16 竖屏古装短剧</option>
+          <option value="9:16">📱 9:16 竖屏短剧</option>
         </select>
         <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#cbd5e1;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.05);">
           <input type="checkbox" id="chkDramaResume" checked style="accent-color:#10b981;">
@@ -2122,23 +2123,47 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 可展开：通用剧本解析器 + 可视化角色/分镜工作流节点编辑器 -->
+    <!-- 可展开：通用剧本解析器 + 外部AI提示词生成器 + 可视化角色/分镜工作流节点编辑器 -->
     <div id="dramaWorkflowEditorDrawer" style="display:none;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(2,6,23,0.82);border:1px solid #38bdf8;">
+      <!-- 顶部：外部在线 AI (ChatGPT / Claude / DeepSeek / Gemini / Kimi) 编剧指令一键生成器 -->
+      <div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(88,28,135,0.22);border:1px dashed #a855f7;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;flex:1;flex-wrap:wrap;">
+          <span style="font-size:12px;font-weight:800;color:#e9d5ff;white-space:nowrap;">🤖 让外部 AI 帮写分镜剧本：</span>
+          <input type="text" id="inpAiIdeaTheme" placeholder="输入一句话剧情/题材（如：古装仙侠雪夜竹林定情 / 现代豪门雨夜重逢，留空也可）" style="flex:1;min-width:210px;padding:4px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
+          <select id="selAiTargetDur" style="padding:4px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;">
+            <option value="不限总时长（由剧情节奏自然决定镜头数与秒数）" selected>⏱️ 不限总时长 (按剧情自由决定)</option>
+            <option value="约 15 秒（建议 4~6 个分镜）">⏱️ 约 15 秒 (4~6 镜)</option>
+            <option value="约 30 秒（建议 8~12 个分镜）">⏱️ 约 30 秒 (8~12 镜)</option>
+            <option value="约 45 秒（建议 12~16 个分镜）">⏱️ 约 45 秒 (12~16 镜)</option>
+            <option value="约 60 秒 1分钟（建议 16~22 个分镜）">⏱️ 约 60 秒 (16~22 镜)</option>
+            <option value="约 90 秒 1分半（建议 24~30 个分镜）">⏱️ 约 90 秒 (24~30 镜)</option>
+            <option value="约 120 秒 2分钟（建议 32~40 个分镜）">⏱️ 约 120 秒 (32~40 镜)</option>
+          </select>
+          <select id="selAiVisualStyle" style="padding:4px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
+            <option value="写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影" selected>🎥 写实真人电影级</option>
+            <option value="唯美中国古装仙侠剧质感，精致古装汉服与发髻配饰，电影级逆光氛围">🏮 中国古装/仙侠剧</option>
+            <option value="现代都市高质感影视剧，时尚精致妆造，电影级都市光影与景深">🏙️ 现代都市影视剧</option>
+            <option value="新海诚高画质唯美2D动漫电影风格，绚丽光影与细腻人物表情">🌸 唯美2D动漫电影</option>
+          </select>
+        </div>
+        <button type="button" onclick="copyExternalAiScriptPrompt()" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;">📋 一键复制【发给外部 AI 的编剧指令】</button>
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:12px;">
         <!-- 左栏：粘贴任意剧本自动解析为工作流 -->
         <div style="display:flex;flex-direction:column;gap:8px;padding-right:10px;border-right:1px solid rgba(148,163,184,0.2);">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:12.5px;font-weight:800;color:#7dd3fc;">📜 1. 粘贴任意分镜剧本 → 自动拆解为工作流</span>
-            <input type="text" id="inpDramaProjectTitle" placeholder="剧目名称 (如：现代雨夜重逢)" style="padding:3px 8px;font-size:11.5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;width:165px;">
+            <span style="font-size:12.5px;font-weight:800;color:#7dd3fc;">📜 1. 粘贴外部 AI 生成的分镜剧本 (不限时长/镜数)</span>
+            <input type="text" id="inpDramaProjectTitle" placeholder="剧目名称 (自动提取或手填)" style="padding:3px 8px;font-size:11.5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;width:165px;">
           </div>
-          <textarea id="inpDramaRawScript" rows="10" placeholder="在此粘贴任意分镜剧本！支持标准格式：&#10;【全局设定】&#10;画风：...&#10;人物锁定：女主A：... 男主B：...&#10;【分镜】&#10;镜头01【时长】2.5秒&#10;【运镜】...&#10;【画面】...&#10;【对白】A：&quot;...&quot;&#10;&#10;点击下方「🔍 智能解析剧本并生成工作流节点」，系统会自动提取角色定妆卡、各镜首尾帧、自动分配 FL2VA/数字人引擎及卡点秒数！" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11.5px;line-height:1.45;resize:vertical;"></textarea>
+          <textarea id="inpDramaRawScript" rows="10" placeholder="把上方复制的指令发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi，然后将它生成的剧本直接粘贴到这里！&#10;&#10;支持任意分镜数量（3镜~50镜均可）与任意总时长（15秒、30秒、1分钟、3分钟均可）：&#10;【剧名】《...》&#10;【全局设定】&#10;画风：...&#10;女主A：...&#10;男主B：...&#10;【分镜】&#10;镜头01【时长】3.0秒&#10;【运镜】...&#10;【画面】...&#10;【对白】A：&quot;...&quot;&#10;&#10;点击下方「🔍 智能解析剧本生成工作流节点」即可一键生成全部角色锁脸卡与分镜节点！" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11.5px;line-height:1.45;resize:vertical;"></textarea>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
             <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#fcd34d;cursor:pointer;">
               <input type="checkbox" id="chkDramaClearOldAssets" checked style="accent-color:#f59e0b;">
               <span>🧹 解析新剧本时清空上一部剧的缓存素材</span>
             </label>
             <div style="display:flex;gap:6px;">
-              <button type="button" onclick="resetDefaultDramaWorkflow()" class="btn-outline" style="padding:4px 9px;font-size:11px;color:#94a3b8;">↺ 恢复内置古装11镜示例</button>
+              <button type="button" onclick="resetDefaultDramaWorkflow()" class="btn-outline" style="padding:4px 9px;font-size:11px;color:#94a3b8;">↺ 恢复内置古装示例</button>
               <button type="button" onclick="parseRawScriptToWorkflow()" class="btn-primary" style="padding:5px 12px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);">🔍 智能解析剧本生成工作流节点</button>
             </div>
           </div>
@@ -2163,20 +2188,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <div style="font-size:12px;color:#cbd5e1;line-height:1.55;margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(2,6,23,0.55);border:1px solid rgba(148,163,184,0.2);">
-      <div><b>🤖 全自动四步执行流程（全程无需手动输入任何提示词或传图）：</b></div>
-      <div>① <b>阶段一 & 二 (MiniMax-H3-Image)</b>：自动生成 <code>图1(女主A半身·右侧小粉花)</code>、<code>图2(女主A锁脸特写)</code>、<code>图3(男主B定妆)</code>，并自动挂载三图生成 <b>12 张锁脸/锁白花发簪首尾关键帧</b>（镜09/11自动继承镜07将白花发簪插进左侧发间）；</div>
-      <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，用 <code>灵小柔</code> & <code>灵信远_中性</code> 生成 <b>镜07、镜09、镜10、镜11</b> 四个越肩正反打对白镜头（镜11自动注入 <code>[Dissatisfaction-hnn]</code> 傲娇“哼～”气口）；</div>
-      <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，生成 <b>镜01~06、镜08</b> 七个动作与环境音镜头（原生溪水声、小鱼跃水声、撩水泼洒笑声、市集跟拍人群声与镜06招手呼喊）；</div>
-      <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按剧本秒数（<code>2.2s / 3.0s / 3.7s / 2.1s / 2.6s / 5.3s / 1.7s / 2.3s / 1.7s / 1.6s / 3.8s = 30.0s</code>）精准卡点，并将镜05市集环境底噪无缝铺入镜07~11对白背景，输出 30.0 秒完整成片至 <code>~/Movies/EasyColab/</code>！</div>
+    <div id="dramaDynamicSummaryBox" style="font-size:12px;color:#cbd5e1;line-height:1.55;margin-bottom:10px;padding:8px 12px;border-radius:8px;background:rgba(2,6,23,0.55);border:1px solid rgba(148,163,184,0.2);">
+      <div><b>🤖 全自动四步执行流程（支持粘贴外部在线 AI 生成的任意时长分镜剧本）：</b></div>
+      <div>① <b>阶段一 & 二 (MiniMax-H3-Image)</b>：自动生成角色锁脸定妆基准图，并自动挂载参考图生成全部 <b>16:9 (2048×1152) 或 9:16 (1152×2048) 锁脸首尾关键帧</b>；</div>
+      <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，按剧本台词、角色性别与情绪气口生成全部口型同步对白镜头；</div>
+      <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，按各镜设定时长生成全部动作与原生立体声环境音镜头；</div>
+      <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按每一镜配置的秒数精准卡点裁切，并将环境底噪无缝铺入对白背景，输出完整短剧成片至 <code>~/Movies/EasyColab/</code>！</div>
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-      <div id="dramaStatusText" style="font-size:12.5px;font-weight:700;color:#34d399;">✅ 已预装全部 11 镜分镜脚本与锁脸提示词，点击右侧按钮即可全自动开机并从 0 拍完 30 秒完整短剧！</div>
+      <div id="dramaStatusText" style="font-size:12.5px;font-weight:700;color:#34d399;">✅ 已加载分镜工作流，可点上方「🤖 复制外部 AI 编剧指令」让任意 AI 写新剧本，或直接点击右侧按钮全自动开拍！</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" id="btnRemuxAutoDrama" onclick="remuxAutoDramaOnly()" class="btn-outline" style="padding:7px 12px;font-size:12px;border-color:#38bdf8;color:#7dd3fc;white-space:nowrap;">🎞️ 仅用已有分镜重新合成 30s 成片</button>
+        <button type="button" id="btnRemuxAutoDrama" onclick="remuxAutoDramaOnly()" class="btn-outline" style="padding:7px 12px;font-size:12px;border-color:#38bdf8;color:#7dd3fc;white-space:nowrap;">🎞️ 仅用已有分镜重新合成成片</button>
         <button type="button" id="btnStopAutoDrama" onclick="stopAutoDramaPipeline()" class="btn-danger" style="display:none;padding:7px 14px;font-size:12.5px;font-weight:700;white-space:nowrap;">🛑 暂停自动导演 (已生成素材保留)</button>
-        <button type="button" id="btnStartAutoDrama" onclick="startAutoDramaPipeline()" style="padding:8px 18px;font-size:13px;font-weight:800;border-radius:8px;border:none;background:linear-gradient(135deg, #f59e0b, #ea580c);color:#ffffff;cursor:pointer;box-shadow:0 4px 14px rgba(245,158,11,0.35);white-space:nowrap;">🚀 一键全自动拍摄 30秒古装短剧 (共 26 步自动完成)</button>
+        <button type="button" id="btnStartAutoDrama" onclick="startAutoDramaPipeline()" style="padding:8px 18px;font-size:13px;font-weight:800;border-radius:8px;border:none;background:linear-gradient(135deg, #f59e0b, #ea580c);color:#ffffff;cursor:pointer;box-shadow:0 4px 14px rgba(245,158,11,0.35);white-space:nowrap;">🚀 一键全自动拍摄当前工作流</button>
       </div>
     </div>
 
@@ -6102,16 +6127,91 @@ function escapeHtmlAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
+async function copyExternalAiScriptPrompt() {
+  const drawer = document.getElementById('dramaWorkflowEditorDrawer');
+  if (drawer && drawer.style.display === 'none') {
+    drawer.style.display = 'block';
+    loadDramaWorkflowEditor();
+  }
+  const theme = ((document.getElementById('inpAiIdeaTheme') || {}).value || '').trim() || '请自由构思一个富有戏剧张力、画面唯美且有情绪递进的高口碑短剧片段';
+  const targetDur = ((document.getElementById('selAiTargetDur') || {}).value || '不限总时长（由剧情节奏自然决定镜头数与秒数）').trim();
+  const visStyle = ((document.getElementById('selAiVisualStyle') || {}).value || '写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影').trim();
+
+  const metaPrompt = `你现在是一位顶级的影视分镜导演与 AI 视频工作流编剧。请根据以下创作要求，为我编写一份可直接导入「EasyColab 多分镜短剧全自动工作流引擎」的完整分镜剧本。
+
+【创作主题/剧情梗概】：${theme}
+【目标总时长与分镜规模】：${targetDur}（单镜时长可在 1.5秒 ~ 10.0秒 之间根据戏剧节奏自由设定，总时长不限死）
+【全局视觉画风】：${visStyle}
+
+请严格按照以下结构化格式输出（不要省略标签，以便工作流引擎 100% 自动拆解为锁脸定妆卡、首尾关键帧、数字人配音与环境音视频节点）：
+
+【剧名】《在此填写剧名》
+【全局设定】
+画风：${visStyle}
+女主A：（详细描述女主A的年龄、脸型五官、发型发饰、服装颜色与材质，确保跨镜头锁脸一致）
+男主B：（详细描述男主B的年龄、脸型五官、发型发饰、服装颜色与材质，若无男主可写无）
+配角C：（可选，若有第三位角色请描述，无则省略）
+
+【分镜】
+镜头01【时长】2.5秒
+【运镜】固定镜头 / 缓慢推镜 / 倒退跟拍 / 越肩正反打（写清机位与景别，如全景/中近景/面部特写）
+【画面】（详细描述画面中人物的位置、动作起止、表情神态変化、光影与环境细节；若该镜需要明显的前后焦点转移或大跨度连续动作，可用“起幅...；随后...”描述，系统会自动生成首尾双关键帧）
+【环境音】（描述该镜头的纯自然环境音效，如雨声、溪水声、市集人群声、脚步声等）
+【对白】无（若有角色开口说话，请写如 A："台词内容" 或 B："台词内容"；支持在台词开头或中间加入 [Dissatisfaction-hnn] 傲娇哼声、[Sigh] 叹气、[Laughter] 轻笑、[Breathing] 呼吸、[Surprise-ah] 惊呼 等真人气口标签）
+【音色】（若有对白，可从以下官方音色中选填一个：ming:灵小柔 / ming:灵雨汐_中性 / ming:灵黛嗔_生气 / ming:灵采薇_悲伤 / ming:灵梦 / ming:妩媚妲己 / ming:灵信远_中性 / ming:灵朗 / ming:灵宇 / ming:灵孤影_厌恶 / ming:灵孤影_悲伤 / ming:灵孤影_生气 / ming:甄嬛传_四郎）
+
+镜头02【时长】3.5秒
+...（请按剧情自然展开所有分镜，镜头数量与总秒数不设硬性上限）`;
+
+  try {
+    await navigator.clipboard.writeText(metaPrompt);
+    const stEl = document.getElementById('dramaStatusText');
+    if (stEl) {
+      stEl.innerText = '📋 已一键复制【外部 AI 编剧专用指令】到剪贴板！请直接粘贴给 ChatGPT / Claude / DeepSeek / Gemini，再将它生成的剧本粘回左框并点「🔍 智能解析」即可！';
+      stEl.style.color = '#e9d5ff';
+    }
+  } catch (e) {
+    const rawEl = document.getElementById('inpDramaRawScript');
+    if (rawEl) {
+      rawEl.value = metaPrompt;
+      rawEl.select();
+    }
+  }
+}
+
 function renderDramaWfEditorTables() {
   if (!currentDramaWorkflow) return;
   const titleInp = document.getElementById('inpDramaProjectTitle');
   const hdrEl = document.getElementById('dramaTitleHeader');
+  const sumEl = document.getElementById('dramaDynamicSummaryBox');
+  const btnStart = document.getElementById('btnStartAutoDrama');
+  const btnRemux = document.getElementById('btnRemuxAutoDrama');
   const imgTasks = currentDramaWorkflow.image_tasks || [];
   const vidTasks = currentDramaWorkflow.video_tasks || [];
   const totalDur = vidTasks.reduce((acc, v) => acc + (parseFloat(v.duration) || 3.0), 0).toFixed(1);
-  if (titleInp) titleInp.value = currentDramaWorkflow.title || '《溪边与市集白花簪》';
+  const totalSteps = imgTasks.length + vidTasks.length + 1;
+  const projTitle = currentDramaWorkflow.title || '《未命名短剧》';
+  if (titleInp) titleInp.value = projTitle;
   if (hdrEl) {
-    hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${currentDramaWorkflow.title || '《未命名短剧》'} (${vidTasks.length} 镜 · ${totalDur} 秒)`;
+    hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${projTitle} (${vidTasks.length} 镜 · ${totalDur} 秒)`;
+  }
+  if (btnStart && !btnStart.disabled) {
+    btnStart.innerText = `🚀 一键全自动拍摄 ${projTitle} (${vidTasks.length}镜 · ${totalDur}秒 · 共 ${totalSteps} 步)`;
+  }
+  if (btnRemux) {
+    btnRemux.innerText = `🎞️ 仅用已有分镜重新合成成片 (${totalDur}s)`;
+  }
+  if (sumEl) {
+    const avList = vidTasks.filter(v => v.engine === 'avatar');
+    const flList = vidTasks.filter(v => v.engine !== 'avatar');
+    const durBreakdown = vidTasks.map(v => `${(parseFloat(v.duration) || 3.0).toFixed(1)}s`).join(' + ');
+    sumEl.innerHTML = `
+      <div><b>🤖 当前工作流四阶段全自动执行蓝图（${projTitle} · 共 ${vidTasks.length} 镜 · 总时长 ${totalDur} 秒 · 总计 ${totalSteps} 步）：</b></div>
+      <div>① <b>阶段一 & 二 (MiniMax-H3-Image)</b>：自动生成角色锁脸定妆卡与各镜首尾帧，共 <b>${imgTasks.length} 张原生 16:9 / 9:16 锁脸关键帧</b>；</div>
+      <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，生成 <b>${avList.length} 个口型对白镜头</b>${avList.length ? '（' + avList.map(v => v.label.split(':')[0]).join('、') + '）' : '（当前剧本无特写对白镜头）'}；</div>
+      <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，按各镜时长动态采样生成 <b>${flList.length} 个动作与原生环境音镜头</b>；</div>
+      <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按各镜时长（<code>${durBreakdown} = ${totalDur}s</code>）0.1秒级精准卡点并将环境底噪铺入对白背景，输出完整成片至 <code>~/Movies/EasyColab/</code>！</div>
+    `;
   }
   const cImgEl = document.getElementById('wfImgCount');
   const cVidEl = document.getElementById('wfVidCount');
@@ -6512,7 +6612,19 @@ async function pollAutoDramaStatus() {
       }
       if (btnStart) {
         btnStart.disabled = false;
-        btnStart.innerText = '🚀 一键全自动拍摄 30秒古装短剧 (共 26 步自动完成)';
+        const shotCnt = d.shot_count || (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.length : 11);
+        const totDur = d.total_duration || (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.reduce((a, v) => a + (parseFloat(v.duration) || 3.0), 0).toFixed(1) : '30.0');
+        const totSt = d.total_count || 27;
+        const pTitle = d.title || (currentDramaWorkflow && currentDramaWorkflow.title) || '当前短剧';
+        btnStart.innerText = `🚀 一键全自动拍摄 ${pTitle} (${shotCnt}镜 · ${totDur}秒 · 共 ${totSt} 步)`;
+      }
+      const btnRemux = document.getElementById('btnRemuxAutoDrama');
+      if (btnRemux && d.total_duration) {
+        btnRemux.innerText = `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)`;
+      }
+      const hdrEl = document.getElementById('dramaTitleHeader');
+      if (hdrEl && d.title && d.shot_count && d.total_duration) {
+        hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${d.title} (${d.shot_count} 镜 · ${d.total_duration} 秒)`;
       }
       if (btnStop) btnStop.style.display = 'none';
       if (d.error) {
@@ -8337,122 +8449,267 @@ def _save_drama_workflow(wf: Dict[str, Any]):
 
 def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str, Any]:
     """
-    通用分镜剧本智能解析引擎：
-    支持解析任意包含【全局设定】+【分镜】镜头01【时长】...【运镜】...【画面】...【对白】...
-    或 镜1 / Shot 1 (3s): ... 格式的多镜头剧本，自动生成角色定妆节点、首尾关键帧节点与分流视频节点。
+    通用分镜剧本智能解析引擎 (不限分镜数量、不限总时长、兼容外部 AI 任意输出格式)：
+    1. 支持直接粘贴 JSON 工作流或 ```json ... ``` 代码块；
+    2. 支持解析 ChatGPT / Claude / DeepSeek / Gemini / Kimi 生成的【剧名】【全局设定】【分镜】镜头01... 结构化剧本；
+    3. 支持解析自由格式的分镜列表 (镜1 / Shot 1 / 第1镜 / 1. ...)，自动提取角色定妆基准卡、首尾关键帧、情绪音色与动态时长。
     """
     txt = raw_script.strip()
-    m_style = re.search(r"画风\s*[:：]\s*([^\n]+)", txt)
+
+    # 0. 若外部 AI 直接输出了 JSON 格式的工作流，优先直接解析 JSON
+    json_cand = txt
+    m_fenced = re.search(r"```(?:json)?\s*(\{[\s\S]+\})\s*```", txt)
+    if m_fenced:
+        json_cand = m_fenced.group(1).strip()
+    if json_cand.startswith("{") and json_cand.endswith("}"):
+        try:
+            parsed_j = json.loads(json_cand)
+            if isinstance(parsed_j, dict) and parsed_j.get("video_tasks"):
+                if title:
+                    parsed_j["title"] = title if title.startswith("《") else f"《{title}》"
+                elif not parsed_j.get("title"):
+                    parsed_j["title"] = f"《AI分镜短剧·{len(parsed_j['video_tasks'])}镜》"
+                if not parsed_j.get("image_tasks"):
+                    parsed_j["image_tasks"] = []
+                parsed_j["raw_script"] = raw_script
+                return parsed_j
+        except Exception:
+            pass
+
+    if not title:
+        m_title = re.search(r"(?:【剧名】|剧名\s*[:：])\s*([^\n【]+)", txt)
+        if m_title:
+            title = m_title.group(1).strip().strip("《》\"' ")
+
+    m_style = re.search(r"画风\s*[:：]\s*([^\n【]+)", txt)
     global_style = m_style.group(1).strip() if m_style else "写实真人电影级质感，85mm浅景深，自然柔和光影，细节清晰真实。"
-    m_char = re.search(r"人物(?:锁定|设定)?\s*[:：]\s*([^\n]+)", txt)
-    char_desc_line = m_char.group(1).strip() if m_char else ""
 
-    # 判断题材与时代特征 (古装 vs 现代)
-    is_ancient = any(k in txt for k in ("古装", "古代", "市集", "发簪", "仙侠", "公子", "长袍", "衣袂"))
-    era_tag = "中国古装剧质感，精致古装服饰与发髻" if is_ancient else "现代影视剧写真质感，自然时尚妆造"
+    m_char_all = re.search(r"人物(?:锁定|设定)?\s*[:：]\s*([^\n【]+)", txt)
+    char_desc_all = m_char_all.group(1).strip() if m_char_all else ""
 
-    # 1. 自动构建男女主定妆基准图节点
+    m_char_a = re.search(r"(?:女主\s*A?|角色\s*A|人物\s*A)\s*[:：]\s*([^\n【]+)", txt)
+    m_char_b = re.search(r"(?:男主\s*B?|角色\s*B|人物\s*B)\s*[:：]\s*([^\n【]+)", txt)
+    m_char_c = re.search(r"(?:配角\s*C?|角色\s*C|人物\s*C)\s*[:：]\s*([^\n【]+)", txt)
+
+    desc_a = m_char_a.group(1).strip() if m_char_a else (char_desc_all or "年轻女性，五官精致立体，真实细腻皮肤纹理，眼神灵动有戏")
+    desc_b = m_char_b.group(1).strip() if m_char_b else (char_desc_all or "年轻男性，面容俊朗有气质，沉静内敛，真实细腻皮肤纹理与发丝光影")
+    desc_c = m_char_c.group(1).strip() if m_char_c else ""
+
+    # 判断题材与时代特征 (古装 vs 现代 vs 动漫)
+    is_ancient = any(k in txt for k in ("古装", "古代", "市集", "发簪", "仙侠", "公子", "长袍", "衣袂", "汉服", "江湖", "宫廷"))
+    is_anime = any(k in global_style for k in ("动漫", "二次元", "anime", "2D", "新海诚"))
+    if is_anime:
+        era_tag = "高画质唯美动漫电影风格，细腻光影与精致角色设定"
+    elif is_ancient:
+        era_tag = "中国古装剧质感，精致古装服饰与发髻"
+    else:
+        era_tag = "现代影视剧写真质感，自然时尚妆造"
+
+    # 1. 自动构建角色定妆基准图节点
     image_tasks: List[Dict[str, Any]] = [
         {
             "file": "char_A_half.jpg",
             "label": "① 图1:角色A半身定妆",
             "refs": [],
-            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角A（年轻女性，五官精致立体，真实细腻皮肤纹理，眼神灵动有戏）。{char_desc_line}",
+            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角A：{desc_a}。背景干净柔和虚化。",
         },
         {
             "file": "char_A_closeup.jpg",
             "label": "② 图2:角色A锁脸特写",
             "refs": ["char_A_half.jpg"],
-            "prompt": f"Keep the exact facial identity, hairstyle, and accessories of the person in <Picture 1>. {global_style} 电影级面部特写镜头（Close-up），主角A直视镜头，五官与 <Picture 1> 完全一致，真实皮肤毛孔与光影。",
+            "prompt": f"Keep the exact facial identity, hairstyle, and accessories of the person in <Picture 1>. {global_style} 电影级面部特写镜头（Close-up），主角A直视镜头，五官与 <Picture 1> 完全一致：{desc_a}。",
         },
-        {
+    ]
+    has_role_b = not (m_char_b and desc_b in ("无", "暂无", "none", "None"))
+    if has_role_b:
+        image_tasks.append({
             "file": "char_B_half.jpg",
             "label": "③ 图3:角色B半身定妆",
             "refs": [],
-            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角B（年轻男性，面容俊朗有气质，沉静内敛，真实细腻皮肤纹理与发丝光影）。{char_desc_line}",
-        },
-    ]
+            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。主角B：{desc_b}。背景干净柔和虚化。",
+        })
+    has_role_c = bool(desc_c and desc_c not in ("无", "暂无", "none", "None"))
+    if has_role_c:
+        image_tasks.append({
+            "file": "char_C_half.jpg",
+            "label": "④ 图4:角色C半身定妆",
+            "refs": [],
+            "prompt": f"{global_style} {era_tag}，85mm人像镜头，正面中近景半身定妆照。角色C：{desc_c}。背景干净柔和虚化。",
+        })
 
-    # 2. 切分所有镜头块
-    shot_blocks = re.split(r"(?=(?:镜头|镜|Shot\s*)\s*\d+)", txt, flags=re.IGNORECASE)
-    shot_blocks = [b.strip() for b in shot_blocks if re.match(r"^(?:镜头|镜|Shot\s*)\s*\d+", b.strip(), flags=re.IGNORECASE)]
+    # 2. 切分所有镜头块 (支持 镜头01 / 镜1 / 第1镜 / Shot 1 / 分镜1 等任意数量分镜，不限总镜数与总时长)
+    shot_pat = r"(?=(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜))"
+    shot_blocks = re.split(shot_pat, txt, flags=re.IGNORECASE)
+    shot_blocks = [
+        b.strip()
+        for b in shot_blocks
+        if re.match(r"^(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+|第\s*\d+\s*镜)", b.strip(), flags=re.IGNORECASE)
+    ]
     if not shot_blocks:
-        # 兜底：按空行或段落切分
+        # 兜底：按编号行或段落切分 (不设 15 镜硬性截断，支持任意长度)
         paras = [p.strip() for p in re.split(r"\n\s*\n", txt) if p.strip() and not p.strip().startswith("【")]
-        shot_blocks = [f"镜头{i:02d}【时长】3.0秒\n【画面】{p}" for i, p in enumerate(paras[:15], start=1)]
+        shot_blocks = [f"镜头{i:02d}【时长】3.0秒\n【画面】{p}" for i, p in enumerate(paras[:80], start=1)]
 
     video_tasks: List[Dict[str, Any]] = []
     ambience_src = ""
 
     for idx, blk in enumerate(shot_blocks, start=1):
         shot_id = f"shot{idx:02d}"
-        m_dur = re.search(r"(?:【时长】|时长\s*[:：]?|\()\s*(\d+(?:\.\d+)?)\s*(?:秒|s|S)", blk)
+        m_dur = re.search(r"(?:【时长】|时长\s*[:：]?|\(|（)\s*(\d+(?:\.\d+)?)\s*(?:秒|s|S)", blk)
         dur_s = round(float(m_dur.group(1)), 1) if m_dur else 3.0
-        dur_s = max(1.0, min(12.0, dur_s))
+        dur_s = max(1.0, min(20.0, dur_s))
 
-        m_cam = re.search(r"【运镜】\s*([^\n【]+)", blk)
+        m_cam = re.search(r"(?:【运镜】|运镜\s*[:：])\s*([^\n【]+)", blk)
         cam_txt = m_cam.group(1).strip() if m_cam else "固定镜头，机位平稳。"
 
-        m_vis = re.search(r"【画面】\s*([\s\S]*?)(?=【|$)", blk)
-        vis_txt = m_vis.group(1).strip().replace("\n", " ") if m_vis else blk.replace("\n", " ")
+        m_first_ov = re.search(r"(?:【首帧】|首帧\s*[:：]|起幅\s*[:：])\s*([^\n【]+)", blk)
+        first_ov_txt = m_first_ov.group(1).strip() if m_first_ov else ""
 
-        m_dlg = re.search(r"【对白】\s*([^\n【]+)", blk)
+        m_last_ov = re.search(r"(?:【尾帧】|尾帧\s*[:：]|落幅\s*[:：])\s*([^\n【]+)", blk)
+        last_ov_txt = m_last_ov.group(1).strip() if m_last_ov else ""
+
+        m_amb = re.search(r"(?:【环境音】|【音效】|环境音\s*[:：]|音效\s*[:：])\s*([^\n【]+)", blk)
+        amb_txt = m_amb.group(1).strip() if m_amb else ""
+        if amb_txt in ("无", "暂无", "none"):
+            amb_txt = ""
+
+        m_vis = re.search(r"(?:【画面】|画面\s*[:：])\s*([\s\S]*?)(?=【|(?:对白|台词|环境音|音效|音色|尾帧|首帧)\s*[:：]|$)", blk)
+        if m_vis:
+            vis_txt = m_vis.group(1).strip().replace("\n", " ")
+        else:
+            cleaned_blk = re.sub(r"^(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+】?|第\s*\d+\s*镜)\s*(?:【时长】[^\n]+)?", "", blk, flags=re.IGNORECASE)
+            cleaned_blk = re.sub(r"【(?:时长|运镜|对白|台词|音色|环境音|音效|首帧|尾帧|引擎)】[^\n【]*", "", cleaned_blk)
+            vis_txt = cleaned_blk.strip().replace("\n", " ") or "电影级精致画面，光影自然柔和。"
+
+        m_dlg = re.search(r"(?:【对白】|【台词】|对白\s*[:：]|台词\s*[:：])\s*([^\n【]+)", blk)
         dlg_raw = m_dlg.group(1).strip() if m_dlg else ""
-        speaker_is_b = False
+        if dlg_raw in ("无", "暂无", "无对白", "无台词", "none", "None", "-"):
+            dlg_raw = ""
+
+        m_voice = re.search(r"(?:【音色】|音色\s*[:：])\s*([^\n【]+)", blk)
+        voice_ov = m_voice.group(1).strip() if m_voice else ""
+        if voice_ov in ("无", "默认", "自动", "none"):
+            voice_ov = ""
+
+        m_eng = re.search(r"(?:【引擎】|引擎\s*[:：])\s*([^\n【]+)", blk)
+        eng_ov = m_eng.group(1).strip().lower() if m_eng else ""
+
+        speaker_role = "A"
         spoken_text = ""
         if dlg_raw:
+            if re.match(r"^\s*(?:男主|角色B|人物B|B|男)", dlg_raw, flags=re.IGNORECASE):
+                speaker_role = "B"
+            elif re.match(r"^\s*(?:配角C|角色C|人物C|C)", dlg_raw, flags=re.IGNORECASE):
+                speaker_role = "C"
             m_q = re.search(r"[“\"「『]([^”\"」』]+)[”\"」』]", dlg_raw)
             spoken_text = m_q.group(1).strip() if m_q else re.sub(r"^[^:：]+[:：]\s*", "", dlg_raw).strip()
-            if re.match(r"^\s*(?:男主|B|男)", dlg_raw, flags=re.IGNORECASE):
-                speaker_is_b = True
-            if spoken_text.startswith(("哼～", "哼~", "哼，")):
-                spoken_text = "[Dissatisfaction-hnn] " + spoken_text.lstrip("哼～~， ")
+            # 自动将中文括号情绪词或语气词转换为 Ming-3.0 副语言气口标签
+            if spoken_text.startswith(("哼～", "哼~", "哼，", "（冷哼）", "(冷哼)", "（傲娇）")):
+                spoken_text = "[Dissatisfaction-hnn] " + re.sub(r"^(?:哼[～~，]?|[（(][^）)]+[）)])\s*", "", spoken_text)
+            elif spoken_text.startswith(("唉～", "唉~", "唉，", "（叹气）", "(叹气)")):
+                spoken_text = "[Sigh] " + re.sub(r"^(?:唉[～~，]?|[（(][^）)]+[）)])\s*", "", spoken_text)
+            elif spoken_text.startswith(("哈哈", "呵呵", "扑哧", "（轻笑）", "(轻笑)", "（笑）")):
+                spoken_text = "[Laughter] " + re.sub(r"^(?:[（(][^）)]+[）)])\s*", "", spoken_text)
+            elif spoken_text.startswith(("（喘息）", "(喘息)", "（深呼吸）", "(深呼吸)")):
+                spoken_text = "[Breathing] " + re.sub(r"^(?:[（(][^）)]+[）)])\s*", "", spoken_text)
 
-        # 判断该镜出现的角色参考图
-        has_a = any(k in vis_txt for k in ("A", "女主", "她", "少女"))
-        has_b = any(k in vis_txt for k in ("B", "男主", "他", "公子"))
+        # 判断该镜出现的角色参考图与 Picture 锁脸指令
+        check_span = f"{vis_txt} {first_ov_txt} {dlg_raw}"
+        has_a = any(k in check_span for k in ("A", "女主", "她", "少女", "女孩", "女子"))
+        has_b = has_role_b and any(k in check_span for k in ("B", "男主", "他", "公子", "男人", "男子", "少侠", "总裁"))
+        has_c = has_role_c and any(k in check_span for k in ("C", "配角"))
+
         if has_a and has_b:
             refs = ["char_A_half.jpg", "char_A_closeup.jpg", "char_B_half.jpg"]
             ref_hint = "Keep the woman from <Picture 1> <Picture 2> and the man from <Picture 3>. "
         elif has_b and not has_a:
             refs = ["char_B_half.jpg"]
             ref_hint = "Keep the exact facial identity of the man in <Picture 1>. "
+        elif has_c and not has_a and not has_b:
+            refs = ["char_C_half.jpg"]
+            ref_hint = "Keep the exact facial identity of the person in <Picture 1>. "
         else:
             refs = ["char_A_half.jpg", "char_A_closeup.jpg"]
             ref_hint = "Keep the exact facial identity of the woman in <Picture 1> <Picture 2>. "
 
         first_img_fn = f"{shot_id}_first.jpg"
-        short_vis = vis_txt[:10].replace("，", "").replace("。", "")
+        short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", (first_ov_txt or vis_txt))[:10] or f"分镜{idx:02d}"
+        first_img_prompt = first_ov_txt if first_ov_txt else vis_txt
         image_tasks.append({
             "file": first_img_fn,
             "label": f"📷 镜{idx:02d}首帧:{short_vis}",
             "refs": refs,
-            "prompt": f"{ref_hint}{global_style} {cam_txt} {vis_txt}",
+            "prompt": f"{ref_hint}{global_style} {cam_txt} {first_img_prompt}",
         })
 
-        # 判断是否需要尾帧 (如含“焦点先落在...随后转到...”或 >4.5s 的连续多动作镜头)
+        # 判断是否需要尾帧 (显式提供了【尾帧】，或含“随后/接着”且为动作转焦镜头)
         last_img_fn = ""
-        if ("随后" in vis_txt or "接着" in vis_txt) and (not spoken_text or dur_s >= 4.5):
+        if last_ov_txt and last_ov_txt not in ("无", "暂无", "none"):
             last_img_fn = f"{shot_id}_last.jpg"
-            after_part = re.split(r"随后|接着", vis_txt, maxsplit=1)[-1].strip()
+            short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", last_ov_txt)[:10] or "落幅"
             image_tasks.append({
                 "file": last_img_fn,
-                "label": f"📷 镜{idx:02d}尾帧:{after_part[:10]}",
+                "label": f"📷 镜{idx:02d}尾帧:{short_last}",
+                "refs": refs,
+                "prompt": f"{ref_hint}{global_style} {cam_txt} {last_ov_txt}",
+            })
+        elif ("随后" in vis_txt or "接着" in vis_txt) and (not spoken_text or dur_s >= 4.5):
+            last_img_fn = f"{shot_id}_last.jpg"
+            after_part = re.split(r"随后|接着", vis_txt, maxsplit=1)[-1].strip()
+            short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", after_part)[:10] or "落幅"
+            image_tasks.append({
+                "file": last_img_fn,
+                "label": f"📷 镜{idx:02d}尾帧:{short_last}",
                 "refs": refs,
                 "prompt": f"{ref_hint}{global_style} {cam_txt} {after_part}",
             })
 
-        # 智能路由：有对白且时长 <= 4.5s 的近景/越肩镜头走 LongCat-Avatar + Ming-3.0；其余动作与环境音镜头走 MiniMax-H3 FL2VA
-        use_avatar = bool(spoken_text) and dur_s <= 4.5
+        # 智能路由引擎：支持显式【引擎】指定，否则有对白且无复杂首尾帧转场的镜头自动走 LongCat-Avatar + Ming-3.0
+        if "avatar" in eng_ov or "数字人" in eng_ov:
+            use_avatar = True
+        elif "fl2va" in eng_ov or "首尾帧" in eng_ov:
+            use_avatar = False
+        else:
+            use_avatar = bool(spoken_text) and (not last_img_fn)
+
         if not use_avatar and not ambience_src:
             ambience_src = f"{shot_id}_raw.mp4"
 
-        tts_voice = "ming:灵信远_中性" if speaker_is_b else "ming:灵小柔"
+        # 智能匹配 Ming-3.0 情绪与角色音色
+        if voice_ov:
+            tts_voice = voice_ov if (voice_ov.startswith("ming:") or voice_ov.startswith("zh-")) else f"ming:{voice_ov}"
+        else:
+            mood_span = f"{vis_txt} {dlg_raw}"
+            if speaker_role == "B":
+                if any(k in mood_span for k in ("怒", "生气", "吼", "厉声", "暴怒")):
+                    tts_voice = "ming:灵孤影_生气"
+                elif any(k in mood_span for k in ("冷笑", "嘲讽", "高冷", "冷漠", "不屑")):
+                    tts_voice = "ming:灵孤影_厌恶"
+                elif any(k in mood_span for k in ("悲", "心碎", "痛苦", "泪", "哽咽")):
+                    tts_voice = "ming:灵孤影_悲伤"
+                elif any(k in mood_span for k in ("霸总", "深情", "低沉", "宠溺")):
+                    tts_voice = "ming:灵朗"
+                else:
+                    tts_voice = "ming:灵信远_中性"
+            else:
+                if any(k in mood_span for k in ("傲娇", "假装生气", "撇嘴", "瞪", "数落", "发脾气")):
+                    tts_voice = "ming:灵黛嗔_生气"
+                elif any(k in mood_span for k in ("悲", "哭", "泪", "委屈", "心碎")):
+                    tts_voice = "ming:灵采薇_悲伤"
+                elif any(k in mood_span for k in ("撒娇", "粘人", "求")):
+                    tts_voice = "ming:灵梦"
+                elif any(k in mood_span for k in ("妩媚", "撩", "魅惑")):
+                    tts_voice = "ming:妩媚妲己"
+                else:
+                    tts_voice = "ming:灵小柔"
+
+        clean_spoken_preview = re.sub(r"\[[A-Za-z-]+\]", "", spoken_text).strip()[:7]
         vid_label = (
-            f"🗣️ 镜{idx:02d}({dur_s}s):{'B' if speaker_is_b else 'A'}「{spoken_text[:7]}」"
+            f"🗣️ 镜{idx:02d}({dur_s}s):{speaker_role}「{clean_spoken_preview}」"
             if use_avatar
             else f"🎞️ 镜{idx:02d}({dur_s}s):{short_vis}"
         )
+        sound_tail = f" 纯自然环境音效：{amb_txt}，无背景音乐。" if amb_txt else ("" if spoken_text else " 纯自然环境音效，无背景音乐，无人物说话。")
         video_tasks.append({
             "file": f"{shot_id}_raw.mp4",
             "label": vid_label,
@@ -8463,11 +8720,11 @@ def _parse_raw_script_to_workflow(raw_script: str, title: str = "") -> Dict[str,
             "tts_text": spoken_text,
             "tts_voice": tts_voice,
             "mix_ambience": use_avatar,
-            "prompt": f"{cam_txt} {vis_txt}" + ("" if spoken_text else " 纯自然环境音效，无背景音乐，无人物说话。"),
+            "prompt": f"{cam_txt} {vis_txt}{sound_tail}",
         })
 
     if not title:
-        title = f"《自定义分镜短剧·{len(video_tasks)}镜》"
+        title = f"《AI分镜短剧·{len(video_tasks)}镜》"
     elif not title.startswith("《"):
         title = f"《{title}》"
 
@@ -8486,9 +8743,11 @@ def _get_drama_status_payload() -> Dict[str, Any]:
     steps_out = []
     done_cnt = 0
     active_fn = _DRAMA_STATE.get("active_file") or ""
-    all_defs = [(it["file"], it["label"]) for it in (wf.get("image_tasks") or [])]
-    all_defs += [(vt["file"], vt["label"]) for vt in (wf.get("video_tasks") or [])]
-    tot_dur = round(sum(float(vt.get("duration") or 3.0) for vt in (wf.get("video_tasks") or [])), 1)
+    img_tasks = wf.get("image_tasks") or []
+    vid_tasks = wf.get("video_tasks") or []
+    all_defs = [(it["file"], it["label"]) for it in img_tasks]
+    all_defs += [(vt["file"], vt["label"]) for vt in vid_tasks]
+    tot_dur = round(sum(float(vt.get("duration") or 3.0) for vt in vid_tasks), 1)
     all_defs.append(("ancient_drama_30s_final.mp4", f"🎬 {tot_dur}s 完整短剧混音合片"))
 
     for fn, lbl in all_defs:
@@ -8510,6 +8769,9 @@ def _get_drama_status_payload() -> Dict[str, Any]:
         "pct": pct,
         "done_count": done_cnt,
         "total_count": tot_cnt,
+        "shot_count": len(vid_tasks),
+        "image_count": len(img_tasks),
+        "total_duration": tot_dur,
         "title": wf.get("title") or "《分镜短剧》",
         "message": _DRAMA_STATE["message"],
         "error": _DRAMA_STATE["error"],
@@ -8753,6 +9015,7 @@ def _drama_run_avatar_step(
     resume: bool,
     step_idx: int,
     tot_steps: int,
+    dur_s: float = 3.0,
 ) -> Path:
     _drama_check_cancel()
     out_p = DRAMA_WORK_DIR / fn
@@ -8766,16 +9029,17 @@ def _drama_run_avatar_step(
     if not ref_p.is_file():
         raise RuntimeError(f"缺少首帧参考图 {ref_img_fn}")
     w_s, h_s = res_str.split("x")
+    num_segs = 1 if dur_s <= 3.75 else max(1, min(20, 1 + int(math.ceil((dur_s - 3.72) / 3.20))))
     clean_vis = visual_prompt.rstrip("。.,， ") + "。画面干净纯粹，底部无任何字幕、无台词文字、无水印 (clean raw camera footage without any subtitles, captions, or text on screen)。"
-    _DRAMA_STATE["message"] = f"🗣️ [{step_idx}/{tot_steps}] 正在生成越肩对白镜头 {step_label}..."
-    _append_panel_log(f"🗣️ [自动导演 {step_idx}/{tot_steps}] 开始生成数字人对白镜头 {step_label} (音色: {tts_voice}, 台词: {tts_text})...")
+    _DRAMA_STATE["message"] = f"🗣️ [{step_idx}/{tot_steps}] 正在生成对白镜头 {step_label} ({dur_s}s · {num_segs}段)..."
+    _append_panel_log(f"🗣️ [自动导演 {step_idx}/{tot_steps}] 开始生成数字人对白镜头 {step_label} (时长: {dur_s}s/{num_segs}段, 音色: {tts_voice}, 台词: {tts_text})...")
     payload = {
         "mode": "avatar",
         "prompt": clean_vis,
         "resolution": res_str,
         "width": int(w_s),
         "height": int(h_s),
-        "num_segments": 1,
+        "num_segments": num_segs,
         "steps": 8,
         "fps": 25,
         "seed": -1,
@@ -8804,6 +9068,7 @@ def _drama_run_fl2va_step(
     resume: bool,
     step_idx: int,
     tot_steps: int,
+    dur_s: float = 3.0,
 ) -> Path:
     _drama_check_cancel()
     out_p = DRAMA_WORK_DIR / fn
@@ -8817,9 +9082,22 @@ def _drama_run_fl2va_step(
     if not first_p.is_file():
         raise RuntimeError(f"缺少起幅首帧图 {first_img_fn}")
     w_s, h_s = res_str.split("x")
+    # 根据分镜设定的秒数动态匹配最优采样帧数 (24fps: 90帧≈3.75s, 124帧≈5.16s, 192帧≈8.0s, 243帧≈10.1s, 294帧≈12.2s, 362帧≈15.1s)
+    if dur_s <= 3.5:
+        target_frames = 90
+    elif dur_s <= 5.3:
+        target_frames = 124
+    elif dur_s <= 8.0:
+        target_frames = 192
+    elif dur_s <= 10.2:
+        target_frames = 243
+    elif dur_s <= 12.5:
+        target_frames = 294
+    else:
+        target_frames = 362
     clean_fl_prompt = prompt.rstrip("。.,， ") + "。画面干净纯粹，无任何字幕、无台词文字、无水印 (clean video frame without any subtitles, captions, or text on screen)。"
-    _DRAMA_STATE["message"] = f"🎞️ [{step_idx}/{tot_steps}] 正在生成动作与环境音镜头 {step_label}..."
-    _append_panel_log(f"🎞️ [自动导演 {step_idx}/{tot_steps}] 开始生成首尾帧有声视频 {step_label}...")
+    _DRAMA_STATE["message"] = f"🎞️ [{step_idx}/{tot_steps}] 正在生成动作与环境音镜头 {step_label} ({dur_s}s · {target_frames}帧)..."
+    _append_panel_log(f"🎞️ [自动导演 {step_idx}/{tot_steps}] 开始生成首尾帧有声视频 {step_label} ({dur_s}s · {target_frames}帧)...")
     payload: Dict[str, Any] = {
         "mode": "fl2va",
         "prompt": clean_fl_prompt,
@@ -8827,7 +9105,7 @@ def _drama_run_fl2va_step(
         "resolution": res_str,
         "width": int(w_s),
         "height": int(h_s),
-        "num_frames": 124,
+        "num_frames": target_frames,
         "steps": 25,
         "fps": 24,
         "seed": -1,
@@ -9048,6 +9326,7 @@ def _run_single_drama_step_bg(target_file: str, aspect: str = "16:9"):
                         resume=False,
                         step_idx=1,
                         tot_steps=1,
+                        dur_s=float(vt.get("duration") or 3.0),
                     )
                 else:
                     _drama_wait_for_engine(
@@ -9067,6 +9346,7 @@ def _run_single_drama_step_bg(target_file: str, aspect: str = "16:9"):
                         resume=False,
                         step_idx=1,
                         tot_steps=1,
+                        dur_s=float(vt.get("duration") or 3.0),
                     )
                 _DRAMA_STATE["active_file"] = ""
                 _DRAMA_STATE["message"] = f"✅ 已单独重跑完成视频分镜: {vt.get('label') or target_file}（可点「🎞️ 仅用已有分镜重新合成成片」更新全片）"
@@ -9149,6 +9429,7 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
                 resume,
                 step_cursor,
                 tot_steps,
+                dur_s=float(vt.get("duration") or 3.0),
             )
             step_cursor += 1
 
@@ -9177,6 +9458,7 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
                 resume,
                 step_cursor,
                 tot_steps,
+                dur_s=float(vt.get("duration") or 3.0),
             )
             step_cursor += 1
 
