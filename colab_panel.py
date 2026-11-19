@@ -10083,6 +10083,7 @@ def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: 
     """确保云端 G4 已加载并就绪指定的推理引擎 (minimax-h3-image / longcat-avatar-1.6 / minimax-h3)"""
     _drama_check_cancel()
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    remote_already_loading = False
     try:
         with opener.open("http://127.0.0.1:30000/health", timeout=3) as r:
             if r.status == 200:
@@ -10090,6 +10091,14 @@ def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: 
                 cur_eng = str(hd.get("engine") or "")
                 if cur_eng == target_engine or (target_engine == "minimax-h3" and cur_eng in ("minimax-h3", "minimax-h3-t4")):
                     return
+    except urllib.error.HTTPError as he:
+        if he.code == 503:
+            try:
+                hd_err = json.loads(he.read().decode("utf-8"))
+                if hd_err.get("status") == "loading":
+                    remote_already_loading = True
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -10098,7 +10107,7 @@ def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: 
 
     with _DEPLOY_LOCK:
         already_deploying = bool(_DEPLOY_STATE.get("running"))
-    if not already_deploying:
+    if not already_deploying and not remote_already_loading:
         _start_deploy_background(
             repo=repo,
             folder=folder,
