@@ -7120,7 +7120,8 @@ ${userOriginalStory}
 ⚠️ 核心改编铁律（请严格遵守）：
 1. 你必须 100% 忠实于上方【用户提供的原著故事、人设与台词原稿】进行分镜拆解，严禁脱离原稿另编一个无关的新故事！
 2. 原稿中用户已经写好的每一句台词、角色姓名/外貌、关键动作与剧情走向，必须原封不动地保留并精准分配到对应分镜的【对白】与【画面】中！
-3. 如果原稿中部分动作过渡没有台词，你可以为其补充合理的镜头衔接与自然环境音，但主线剧情与已有台词绝对不能篡改或删减。`
+3. 严禁擅自加戏或捏造原稿中没有写的镜头！不要自作主张添加原稿未提及的片头城市航拍、走廊过渡、无台词反应插镜或片尾拉远镜头！用户原稿写了几段动作和台词，就严格只拆解原稿包含的镜头，100% 忠实于原稿的起止范围！
+4. 【画风】一行只允许写摄影机质感、镜头焦段与色彩影调（如：写实真人电影级质感，85mm浅景深，琥珀暖金暗调），严禁在【画风】里塞入具体的室内墙板、桌子、酒杯或冰桶等家具道具（具体场景家具请单独写在【场景】一行），否则会导致室外镜头出现左右分屏假图！`
     : `【创作主题/剧情梗概】：请自由构思一个富有戏剧张力、画面唯美且有情绪递进的高口碑短剧片段`;
 
   const castSectionTxt = (Array.isArray(dramaCastState) && dramaCastState.length > 0)
@@ -9701,10 +9702,26 @@ def _parse_raw_script_to_workflow(
             title = extracted_t
 
     m_style = re.search(r"画风\s*[:：]\s*([^\n【]+)", txt)
-    global_style = m_style.group(1).strip() if m_style else "写实真人电影级质感，85mm浅景深，自然柔和光影，细节清晰真实。"
+    raw_style = m_style.group(1).strip() if m_style else "写实真人电影级质感，85mm浅景深，自然柔和光影，细节清晰真实。"
 
     m_scene = re.search(r"场景\s*[:：]\s*([^\n【]+)", txt)
     scene_desc = m_scene.group(1).strip() if m_scene else ""
+
+    # 若外部 AI 把具体室内家具/包厢/道具塞进了【画风】的分号后面，自动将其剥离到 scene_desc，防止污染室外/走廊镜头造成左右分屏卡顿！
+    if "；" in raw_style:
+        st_parts = [p.strip() for p in raw_style.split("；") if p.strip()]
+        pure_style_parts = []
+        extra_scene_parts = []
+        for sp in st_parts:
+            if any(k in sp for k in ("包厢", "桌面", "墙板", "大理石", "冰桶", "水晶杯", "伞铺", "柜台", "沙发")):
+                extra_scene_parts.append(sp)
+            else:
+                pure_style_parts.append(sp)
+        global_style = "；".join(pure_style_parts) if pure_style_parts else st_parts[0]
+        if extra_scene_parts and not scene_desc:
+            scene_desc = "，".join(extra_scene_parts)
+    else:
+        global_style = raw_style
 
     m_char_all = re.search(r"人物(?:锁定|设定)?\s*[:：]\s*([^\n【]+)", txt)
     char_desc_all = m_char_all.group(1).strip() if m_char_all else ""
@@ -10005,7 +10022,8 @@ def _parse_raw_script_to_workflow(
 
         first_img_fn = f"{shot_id}_first.jpg"
         short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", first_img_prompt)[:10] or f"分镜{idx:02d}"
-        scene_prefix = f"{scene_desc}。" if scene_desc else ""
+        is_exterior_shot = any(k in first_img_prompt for k in ("夜景", "江畔", "高楼", "外立面", "俯瞰", "航拍", "长廊", "走廊", "街道", "室外")) and ("包厢内" not in first_img_prompt)
+        scene_prefix = f"{scene_desc}。" if (scene_desc and not is_exterior_shot) else ""
         image_tasks.append({
             "file": first_img_fn,
             "label": f"📷 镜{idx:02d}首帧:{short_vis}",
