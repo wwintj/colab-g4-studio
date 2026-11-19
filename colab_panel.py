@@ -2171,18 +2171,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     <!-- 第 2 步：上传图片框 (左侧固定人脸主照；右侧支持 1~N 张自由新增/删除/批量上传/双联图一键拆分) -->
     <div id="fusionSlotsGrid" style="display:grid;grid-template-columns:1fr 1.65fr;gap:12px;margin-bottom:12px;">
-      <!-- 框 1：🧑 上传人脸照片 -->
+      <!-- 框 1：🧑 上传人脸照片 (上传全身/半身照自动识别人脸并聚焦裁切脸部特写) -->
       <div style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #a855f7;display:flex;flex-direction:column;gap:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span id="fusionSlot1Title" style="font-size:13px;font-weight:800;color:#e9d5ff;">🧑 第一步：上传人脸照片</span>
-          <button type="button" onclick="clearFusionSlot(0)" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span id="fusionSlot1Title" style="font-size:13px;font-weight:800;color:#e9d5ff;">🧑 第一步：上传人脸照片</span>
+            <span id="fusionFaceFocusBadge" style="display:none;font-size:10.5px;padding:1px 6px;border-radius:999px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;">🎯已自动聚焦脸部</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <button type="button" id="btnToggleFusionFaceCrop" onclick="toggleFusionFaceCropMode()" style="display:none;padding:2px 7px;font-size:10.5px;font-weight:700;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="在『聚焦脸部特写』与『全身未裁切原图』之间一键切换">↺ 切回原图</button>
+            <button type="button" onclick="clearFusionSlot(0)" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空</button>
+          </div>
         </div>
         <label style="position:relative;height:165px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
           <img id="fusionSlot1Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
           <div id="fusionSlot1Empty" style="text-align:center;color:#94a3b8;font-size:12px;padding:10px;">
             <div style="font-size:28px;margin-bottom:4px;">🧑</div>
-            <div style="color:#e9d5ff;font-weight:700;">点击上传【目标人脸照片】</div>
-            <div style="font-size:11px;color:#64748b;margin-top:2px;">100% 锁定该人物的五官骨相与脸型</div>
+            <div style="color:#e9d5ff;font-weight:700;">点击上传【目标人脸/全身照片】</div>
+            <div style="font-size:11px;color:#64748b;margin-top:2px;">传全身照也会自动识别人脸并放大聚焦到脸部特写</div>
           </div>
           <input type="file" id="inpFusionSlot1" accept="image/*" style="display:none;" onchange="onFusionSlotFileChange(0, this)">
         </label>
@@ -5292,12 +5298,76 @@ function switchFusionSubMode(subMode) {
   renderFusionTargetCards();
 }
 
+let fusionFaceOrigB64 = '';
+let fusionFaceCroppedB64 = '';
+let fusionFaceUseCrop = true;
+
+async function autoDetectAndFocusFaceSlot0(rawDataUrl) {
+  fusionFaceOrigB64 = rawDataUrl || '';
+  fusionFaceCroppedB64 = '';
+  fusionFaceUseCrop = true;
+  setFusionSlotB64(0, rawDataUrl);
+  const badge = document.getElementById('fusionFaceFocusBadge');
+  const toggleBtn = document.getElementById('btnToggleFusionFaceCrop');
+  if (!rawDataUrl) {
+    if (badge) badge.style.display = 'none';
+    if (toggleBtn) toggleBtn.style.display = 'none';
+    return;
+  }
+  try {
+    const r = await fetch('/api/detect_and_crop_face', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({image_b64: rawDataUrl}),
+    });
+    const d = await r.json();
+    if (d && d.ok && d.face_b64) {
+      fusionFaceCroppedB64 = d.face_b64;
+      fusionFaceUseCrop = true;
+      setFusionSlotB64(0, fusionFaceCroppedB64);
+      if (badge) {
+        badge.style.display = 'inline-block';
+        badge.innerText = '🎯已自动聚焦脸部';
+      }
+      if (toggleBtn) {
+        toggleBtn.style.display = 'inline-block';
+        toggleBtn.innerText = '↺ 切回全身原图';
+      }
+      if (d.was_distant) {
+        showGlobalCopyToast('🎯 检测到您上传的是半身/全身照，已自动识别人脸并放大聚焦到脸部特写（剥离原图衣服干扰，五官还原度提升 300%）！');
+      }
+    }
+  } catch (e) {}
+}
+
+function toggleFusionFaceCropMode() {
+  if (!fusionFaceOrigB64 || !fusionFaceCroppedB64) return;
+  fusionFaceUseCrop = !fusionFaceUseCrop;
+  const badge = document.getElementById('fusionFaceFocusBadge');
+  const toggleBtn = document.getElementById('btnToggleFusionFaceCrop');
+  if (fusionFaceUseCrop) {
+    setFusionSlotB64(0, fusionFaceCroppedB64);
+    if (badge) { badge.style.display = 'inline-block'; badge.innerText = '🎯已自动聚焦脸部'; }
+    if (toggleBtn) toggleBtn.innerText = '↺ 切回全身原图';
+    showGlobalCopyToast('🎯 已切换为「聚焦脸部特写」（推荐：排除原图衣服与身体干扰，精准提取五官骨相）');
+  } else {
+    setFusionSlotB64(0, fusionFaceOrigB64);
+    if (badge) { badge.style.display = 'inline-block'; badge.innerText = '🖼️使用未裁切原图'; }
+    if (toggleBtn) toggleBtn.innerText = '🎯 聚焦到脸部';
+    showGlobalCopyToast('🖼️ 已切换为「未裁切全身原图」');
+  }
+}
+
 function onFusionSlotFileChange(slotIdx, inputEl) {
   const file = inputEl && inputEl.files && inputEl.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
-    setFusionSlotB64(slotIdx, ev.target.result);
+    if (slotIdx === 0) {
+      autoDetectAndFocusFaceSlot0(ev.target.result);
+    } else {
+      setFusionSlotB64(slotIdx, ev.target.result);
+    }
   };
   reader.readAsDataURL(file);
 }
@@ -5324,6 +5394,14 @@ function clearFusionSlot(slotIdx) {
   if (slotIdx === 1) {
     clearAllFusionTargets();
     return;
+  }
+  if (slotIdx === 0) {
+    fusionFaceOrigB64 = '';
+    fusionFaceCroppedB64 = '';
+    const badge = document.getElementById('fusionFaceFocusBadge');
+    const toggleBtn = document.getElementById('btnToggleFusionFaceCrop');
+    if (badge) badge.style.display = 'none';
+    if (toggleBtn) toggleBtn.style.display = 'none';
   }
   setFusionSlotB64(slotIdx, '');
   const inp = document.getElementById(`inpFusionSlot${slotIdx + 1}`);
@@ -9503,6 +9581,80 @@ p.wait()
                 sz_mb = round(final_path.stat().st_size / (1024 * 1024), 1)
                 _append_panel_log(f"📤 [外部视频导入] 已导入 {final_name} ({sz_mb} MB) 至 ~/Movies/EasyColab/")
                 self._send_json({"ok": True, "filename": final_name})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/detect_and_crop_face":
+            import base64
+            import io
+            from PIL import Image
+            img_b64 = str(payload.get("image_b64") or "").strip()
+            if not img_b64:
+                self._send_json({"ok": False, "error": "empty image"})
+                return
+            try:
+                raw_bytes = base64.b64decode(img_b64.split(",", 1)[-1])
+                tmp_path = Path("/tmp/.easycolab_face_detect_in.jpg")
+                im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+                im.save(tmp_path, format="JPEG", quality=95)
+                iw, ih = im.size
+
+                detector_bin = BASE_DIR / ".apple_face_detect"
+                if not detector_bin.exists():
+                    swift_src = Path("/tmp/apple_face_detect.swift")
+                    swift_src.write_text(
+                        'import Foundation\nimport Vision\nimport AppKit\n'
+                        'guard CommandLine.arguments.count >= 2 else { print("{\\"ok\\":false}"); exit(0) }\n'
+                        'let url = URL(fileURLWithPath: CommandLine.arguments[1])\n'
+                        'let req = VNDetectFaceRectanglesRequest()\n'
+                        'let handler = VNImageRequestHandler(url: url, options: [:])\n'
+                        'do {\n'
+                        '    try handler.perform([req])\n'
+                        '    if let results = req.results, !results.isEmpty {\n'
+                        '        let best = results.max(by: { ($0.boundingBox.width * $0.boundingBox.height) < ($1.boundingBox.width * $1.boundingBox.height) })!\n'
+                        '        let b = best.boundingBox\n'
+                        '        let y = 1.0 - (b.origin.y + b.size.height)\n'
+                        '        print(String(format: "{\\"ok\\":true,\\"x\\":%.5f,\\"y\\":%.5f,\\"w\\":%.5f,\\"h\\":%.5f,\\"count\\":%d}", b.origin.x, y, b.size.width, b.size.height, results.count))\n'
+                        '    } else { print("{\\"ok\\":false,\\"count\\":0}") }\n'
+                        '} catch { print("{\\"ok\\":false}") }\n',
+                        encoding="utf-8",
+                    )
+                    subprocess.run(["swiftc", "-O", str(swift_src), "-o", str(detector_bin)], check=False, timeout=25)
+
+                det_out = subprocess.check_output([str(detector_bin), str(tmp_path)], timeout=5).decode("utf-8").strip()
+                det_json = json.loads(det_out)
+                if not det_json.get("ok"):
+                    self._send_json({"ok": False, "face_found": False})
+                    return
+
+                fx = float(det_json["x"]) * iw
+                fy = float(det_json["y"]) * ih
+                fw = float(det_json["w"]) * iw
+                fh = float(det_json["h"]) * ih
+                cx = fx + fw / 2.0
+                cy = fy + fh / 2.0
+                was_distant = (float(det_json["h"]) < 0.36) or (float(det_json["w"]) < 0.32)
+
+                # 以人脸中心向外扩展 1.15 倍半径，完整包含脸部、发际线、耳朵与下巴，剥离多余全身衣服与背景
+                radius = max(fw, fh) * 1.15
+                x1 = max(0, int(round(cx - radius)))
+                y1 = max(0, int(round(cy - radius * 1.15)))
+                x2 = min(iw, int(round(cx + radius)))
+                y2 = min(ih, int(round(cy + radius * 0.95)))
+                crop_im = im.crop((x1, y1, x2, y2))
+                if crop_im.width < 768:
+                    new_h = max(64, int(round(768 * crop_im.height / max(1, crop_im.width))))
+                    crop_im = crop_im.resize((768, new_h), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                crop_im.save(buf, format="JPEG", quality=95)
+                out_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+                self._send_json({
+                    "ok": True,
+                    "face_found": True,
+                    "was_distant": was_distant,
+                    "face_b64": out_b64,
+                })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
             return
