@@ -4086,7 +4086,7 @@ function selectPresetModel(cardId, repo, folder, pattern, keepCurrentTab = false
   syncDriveFolderHighlight(folder);
 }
 
-function selectDriveFolder(folderName, firstFile) {
+function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
   document.getElementById('inpFolder').value = folderName;
   if (firstFile) {
     document.getElementById('inpPattern').value = firstFile;
@@ -4149,7 +4149,7 @@ function selectDriveFolder(folderName, firstFile) {
       if (chk) chk.style.display = active ? 'inline' : 'none';
     });
   }
-  if (currentMiniMaxMode !== 'drama' && currentMiniMaxMode !== 'fusion') {
+  if (!keepCurrentTab && currentMiniMaxMode !== 'drama' && currentMiniMaxMode !== 'fusion') {
     if (folderName.startsWith('LongCat-Video-Avatar')) {
       switchMiniMaxMode('avatar');
     } else if (folderName === 'MiniMax-H3-Image') {
@@ -4175,15 +4175,16 @@ async function refreshStatus(force = false) {
     if (!window._autoModeInit && d.endpoint_cfg && d.endpoint_cfg.model_folder) {
       window._autoModeInit = true;
       const mf = String(d.endpoint_cfg.model_folder);
-      if (currentMiniMaxMode !== 'drama' && currentMiniMaxMode !== 'fusion') {
+      let hasSavedTab = false;
+      try { hasSavedTab = Boolean(localStorage.getItem('easycolab_active_tab')); } catch (e) {}
+      if (!hasSavedTab && currentMiniMaxMode !== 'drama' && currentMiniMaxMode !== 'fusion') {
         if (mf.startsWith('LongCat-Video-Avatar')) {
           switchMiniMaxMode('avatar');
-          selectDriveFolder(mf);
         } else if (mf === 'MiniMax-H3-Image') {
           switchMiniMaxMode('image');
-          selectDriveFolder(mf);
         }
       }
+      selectDriveFolder(mf, '', true);
     }
     renderCustomPresets(d.custom_models || []);
     if (d.account_info) {
@@ -4835,6 +4836,8 @@ const H3_IMAGE_RES_OPTIONS_HTML = `
 function switchMiniMaxMode(mode) {
   const prevMode = currentMiniMaxMode;
   currentMiniMaxMode = mode;
+  try { localStorage.setItem('easycolab_active_tab', mode); } catch (e) {}
+  if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
   const isT2 = mode === 't2va';
   const isFl = mode === 'fl2va';
   const isAv = mode === 'avatar';
@@ -5123,6 +5126,7 @@ function renderFusionTargetCards() {
   }).join('');
   fusionSlotsB64[1] = fusionTargetList.find(Boolean) || '';
   updateFusionRunBtnLabel();
+  if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
 }
 
 function addFusionTargetSlot() {
@@ -5249,6 +5253,8 @@ function detectImageAspectRes(dataUrl) {
 
 function switchFusionSubMode(subMode) {
   currentFusionSubMode = subMode;
+  try { localStorage.setItem('easycolab_fusion_submode', subMode); } catch (e) {}
+  if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
   const bTry = document.getElementById('btnFusionModeTryon');
   const bSwap = document.getElementById('btnFusionModeFaceswap');
   const bScene = document.getElementById('btnFusionModeScenefuse');
@@ -5388,6 +5394,7 @@ function setFusionSlotB64(slotIdx, dataUrl) {
     if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
     if (empEl) empEl.style.display = 'block';
   }
+  if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
 }
 
 function clearFusionSlot(slotIdx) {
@@ -5589,9 +5596,11 @@ function renderFusionBatchGallery() {
   if (!bar) return;
   if (!fusionBatchCompletedFiles.length) {
     bar.style.display = 'none';
+    if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
     return;
   }
   bar.style.display = 'block';
+  if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
   bar.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
       <span style="font-size:12px;font-weight:800;color:#e9d5ff;">🖼️ 本次合成完成画廊 (共 ${fusionBatchCompletedFiles.length} 张 · 点击任意缩略图即可在下方大屏查看、设为角色定妆或送入数字人说话)：</span>
@@ -8278,10 +8287,101 @@ async function pollAutoDramaStatus() {
   } catch (e) {}
 }
 
+let _saveUiStateTimer = null;
+let _restoringUiState = false;
+
+function saveUiWorkspaceStateDebounced() {
+  if (_restoringUiState) return;
+  if (_saveUiStateTimer) clearTimeout(_saveUiStateTimer);
+  _saveUiStateTimer = setTimeout(() => {
+    try {
+      fetch('/api/ui_workspace_state', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          active_tab: currentMiniMaxMode,
+          fusion_sub_mode: currentFusionSubMode,
+          fusion_slot0_b64: fusionSlotsB64[0] || '',
+          fusion_slot2_b64: fusionSlotsB64[2] || '',
+          fusion_face_orig_b64: fusionFaceOrigB64 || '',
+          fusion_face_cropped_b64: fusionFaceCroppedB64 || '',
+          fusion_face_use_crop: Boolean(fusionFaceUseCrop),
+          fusion_target_list: Array.isArray(fusionTargetList) ? fusionTargetList : [''],
+          fusion_batch_completed_files: Array.isArray(fusionBatchCompletedFiles) ? fusionBatchCompletedFiles : [],
+        }),
+      }).catch(() => {});
+    } catch (e) {}
+  }, 350);
+}
+
+async function restoreUiWorkspaceState() {
+  _restoringUiState = true;
+  try {
+    let savedTab = '';
+    let savedSub = '';
+    try {
+      savedTab = localStorage.getItem('easycolab_active_tab') || '';
+      savedSub = localStorage.getItem('easycolab_fusion_submode') || '';
+    } catch (e) {}
+
+    const r = await fetch('/api/ui_workspace_state');
+    const d = await r.json();
+    const st = (d && d.state) ? d.state : {};
+    const tabToUse = st.active_tab || savedTab;
+    const subToUse = st.fusion_sub_mode || savedSub;
+
+    if (typeof st.fusion_face_orig_b64 === 'string') fusionFaceOrigB64 = st.fusion_face_orig_b64;
+    if (typeof st.fusion_face_cropped_b64 === 'string') fusionFaceCroppedB64 = st.fusion_face_cropped_b64;
+    if (typeof st.fusion_face_use_crop === 'boolean') fusionFaceUseCrop = st.fusion_face_use_crop;
+    if (st.fusion_slot0_b64) {
+      setFusionSlotB64(0, st.fusion_slot0_b64);
+      const badge = document.getElementById('fusionFaceFocusBadge');
+      const toggleBtn = document.getElementById('btnToggleFusionFaceCrop');
+      if (fusionFaceCroppedB64) {
+        if (badge) {
+          badge.style.display = 'inline-block';
+          badge.innerText = fusionFaceUseCrop ? '🎯已自动聚焦脸部' : '🖼️使用未裁切原图';
+        }
+        if (toggleBtn) {
+          toggleBtn.style.display = 'inline-block';
+          toggleBtn.innerText = fusionFaceUseCrop ? '↺ 切回全身原图' : '🎯 聚焦到脸部';
+        }
+      }
+    }
+    if (st.fusion_slot2_b64) {
+      setFusionSlotB64(2, st.fusion_slot2_b64);
+    }
+    if (Array.isArray(st.fusion_target_list) && st.fusion_target_list.length > 0) {
+      fusionTargetList = st.fusion_target_list;
+    }
+    if (Array.isArray(st.fusion_batch_completed_files) && st.fusion_batch_completed_files.length > 0) {
+      fusionBatchCompletedFiles = st.fusion_batch_completed_files;
+    }
+    if (subToUse) {
+      switchFusionSubMode(subToUse);
+    } else {
+      renderFusionTargetCards();
+    }
+    renderFusionBatchGallery();
+    if (tabToUse) {
+      switchMiniMaxMode(tabToUse);
+    }
+  } catch (e) {} finally {
+    _restoringUiState = false;
+  }
+}
+
+try {
+  const fastTab = localStorage.getItem('easycolab_active_tab');
+  const fastSub = localStorage.getItem('easycolab_fusion_submode');
+  if (fastSub) switchFusionSubMode(fastSub);
+  if (fastTab) switchMiniMaxMode(fastTab);
+} catch (e) {}
 renderFusionTargetCards();
 refreshStatus(false);
 loadLocalVideoHistory(true);
 (async () => {
+  await restoreUiWorkspaceState();
   let dramaIsRunning = false;
   try {
     await loadDramaWorkflowEditor();
@@ -8291,6 +8391,7 @@ loadLocalVideoHistory(true);
     if (dd && Array.isArray(dd.steps)) renderDramaStepsGrid(dd.steps);
     if (dd && dd.running) {
       dramaIsRunning = true;
+      switchMiniMaxMode('drama');
       if (!dramaPollTimer) {
         dramaPollTimer = setInterval(pollAutoDramaStatus, 2000);
       }
@@ -8475,6 +8576,17 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        if self.path.startswith("/api/ui_workspace_state"):
+            st_file = LOCAL_MOVIES_DIR / ".ui_workspace_state.json"
+            st_data = {}
+            if st_file.is_file():
+                try:
+                    st_data = json.loads(st_file.read_text(encoding="utf-8"))
+                except Exception:
+                    st_data = {}
+            self._send_json({"ok": True, "state": st_data})
             return
 
         if self.path.startswith("/api/status"):
@@ -9843,6 +9955,16 @@ p.wait()
                     "was_distant": was_distant,
                     "face_b64": out_b64,
                 })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/ui_workspace_state":
+            try:
+                LOCAL_MOVIES_DIR.mkdir(parents=True, exist_ok=True)
+                st_file = LOCAL_MOVIES_DIR / ".ui_workspace_state.json"
+                st_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                self._send_json({"ok": True})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
             return
