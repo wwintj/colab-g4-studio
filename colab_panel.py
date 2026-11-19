@@ -2362,9 +2362,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button type="button" id="btnCopyExtAiTop" onclick="copyExternalAiScriptPrompt(this)" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;transition:all 0.2s;" title="一键复制发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi 的分镜剧本生成指令">🤖 复制外部 AI 编剧指令</button>
         <button type="button" onclick="toggleDramaWorkflowEditor()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;">📜 展开/收起剧本与角色工作流工作台 ▾</button>
-        <select id="dramaAspectSelect" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
+        <select id="dramaAspectSelect" onchange="saveUiWorkspaceState()" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
           <option value="16:9" selected>📺 16:9 横屏电影剧集 (推荐)</option>
           <option value="9:16">📱 9:16 竖屏短剧</option>
+        </select>
+        <select id="dramaConfirmModeSelect" onchange="saveUiWorkspaceState()" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1.5px solid #f472b6;background:rgba(244,114,182,0.16);color:#fbcfe8;font-weight:700;" title="设置是否在 AI 生成角色定妆照或全部分镜底图后暂停，等您确认或无限次二次/三次/多次抽卡后再继续">
+          <option value="auto" selected>⚡ 抽卡模式：默认全自动直出 (无需确认)</option>
+          <option value="confirm_cast">🎲 抽卡模式：角色定妆抽卡确认 (生完角色暂停·可无限重抽)</option>
+          <option value="confirm_images">🖼️ 抽卡模式：全底图抽卡确认 (定妆+分镜图均确认后再拍视频)</option>
         </select>
         <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#cbd5e1;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.05);">
           <input type="checkbox" id="chkDramaResume" checked style="accent-color:#10b981;">
@@ -2408,7 +2413,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span style="font-size:12.5px;font-weight:800;color:#fbcfe8;">🎭 剧组角色定妆与音色卡槽 (支持 A / B / C / D / E… 多角色)</span>
-            <span style="font-size:11px;color:#94a3b8;">点「📋 定妆生图词」发给 ChatGPT/Gemini 生成标准半身照 → 点「📤 传定妆照」即可 100% 锁死该演员长相与穿搭（跳过云端捏脸）</span>
+            <span style="font-size:11px;color:#94a3b8;">点「🎲 抽卡」可随时让云端 AI 捏脸（哪怕不写提示词也可一键二次、三次、无限次抽卡并在 #1~#N 历史抽卡间自由切换），或点「📤 传照」上传锁死</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;">
             <button type="button" onclick="copyCharacterGoldenPrompt('', this)" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #f472b6;background:rgba(244,114,182,0.15);color:#fbcfe8;cursor:pointer;">📋 复制【通用5条黄金标准·定妆照生图词】</button>
@@ -2467,6 +2472,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，按剧本台词、角色性别与情绪气口生成全部口型同步对白镜头；</div>
       <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，按各镜设定时长生成全部动作与原生立体声环境音镜头；</div>
       <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按每一镜配置的秒数精准卡点裁切，并将环境底噪无缝铺入对白背景，输出完整短剧成片至 <code>~/Movies/EasyColab/</code>！</div>
+    </div>
+
+    <!-- 🎲 交互式抽卡确认横幅 (当处于定妆抽卡确认 / 全底图抽卡确认暂停阶段时自动弹出) -->
+    <div id="dramaGachaConfirmBanner" style="display:none;margin-bottom:12px;padding:12px 14px;border-radius:10px;background:linear-gradient(135deg, rgba(6,78,59,0.92) 0%, rgba(15,23,42,0.96) 100%);border:2px solid #10b981;box-shadow:0 8px 26px rgba(16,185,129,0.28);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span id="dramaGachaBannerTitle" style="font-size:14px;font-weight:900;color:#6ee7b7;">🎲 【抽卡确认暂停中】请检查下方生成的图片（不满意可无限次二次/三次/五次重抽，或点 #1~#N 切回历史最佳一抽）</span>
+          <span id="dramaGachaBannerSub" style="font-size:11.5px;color:#cbd5e1;">💡 此时 MiniMax-H3-Image 仍驻留在云端显存中，每次点「🎲 再抽一张」仅需约 5~8 秒即可出新图！点击任意缩略图可放大高清检验。</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" id="btnConfirmDramaGachaContinue" onclick="confirmDramaGachaContinue()" style="padding:8px 18px;font-size:13px;font-weight:900;border-radius:8px;border:1.5px solid #6ee7b7;background:linear-gradient(135deg,#059669,#10b981);color:#ffffff;cursor:pointer;box-shadow:0 4px 16px rgba(16,185,129,0.45);white-space:nowrap;">✅ 满意并锁定当前抽卡，继续后续全自动拍摄 ➔</button>
+        </div>
+      </div>
+      <div id="dramaGachaCardsList" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(235px, 1fr));gap:10px;max-height:280px;overflow-y:auto;padding-right:4px;"></div>
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
@@ -7394,42 +7413,58 @@ function renderDramaCastCards() {
   grid.innerHTML = dramaCastState.map((c, idx) => {
     const imgUrl = `/api/drama_work_file?name=char_${encodeURIComponent(c.id)}_half.jpg&t=${dramaCastPhotoCacheBust}`;
     const voiceOpts = CAST_VOICE_OPTIONS.map(o => `<option value="${o.val}" ${c.voice === o.val ? 'selected' : ''}>${o.lbl}</option>`).join('');
+    const draws = Array.isArray(c.draw_history) ? c.draw_history : [];
+    const activeDraw = c.active_draw || (draws.length ? draws[draws.length - 1] : '');
     const badgeHtml = c.user_uploaded
-      ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;">📌已锁定上传照</span>`
-      : `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#7dd3fc;font-weight:600;">🎨AI定妆/可传照</span>`;
+      ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;">📌已锁上传照</span>`
+      : (draws.length > 0
+          ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(245,158,11,0.22);color:#fcd34d;border:1px solid #f59e0b;font-weight:700;">🎲已抽${draws.length}次</span>`
+          : `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#7dd3fc;font-weight:600;">🎨AI定妆/可抽卡</span>`);
+    const drawPillsHtml = draws.length > 0
+      ? `<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-top:1px;">
+          <span style="font-size:9.5px;color:#94a3b8;">抽卡记录:</span>
+          ${draws.map((dfn, dIdx) => {
+            const isSel = (dfn === activeDraw) && !c.user_uploaded;
+            return `<button type="button" onclick="selectDramaCastDraw('${escapeHtmlAttr(c.id)}', '${escapeHtmlAttr(dfn)}')" style="padding:0px 5px;font-size:9.5px;font-weight:${isSel ? '800' : '600'};border-radius:3px;border:1px solid ${isSel ? '#f59e0b' : '#475569'};background:${isSel ? 'rgba(245,158,11,0.28)' : '#0f172a'};color:${isSel ? '#fde68a' : '#94a3b8'};cursor:pointer;" title="切换回第 ${dIdx + 1} 次抽卡结果">#${dIdx + 1}</button>`;
+          }).join('')}
+        </div>`
+      : '';
     return `
-      <div style="padding:7px 9px;border-radius:8px;background:#020617;border:1px solid ${c.user_uploaded ? '#10b981' : '#334155'};display:flex;gap:8px;align-items:stretch;">
-        <!-- 左：16:9 定妆缩略图 + 上传/复制生图词按钮 -->
-        <div style="width:92px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
-          <div style="position:relative;width:92px;height:52px;border-radius:5px;overflow:hidden;background:#0f172a;border:1px solid #475569;display:flex;align-items:center;justify-content:center;">
+      <div style="padding:7px 9px;border-radius:8px;background:#020617;border:1px solid ${c.user_uploaded ? '#10b981' : (draws.length > 0 ? '#f59e0b' : '#334155')};display:flex;gap:8px;align-items:stretch;">
+        <!-- 左：16:9 定妆缩略图 (点击可放大) + 传照/抽卡/生图词按钮 -->
+        <div style="width:108px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+          <div onclick="previewDramaWorkImage('char_${escapeHtmlAttr(c.id)}_half.jpg', '角色${escapeHtmlAttr(c.id)}${c.name ? ' (' + escapeHtmlAttr(c.name) + ')' : ''} 定妆照', '${escapeHtmlAttr(c.id)}')" style="position:relative;width:108px;height:60px;border-radius:5px;overflow:hidden;background:#0f172a;border:1px solid #475569;display:flex;align-items:center;justify-content:center;cursor:zoom-in;" title="点击放大查看高清定妆照并可连续抽卡">
             <img src="${imgUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" onload="this.style.display='block';this.nextElementSibling.style.display='none';" style="width:100%;height:100%;object-fit:cover;display:block;">
             <div style="display:none;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;line-height:1.2;">📷<br>角色${escapeHtmlAttr(c.id)}</div>
+            <span style="position:absolute;right:3px;bottom:2px;font-size:8.5px;padding:0 4px;border-radius:3px;background:rgba(2,6,23,0.75);color:#cbd5e1;">🔍放大</span>
           </div>
-          <div style="display:flex;gap:3px;">
-            <label style="flex:1;text-align:center;padding:2px 0;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="上传您在 ChatGPT/Gemini 生成好的角色${escapeHtmlAttr(c.id)}定妆照（直接锁脸，跳过云端捏脸）">
+          <div style="display:flex;gap:2px;">
+            <label style="flex:1;text-align:center;padding:2px 0;font-size:9.5px;font-weight:700;border-radius:4px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="上传角色${escapeHtmlAttr(c.id)}照片（100%锁脸）">
               📤传照
               <input type="file" accept="image/*" style="display:none;" onchange="uploadDramaCharPhoto('${escapeHtmlAttr(c.id)}', this)">
             </label>
-            <button type="button" onclick="copyCharacterGoldenPrompt('${escapeHtmlAttr(c.id)}', this)" style="flex:1;padding:2px 0;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #f472b6;background:rgba(244,114,182,0.16);color:#fbcfe8;cursor:pointer;" title="一键复制角色${escapeHtmlAttr(c.id)}的【5条黄金标准·定妆照生图提示词】，去 ChatGPT/Gemini 生成标准半身照">📋生图词</button>
+            <button type="button" id="btnRollCast_${escapeHtmlAttr(c.id)}" onclick="rollDramaCastPhoto('${escapeHtmlAttr(c.id)}', this)" style="flex:1.15;padding:2px 0;font-size:9.5px;font-weight:800;border-radius:4px;border:1px solid #f59e0b;background:rgba(245,158,11,0.22);color:#fde68a;cursor:pointer;" title="云端 AI 立即抽卡生成角色${escapeHtmlAttr(c.id)}定妆照（不填提示词也能自动抽卡，支持二次/三次/无限次重抽并保留历史记录）">🎲抽卡</button>
+            <button type="button" onclick="copyCharacterGoldenPrompt('${escapeHtmlAttr(c.id)}', this)" style="flex:1;padding:2px 0;font-size:9.5px;font-weight:700;border-radius:4px;border:1px solid #f472b6;background:rgba(244,114,182,0.16);color:#fbcfe8;cursor:pointer;" title="复制角色${escapeHtmlAttr(c.id)}的【5条黄金标准·定妆生图词】">📋词</button>
           </div>
         </div>
-        <!-- 右：角色代号、姓名、专属音色、外貌与服装描述 -->
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+        <!-- 右：角色代号、姓名、专属音色、外貌与服装描述 + 历史抽卡切换条 -->
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:3px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:4px;">
               <span style="font-size:11px;font-weight:900;padding:1px 6px;border-radius:4px;background:#f472b6;color:#020617;">角色${escapeHtmlAttr(c.id)}</span>
-              <input type="text" value="${escapeHtmlAttr(c.name || '')}" onchange="dramaCastState[${idx}].name=this.value.trim();syncCastToWorkflow();" placeholder="姓名(如:博哥)" style="width:68px;padding:2px 5px;font-size:11px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+              <input type="text" value="${escapeHtmlAttr(c.name || '')}" onchange="dramaCastState[${idx}].name=this.value.trim();syncCastToWorkflow();" placeholder="姓名(如:博哥)" style="width:66px;padding:2px 5px;font-size:11px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
               ${badgeHtml}
             </div>
             <div style="display:flex;align-items:center;gap:3px;">
-              ${c.user_uploaded ? `<button type="button" onclick="deleteDramaCharPhoto('${escapeHtmlAttr(c.id)}')" style="padding:1px 5px;font-size:9.5px;border-radius:3px;border:1px solid #f59e0b;background:transparent;color:#fcd34d;cursor:pointer;" title="取消上传的照片，改由云端 AI 生成定妆照">↺改AI生</button>` : ''}
+              ${c.user_uploaded ? `<button type="button" onclick="deleteDramaCharPhoto('${escapeHtmlAttr(c.id)}')" style="padding:1px 5px;font-size:9.5px;border-radius:3px;border:1px solid #f59e0b;background:transparent;color:#fcd34d;cursor:pointer;" title="取消上传的照片，改由云端 AI 抽卡生成定妆照">↺改AI抽</button>` : ''}
               <button type="button" onclick="removeDramaCastRole('${escapeHtmlAttr(c.id)}')" style="padding:1px 6px;font-size:10px;border-radius:3px;border:1px solid #ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="删除角色${escapeHtmlAttr(c.id)}">✕</button>
             </div>
           </div>
           <select onchange="dramaCastState[${idx}].voice=this.value;syncCastToWorkflow();" style="width:100%;padding:2px 5px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#fde68a;font-weight:600;">
             ${voiceOpts}
           </select>
-          <input type="text" value="${escapeHtmlAttr(c.desc || '')}" onchange="dramaCastState[${idx}].desc=this.value.trim();syncCastToWorkflow();" placeholder="填写角色${escapeHtmlAttr(c.id)}年龄、五官特征、发型发饰、上衣穿搭..." style="width:100%;padding:3px 6px;font-size:10.5px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;">
+          <input type="text" value="${escapeHtmlAttr(c.desc || '')}" onchange="dramaCastState[${idx}].desc=this.value.trim();syncCastToWorkflow();" placeholder="选填：外貌与穿搭描述（留空也可直接点左侧「🎲抽卡」自动生成）..." style="width:100%;padding:3px 6px;font-size:10.5px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;">
+          ${drawPillsHtml}
         </div>
       </div>
     `;
@@ -7536,6 +7571,171 @@ async function deleteDramaCharPhoto(roleId) {
     await pollAutoDramaStatus();
     showGlobalCopyToast(`↺ 已解除角色${roleId} 的上传照片锁定，开拍时将由云端 MiniMax-H3-Image 自动生成定妆照`);
   } catch (e) {}
+}
+
+let _rollingDramaCastRoles = {};
+
+async function rollDramaCastPhoto(roleId, btnEl) {
+  if (!roleId) return;
+  if (_rollingDramaCastRoles[roleId]) {
+    showGlobalCopyToast(`⏳ 角色${roleId} 正在云端抽卡生图中，请稍候...`);
+    return;
+  }
+  _rollingDramaCastRoles[roleId] = true;
+  const item = dramaCastState.find(c => c.id === roleId);
+  const aspect = ((document.getElementById('dramaAspectSelect') || {}).value || '16:9').trim();
+  const visStyle = ((document.getElementById('selAiVisualStyle') || {}).value || (currentDramaWorkflow && currentDramaWorkflow.global_style) || '').trim();
+  const prevDrawsCnt = (item && Array.isArray(item.draw_history)) ? item.draw_history.length : 0;
+  const nextDrawNum = prevDrawsCnt + 1;
+
+  const oldBtnTxt = btnEl ? btnEl.innerText : '🎲抽卡';
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerText = `🎲第${nextDrawNum}抽...`;
+  }
+  const stEl = document.getElementById('dramaStatusText');
+  if (stEl) {
+    stEl.innerText = `🎲 正在为「角色${roleId}${item && item.name ? ' (' + item.name + ')' : ''}」执行第 ${nextDrawNum} 次 AI 抽卡定妆（MiniMax-H3-Image 约 5~10 秒）...`;
+    stEl.style.color = '#fbbf24';
+  }
+  showGlobalCopyToast(`🎲 正在为角色${roleId} 执行第 ${nextDrawNum} 次抽卡捏脸...`);
+
+  try {
+    const r = await fetch('/api/drama_roll_cast_photo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        role_id: roleId,
+        name: item ? (item.name || '') : '',
+        desc: item ? (item.desc || '') : '',
+        voice: item ? (item.voice || '') : '',
+        global_style: visStyle,
+        aspect: aspect,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (stEl) {
+        stEl.innerText = '❌ 抽卡失败: ' + (d.error || '未知错误');
+        stEl.style.color = '#ef4444';
+      }
+      alert('角色抽卡失败: ' + (d.error || '未知错误'));
+      return;
+    }
+    dramaCastPhotoCacheBust = Date.now();
+    if (d.workflow) {
+      currentDramaWorkflow = d.workflow;
+      if (Array.isArray(d.workflow.cast_list)) {
+        dramaCastState = d.workflow.cast_list;
+      }
+    } else if (item) {
+      item.user_uploaded = false;
+      item.has_photo = true;
+      item.draw_history = d.draw_history || [];
+      item.active_draw = d.draw_file || '';
+    }
+    renderDramaCastCards();
+    renderDramaWfEditorTables();
+    await pollAutoDramaStatus();
+    // 若高清放大弹窗正打开着该角色，同步刷新弹窗大图与抽卡历史按钮
+    const modal = document.getElementById('dramaImageLightboxModal');
+    if (modal && modal.style.display === 'flex' && modal.dataset.roleId === roleId) {
+      previewDramaWorkImage(`char_${roleId}_half.jpg`, `角色${roleId}${item && item.name ? ' (' + item.name + ')' : ''} 定妆照 (第 ${d.draw_index || nextDrawNum} 抽)`, roleId);
+    }
+    showGlobalCopyToast(`🎉 角色${roleId} 第 ${d.draw_index || nextDrawNum} 次抽卡完成！不满意可继续点「🎲抽卡」，或点击 #1~#${d.draw_index || nextDrawNum} 随时切回任意一抽`);
+  } catch (e) {
+    if (stEl) {
+      stEl.innerText = '❌ 抽卡请求异常: ' + e;
+      stEl.style.color = '#ef4444';
+    }
+  } finally {
+    _rollingDramaCastRoles[roleId] = false;
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerText = oldBtnTxt;
+    }
+  }
+}
+
+async function selectDramaCastDraw(roleId, drawFile) {
+  if (!roleId || !drawFile) return;
+  try {
+    const r = await fetch('/api/drama_select_cast_draw', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({role_id: roleId, draw_file: drawFile}),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      alert('切换抽卡记录失败: ' + (d.error || '未知错误'));
+      return;
+    }
+    dramaCastPhotoCacheBust = Date.now();
+    if (d.workflow) {
+      currentDramaWorkflow = d.workflow;
+      if (Array.isArray(d.workflow.cast_list)) {
+        dramaCastState = d.workflow.cast_list;
+      }
+    }
+    renderDramaCastCards();
+    await pollAutoDramaStatus();
+    const item = dramaCastState.find(c => c.id === roleId);
+    const draws = (item && Array.isArray(item.draw_history)) ? item.draw_history : [];
+    const drawIdx = draws.indexOf(drawFile) + 1;
+    const modal = document.getElementById('dramaImageLightboxModal');
+    if (modal && modal.style.display === 'flex' && modal.dataset.roleId === roleId) {
+      previewDramaWorkImage(`char_${roleId}_half.jpg`, `角色${roleId}${item && item.name ? ' (' + item.name + ')' : ''} 定妆照 (第 ${drawIdx || '?'} 抽)`, roleId);
+    }
+    showGlobalCopyToast(`✅ 已将角色${roleId} 的定妆照切换为【第 ${drawIdx || '?'} 抽】！后续分镜将 100% 锁定此抽面孔`);
+  } catch (e) {}
+}
+
+function previewDramaWorkImage(fileName, titleText, roleId = '') {
+  let modal = document.getElementById('dramaImageLightboxModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'dramaImageLightboxModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(2,6,23,0.88);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:20px;';
+    modal.onclick = (ev) => {
+      if (ev.target === modal) modal.style.display = 'none';
+    };
+    document.body.appendChild(modal);
+  }
+  modal.dataset.roleId = roleId || '';
+  modal.dataset.fileName = fileName || '';
+  const imgUrl = `/api/drama_work_file?name=${encodeURIComponent(fileName)}&t=${Date.now()}`;
+  const item = roleId ? dramaCastState.find(c => c.id === roleId) : null;
+  const draws = (item && Array.isArray(item.draw_history)) ? item.draw_history : [];
+  const activeDraw = (item && item.active_draw) || (draws.length ? draws[draws.length - 1] : '');
+  const drawStripHtml = (roleId && draws.length > 0)
+    ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#cbd5e1;font-weight:700;">🎲 历史抽卡对比切换:</span>
+        ${draws.map((dfn, idx) => {
+          const isSel = (dfn === activeDraw) && !(item && item.user_uploaded);
+          return `<button type="button" onclick="selectDramaCastDraw('${escapeHtmlAttr(roleId)}', '${escapeHtmlAttr(dfn)}')" style="padding:4px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1.5px solid ${isSel ? '#f59e0b' : '#475569'};background:${isSel ? 'rgba(245,158,11,0.3)' : '#0f172a'};color:${isSel ? '#fde68a' : '#94a3b8'};cursor:pointer;">第 ${idx + 1} 抽 ${isSel ? '✓' : ''}</button>`;
+        }).join('')}
+      </div>`
+    : '';
+  const actionBtnHtml = roleId
+    ? `<button type="button" onclick="rollDramaCastPhoto('${escapeHtmlAttr(roleId)}', this)" style="padding:7px 16px;font-size:13px;font-weight:900;border-radius:7px;border:1.5px solid #f59e0b;background:linear-gradient(135deg,#d97706,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 4px 14px rgba(245,158,11,0.35);">🎲 不满意？立即再抽一张 (第 ${draws.length + 1} 抽)</button>`
+    : `<button type="button" onclick="rerunSingleDramaStep('${escapeHtmlAttr(fileName)}');document.getElementById('dramaImageLightboxModal').style.display='none';" style="padding:7px 16px;font-size:13px;font-weight:900;border-radius:7px;border:1.5px solid #f59e0b;background:linear-gradient(135deg,#d97706,#f59e0b);color:#ffffff;cursor:pointer;">🔄 重新抽卡生成此关键帧 (${escapeHtmlAttr(fileName)})</button>`;
+
+  modal.innerHTML = `
+    <div style="max-width:960px;width:95%;background:#0f172a;border:1.5px solid #38bdf8;border-radius:14px;padding:14px 16px;box-shadow:0 20px 50px rgba(0,0,0,0.75);display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:15px;font-weight:900;color:#fde68a;">🖼️ ${escapeHtmlAttr(titleText || fileName)}</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          ${actionBtnHtml}
+          <button type="button" onclick="document.getElementById('dramaImageLightboxModal').style.display='none'" style="padding:6px 12px;font-size:12.5px;font-weight:800;border-radius:7px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;">✕ 关闭预览</button>
+        </div>
+      </div>
+      ${drawStripHtml}
+      <div style="width:100%;max-height:72vh;overflow:hidden;border-radius:10px;background:#020617;border:1px solid #334155;display:flex;align-items:center;justify-content:center;">
+        <img src="${imgUrl}" style="max-width:100%;max-height:70vh;object-fit:contain;display:block;">
+      </div>
+    </div>
+  `;
+  modal.style.display = 'flex';
 }
 
 async function copyCharacterGoldenPrompt(roleId, btnEl) {
@@ -8084,19 +8284,136 @@ function renderDramaStepsGrid(stepsList) {
       col = '#fca5a5';
       icon = '❌';
     }
-    const canRerun = item.file && item.file !== 'ancient_drama_30s_final.mp4';
-    return `<div style="padding:5px 7px;border-radius:6px;background:${bg};border:1px solid ${bd};color:${col};display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;overflow:hidden;" title="${escapeHtmlAttr(item.label || '')} (${escapeHtmlAttr(item.file || '')})">
-      <div style="display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;">
+    const fn = String(item.file || '');
+    const isImg = /\.(jpg|jpeg|png|webp)$/i.test(fn);
+    const roleMatch = fn.match(/^char_([A-Z0-9]+)_half\.jpg$/i);
+    const roleIdForImg = roleMatch ? roleMatch[1].toUpperCase() : '';
+    const canRerun = fn && fn !== 'ancient_drama_30s_final.mp4';
+    const clickPrevAttr = (isImg && st === 'done')
+      ? `onclick="previewDramaWorkImage('${escapeHtmlAttr(fn)}', '${escapeHtmlAttr(item.label || fn)}', '${escapeHtmlAttr(roleIdForImg)}')" style="display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;cursor:zoom-in;" title="点击放大查看高清大图并可重抽 (${escapeHtmlAttr(fn)})"`
+      : `style="display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;"`;
+    const rerunAction = roleIdForImg
+      ? `rollDramaCastPhoto('${escapeHtmlAttr(roleIdForImg)}', this)`
+      : `rerunSingleDramaStep('${escapeHtmlAttr(fn)}')`;
+    return `<div style="padding:5px 7px;border-radius:6px;background:${bg};border:1px solid ${bd};color:${col};display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;overflow:hidden;" title="${escapeHtmlAttr(item.label || '')} (${escapeHtmlAttr(fn)})">
+      <div ${clickPrevAttr}>
         <span>${icon}</span>
         <span style="overflow:hidden;text-overflow:ellipsis;font-weight:${st === 'running' ? '700' : '500'};">${item.label || ''}</span>
       </div>
-      ${canRerun ? `<button type="button" onclick="rerunSingleDramaStep('${escapeHtmlAttr(item.file)}')" style="padding:1px 4px;font-size:10px;border-radius:3px;border:1px solid rgba(148,163,184,0.3);background:rgba(15,23,42,0.6);color:#cbd5e1;cursor:pointer;flex-shrink:0;" title="单独重抽此步">🔄</button>` : ''}
+      ${canRerun ? `<button type="button" onclick="${rerunAction}" style="padding:1px 5px;font-size:10px;border-radius:3px;border:1px solid rgba(148,163,184,0.35);background:rgba(15,23,42,0.75);color:#fde68a;cursor:pointer;flex-shrink:0;" title="${roleIdForImg ? '对此角色再次抽卡 (保留历史抽卡记录)' : '单独重新抽卡生成此步'}">${roleIdForImg ? '🎲' : '🔄'}</button>` : ''}
     </div>`;
   }).join('');
 }
 
+function renderDramaGachaConfirmBanner(d) {
+  const banner = document.getElementById('dramaGachaConfirmBanner');
+  const titleEl = document.getElementById('dramaGachaBannerTitle');
+  const subEl = document.getElementById('dramaGachaBannerSub');
+  const listEl = document.getElementById('dramaGachaCardsList');
+  const btnCont = document.getElementById('btnConfirmDramaGachaContinue');
+  if (!banner || !listEl) return;
+
+  const waitKind = (d && d.awaiting_confirm) ? String(d.awaiting_confirm) : '';
+  if (!waitKind || !d.running) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  banner.style.display = 'block';
+  if (Array.isArray(d.cast_list) && d.cast_list.length > 0) {
+    dramaCastState = d.cast_list;
+  }
+
+  if (waitKind === 'cast') {
+    if (titleEl) {
+      titleEl.innerText = '🎲 【角色定妆抽卡确认中】已为您生成角色定妆照！请检查长相与穿搭，不满意可无限次点「🎲 再抽一张」或点 #1~#N 切换历史抽卡';
+    }
+    if (subEl) {
+      subEl.innerText = '💡 MiniMax-H3-Image 正驻留在云端 GPU 显存中，每次重抽仅需约 5~8 秒！点击缩略图可放大检验五官；全部满意后点击右侧绿色按钮继续拍摄分镜。';
+    }
+    if (btnCont) {
+      btnCont.innerText = '✅ 满意并锁定当前角色定妆，继续生成分镜与视频 ➔';
+    }
+    listEl.innerHTML = dramaCastState.map(c => {
+      const fn = `char_${c.id}_half.jpg`;
+      const imgUrl = `/api/drama_work_file?name=${encodeURIComponent(fn)}&t=${dramaCastPhotoCacheBust}`;
+      const draws = Array.isArray(c.draw_history) ? c.draw_history : [];
+      const activeDraw = c.active_draw || (draws.length ? draws[draws.length - 1] : '');
+      const drawPills = draws.map((dfn, idx) => {
+        const isSel = (dfn === activeDraw) && !c.user_uploaded;
+        return `<button type="button" onclick="selectDramaCastDraw('${escapeHtmlAttr(c.id)}', '${escapeHtmlAttr(dfn)}')" style="padding:2px 7px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid ${isSel ? '#f59e0b' : '#475569'};background:${isSel ? 'rgba(245,158,11,0.32)' : '#0f172a'};color:${isSel ? '#fde68a' : '#94a3b8'};cursor:pointer;">#${idx + 1}${isSel ? '✓' : ''}</button>`;
+      }).join('');
+      return `
+        <div style="padding:8px 10px;border-radius:8px;background:rgba(2,6,23,0.9);border:1.5px solid ${c.user_uploaded ? '#10b981' : '#f59e0b'};display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+            <span style="font-size:12px;font-weight:900;color:#fde68a;">🎭 角色${escapeHtmlAttr(c.id)}${c.name ? ' · ' + escapeHtmlAttr(c.name) : ''}</span>
+            <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.2);color:#fcd34d;font-weight:700;">${c.user_uploaded ? '📌已锁上传照' : `已抽 ${Math.max(1, draws.length)} 次`}</span>
+          </div>
+          <div onclick="previewDramaWorkImage('${escapeHtmlAttr(fn)}', '角色${escapeHtmlAttr(c.id)}${c.name ? ' (' + escapeHtmlAttr(c.name) + ')' : ''} 定妆照', '${escapeHtmlAttr(c.id)}')" style="position:relative;width:100%;height:118px;border-radius:6px;overflow:hidden;background:#0f172a;border:1px solid #334155;cursor:zoom-in;">
+            <img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <span style="position:absolute;right:5px;bottom:4px;font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(2,6,23,0.8);color:#e2e8f0;">🔍 点击放大高清检验</span>
+          </div>
+          ${draws.length > 0 ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;"><span style="font-size:10px;color:#94a3b8;">切换抽卡:</span>${drawPills}</div>` : ''}
+          <button type="button" onclick="rollDramaCastPhoto('${escapeHtmlAttr(c.id)}', this)" style="width:100%;padding:5px 0;font-size:11.5px;font-weight:800;border-radius:6px;border:1px solid #f59e0b;background:linear-gradient(135deg,rgba(217,119,6,0.35),rgba(245,158,11,0.25));color:#fde68a;cursor:pointer;">🎲 不满意？再抽一次角色${escapeHtmlAttr(c.id)} (第 ${draws.length + 1} 抽)</button>
+        </div>
+      `;
+    }).join('');
+  } else {
+    if (titleEl) {
+      titleEl.innerText = '🖼️ 【全剧底图抽卡确认中】全部角色定妆照与分镜首尾关键帧已生成完毕！请检查画面构图与锁脸效果';
+    }
+    if (subEl) {
+      subEl.innerText = '💡 在切换到视频引擎前，您可点击任意一张底图的「🎲 重抽此图」（5~8秒极速重绘）；全部确认满意后点击右侧按钮启动视频拍摄与合片！';
+    }
+    if (btnCont) {
+      btnCont.innerText = '🎬 满意并锁定全部底图，启动视频生成与合片 ➔';
+    }
+    const imgSteps = (Array.isArray(d.steps) ? d.steps : []).filter(s => /\.(jpg|jpeg|png|webp)$/i.test(String(s.file || '')));
+    listEl.innerHTML = imgSteps.map(s => {
+      const fn = String(s.file || '');
+      const roleM = fn.match(/^char_([A-Z0-9]+)_half\.jpg$/i);
+      const rid = roleM ? roleM[1].toUpperCase() : '';
+      const imgUrl = `/api/drama_work_file?name=${encodeURIComponent(fn)}&t=${dramaCastPhotoCacheBust}`;
+      const actCall = rid ? `rollDramaCastPhoto('${escapeHtmlAttr(rid)}', this)` : `rerunSingleDramaStep('${escapeHtmlAttr(fn)}')`;
+      return `
+        <div style="padding:7px 9px;border-radius:8px;background:rgba(2,6,23,0.9);border:1px solid #38bdf8;display:flex;flex-direction:column;gap:5px;">
+          <div style="font-size:11px;font-weight:800;color:#7dd3fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(s.label || fn)}">${escapeHtmlAttr(s.label || fn)}</div>
+          <div onclick="previewDramaWorkImage('${escapeHtmlAttr(fn)}', '${escapeHtmlAttr(s.label || fn)}', '${escapeHtmlAttr(rid)}')" style="position:relative;width:100%;height:105px;border-radius:5px;overflow:hidden;background:#0f172a;border:1px solid #334155;cursor:zoom-in;">
+            <img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <span style="position:absolute;right:4px;bottom:3px;font-size:9.5px;padding:1px 5px;border-radius:3px;background:rgba(2,6,23,0.78);color:#cbd5e1;">🔍放大</span>
+          </div>
+          <button type="button" onclick="${actCall}" style="width:100%;padding:4px 0;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #f59e0b;background:rgba(245,158,11,0.2);color:#fde68a;cursor:pointer;">🎲 重抽此图 (${escapeHtmlAttr(fn)})</button>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+async function confirmDramaGachaContinue() {
+  const btn = document.getElementById('btnConfirmDramaGachaContinue');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '🚀 已确认锁定！正在继续后续全自动拍摄...';
+  }
+  try {
+    const r = await fetch('/api/drama_confirm_continue', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+    });
+    const d = await r.json();
+    if (d && d.ok) {
+      showGlobalCopyToast('✅ 已锁定当前抽卡结果，全自动导演流水线继续执行！');
+    }
+    await pollAutoDramaStatus();
+  } catch (e) {} finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function startAutoDramaPipeline() {
   const aspect = ((document.getElementById('dramaAspectSelect') || {}).value || '16:9').trim();
+  const confirmMode = ((document.getElementById('dramaConfirmModeSelect') || {}).value || 'auto').trim();
   const resume = Boolean(((document.getElementById('chkDramaResume') || {}).checked) ?? true);
   const auto2k = Boolean(((document.getElementById('chkDramaAuto2K') || {}).checked) ?? false);
   const stEl = document.getElementById('dramaStatusText');
@@ -8104,14 +8421,14 @@ async function startAutoDramaPipeline() {
   const btnStop = document.getElementById('btnStopAutoDrama');
   if (btnStart) btnStart.disabled = true;
   if (stEl) {
-    stEl.innerText = '🚀 正在启动 11 镜 30 秒古装短剧全自动导演流水线...';
+    stEl.innerText = '🚀 正在启动短剧全自动导演流水线...';
     stEl.style.color = '#fbbf24';
   }
   try {
     const r = await fetch('/api/drama_auto_start', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({aspect, resume, auto_2k: auto2k}),
+      body: JSON.stringify({aspect, resume, auto_2k: auto2k, confirm_mode: confirmMode}),
     });
     const d = await r.json();
     if (!d.ok) {
@@ -8193,6 +8510,11 @@ async function pollAutoDramaStatus() {
     if (Array.isArray(d.steps)) {
       renderDramaStepsGrid(d.steps);
     }
+    if (Array.isArray(d.cast_list) && d.cast_list.length > 0) {
+      dramaCastState = d.cast_list;
+      renderDramaCastCards();
+    }
+    renderDramaGachaConfirmBanner(d);
     const pct = Math.max(0, Math.min(100, parseInt(d.pct || 0, 10)));
     if (pBar) pBar.style.width = `${pct}%`;
     const hdrEl = document.getElementById('dramaTitleHeader');
@@ -8218,18 +8540,24 @@ async function pollAutoDramaStatus() {
       }
       if (btnStart) {
         btnStart.disabled = true;
-        btnStart.innerText = `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26} 步 · 总进度 ${pct}%)...`;
+        btnStart.innerText = d.awaiting_confirm
+          ? `🎲 正在等待您抽卡确认 (${d.done_count || 0}/${d.total_count || 26} 步 · 请在上方横幅确认继续)...`
+          : `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26} 步 · 总进度 ${pct}%)...`;
       }
       if (btnStop) btnStop.style.display = 'inline-block';
       if (stEl && d.message) {
         stEl.innerText = d.message;
-        stEl.style.color = '#fde68a';
+        stEl.style.color = d.awaiting_confirm ? '#6ee7b7' : '#fde68a';
       }
-      if (tLabel) tLabel.innerText = `🎬 全自动短剧拍摄总进度：${pct}%（已完成 ${d.done_count || 0} / ${d.total_count || 26} 步）`;
-      if (tSpeed) tSpeed.innerText = `总进度 ${pct}%`;
+      if (tLabel) {
+        tLabel.innerText = d.awaiting_confirm
+          ? `🎲 【抽卡确认暂停中】已完成 ${d.done_count || 0} / ${d.total_count || 26} 步，请在上方抽卡确认横幅检查或重抽图片`
+          : `🎬 全自动短剧拍摄总进度：${pct}%（已完成 ${d.done_count || 0} / ${d.total_count || 26} 步）`;
+      }
+      if (tSpeed) tSpeed.innerText = d.awaiting_confirm ? '🎲 等待抽卡确认' : `总进度 ${pct}%`;
       if (dState) {
-        dState.innerText = `🎬 总进度 ${pct}%`;
-        dState.style.color = '#f59e0b';
+        dState.innerText = d.awaiting_confirm ? '🎲 等待抽卡确认' : `🎬 总进度 ${pct}%`;
+        dState.style.color = d.awaiting_confirm ? '#10b981' : '#f59e0b';
       }
       if (tBar) {
         tBar.className = 'progress-fill';
@@ -8290,17 +8618,25 @@ async function pollAutoDramaStatus() {
 let _saveUiStateTimer = null;
 let _restoringUiState = false;
 
+function saveUiWorkspaceState() {
+  saveUiWorkspaceStateDebounced();
+}
+
 function saveUiWorkspaceStateDebounced() {
   if (_restoringUiState) return;
   if (_saveUiStateTimer) clearTimeout(_saveUiStateTimer);
   _saveUiStateTimer = setTimeout(() => {
     try {
+      const dramaConfirmSel = document.getElementById('dramaConfirmModeSelect');
+      const dramaAspectSel = document.getElementById('dramaAspectSelect');
       fetch('/api/ui_workspace_state', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           active_tab: currentMiniMaxMode,
           fusion_sub_mode: currentFusionSubMode,
+          drama_confirm_mode: dramaConfirmSel ? dramaConfirmSel.value : 'auto',
+          drama_aspect: dramaAspectSel ? dramaAspectSel.value : '16:9',
           fusion_slot0_b64: fusionSlotsB64[0] || '',
           fusion_slot2_b64: fusionSlotsB64[2] || '',
           fusion_face_orig_b64: fusionFaceOrigB64 || '',
@@ -8329,6 +8665,15 @@ async function restoreUiWorkspaceState() {
     const st = (d && d.state) ? d.state : {};
     const tabToUse = st.active_tab || savedTab;
     const subToUse = st.fusion_sub_mode || savedSub;
+
+    if (st.drama_confirm_mode) {
+      const dcm = document.getElementById('dramaConfirmModeSelect');
+      if (dcm) dcm.value = st.drama_confirm_mode;
+    }
+    if (st.drama_aspect) {
+      const das = document.getElementById('dramaAspectSelect');
+      if (das) das.value = st.drama_aspect;
+    }
 
     if (typeof st.fusion_face_orig_b64 === 'string') fusionFaceOrigB64 = st.fusion_face_orig_b64;
     if (typeof st.fusion_face_cropped_b64 === 'string') fusionFaceCroppedB64 = st.fusion_face_cropped_b64;
@@ -10115,24 +10460,96 @@ p.wait()
             aspect = str(payload.get("aspect") or "16:9").strip()
             resume = bool(payload.get("resume", True))
             auto_2k = bool(payload.get("auto_2k", False))
+            confirm_mode = str(payload.get("confirm_mode") or "auto").strip()
+            if confirm_mode not in ("auto", "confirm_cast", "confirm_images"):
+                confirm_mode = "auto"
+            _DRAMA_CONFIRM_EVENT.clear()
             _DRAMA_STATE["running"] = True
             _DRAMA_STATE["cancel"] = False
+            _DRAMA_STATE["awaiting_confirm"] = ""
+            _DRAMA_STATE["confirm_mode"] = confirm_mode
             _DRAMA_STATE["error"] = ""
             _DRAMA_STATE["pct"] = 2
-            _DRAMA_STATE["message"] = "🚀 已启动《溪边与市集白花簪》11 镜 30 秒全自动导演流水线..."
+            wf_cur = _load_drama_workflow()
+            _DRAMA_STATE["message"] = f"🚀 已启动{wf_cur.get('title') or '当前短剧'}全自动导演流水线..."
             threading.Thread(
                 target=_run_auto_drama_pipeline_bg,
-                args=(aspect, resume, auto_2k),
+                args=(aspect, resume, auto_2k, confirm_mode),
                 daemon=True,
             ).start()
-            self._send_json({"ok": True, "message": "已启动 11 镜 30 秒全自动导演流水线"})
+            self._send_json({"ok": True, "message": _DRAMA_STATE["message"]})
             return
 
         if self.path == "/api/drama_auto_stop":
             _DRAMA_STATE["cancel"] = True
+            _DRAMA_STATE["awaiting_confirm"] = ""
+            _DRAMA_CONFIRM_EVENT.set()
             _DRAMA_STATE["message"] = "🛑 正在安全暂停全自动导演流水线 (已生成的定妆照与分镜均已保存，下次可断点续拍)..."
             _append_panel_log("🛑 [自动导演] 已收到暂停信号，当前单步完成后将停止并保留全部已生成素材")
             self._send_json({"ok": True, "message": "已发送暂停信号"})
+            return
+
+        if self.path == "/api/drama_confirm_continue":
+            prev_wait = _DRAMA_STATE.get("awaiting_confirm") or ""
+            _DRAMA_STATE["awaiting_confirm"] = ""
+            _DRAMA_CONFIRM_EVENT.set()
+            _append_panel_log(f"✅ [抽卡确认通过] 用户已确认锁定 {prev_wait or '当前阶段'} 抽卡结果，全自动导演流水线继续执行！")
+            self._send_json({"ok": True, "message": "✅ 已确认锁定当前抽卡结果，流水线继续拍摄"})
+            return
+
+        if self.path == "/api/drama_roll_cast_photo":
+            if _DRAMA_STATE["running"] and not _DRAMA_STATE.get("awaiting_confirm"):
+                self._send_json({"ok": False, "error": "当前正在全自动渲染分镜中，请等待进入抽卡确认暂停阶段或先点暂停后再抽卡"})
+                return
+            role_id = re.sub(r"[^A-Z0-9]", "", str(payload.get("role_id") or "A").strip().upper()) or "A"
+            name_in = str(payload.get("name") or "").strip()
+            desc_in = str(payload.get("desc") or "").strip()
+            voice_in = str(payload.get("voice") or "").strip()
+            style_in = str(payload.get("global_style") or "").strip()
+            aspect_in = str(payload.get("aspect") or "16:9").strip()
+            try:
+                res_dict = _roll_drama_cast_photo_sync(
+                    role_id=role_id,
+                    name=name_in,
+                    desc=desc_in,
+                    voice=voice_in,
+                    global_style=style_in,
+                    aspect=aspect_in,
+                )
+                self._send_json(res_dict)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/drama_select_cast_draw":
+            role_id = re.sub(r"[^A-Z0-9]", "", str(payload.get("role_id") or "A").strip().upper()) or "A"
+            draw_file = os.path.basename(str(payload.get("draw_file") or "").strip())
+            if not draw_file:
+                self._send_json({"ok": False, "error": "未指定要切换的抽卡文件名"})
+                return
+            src_p = DRAMA_WORK_DIR / draw_file
+            if not src_p.is_file():
+                self._send_json({"ok": False, "error": f"抽卡历史文件 {draw_file} 不存在"})
+                return
+            try:
+                target_fn = f"char_{role_id}_half.jpg"
+                shutil.copy2(src_p, DRAMA_WORK_DIR / target_fn)
+                if role_id == "A":
+                    shutil.copy2(src_p, DRAMA_WORK_DIR / "char_A_closeup.jpg")
+                wf = _load_drama_workflow()
+                uploaded_set = set(wf.get("user_uploaded_chars") or [])
+                uploaded_set.discard(role_id)
+                wf["user_uploaded_chars"] = sorted(list(uploaded_set))
+                for c_item in (wf.get("cast_list") or []):
+                    if str(c_item.get("id") or "").upper() == role_id:
+                        c_item["user_uploaded"] = False
+                        c_item["has_photo"] = True
+                        c_item["active_draw"] = draw_file
+                _save_drama_workflow(wf)
+                _append_panel_log(f"🎲 [角色抽卡切换] 已将角色{role_id}定妆基准图切换为历史抽卡 {draw_file} -> {target_fn}")
+                self._send_json({"ok": True, "role_id": role_id, "draw_file": draw_file, "workflow": wf})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
             return
 
         if self.path == "/api/drama_auto_remux":
@@ -10295,7 +10712,8 @@ p.wait()
             return
 
         if self.path == "/api/drama_workflow_rerun_one":
-            if _DRAMA_STATE["running"]:
+            in_confirm_pause = bool(_DRAMA_STATE.get("running") and _DRAMA_STATE.get("awaiting_confirm"))
+            if _DRAMA_STATE["running"] and not in_confirm_pause:
                 self._send_json({"ok": False, "error": "当前已有工作流任务正在运行中，请先等待完成或暂停"})
                 return
             target_file = str(payload.get("target_file") or "").strip()
@@ -10310,7 +10728,7 @@ p.wait()
             _DRAMA_STATE["message"] = f"🔄 正在单独重抽节点: {target_file}..."
             threading.Thread(
                 target=_run_single_drama_step_bg,
-                args=(target_file, aspect),
+                args=(target_file, aspect, in_confirm_pause),
                 daemon=True,
             ).start()
             self._send_json({"ok": True, "message": f"已启动单节点重抽: {target_file}"})
@@ -10321,10 +10739,13 @@ p.wait()
 
 DRAMA_WORK_DIR = LOCAL_MOVIES_DIR / "drama_30s_ancient"
 DRAMA_WORKFLOW_FILE = DRAMA_WORK_DIR / "workflow.json"
+_DRAMA_CONFIRM_EVENT = threading.Event()
 
 _DRAMA_STATE: Dict[str, Any] = {
     "running": False,
     "cancel": False,
+    "awaiting_confirm": "",
+    "confirm_mode": "auto",
     "pct": 0,
     "active_file": "",
     "message": "✅ 已加载分镜短剧工作流（支持粘贴任意新剧本自动拆解、单镜独立重抽与 0.1s 卡点合片）！",
@@ -11054,6 +11475,7 @@ def _parse_raw_script_to_workflow(
 
 def _get_drama_status_payload() -> Dict[str, Any]:
     wf = _load_drama_workflow()
+    _sync_cast_draw_history_from_disk(wf)
     steps_out = []
     done_cnt = 0
     active_fn = _DRAMA_STATE.get("active_file") or ""
@@ -11080,6 +11502,8 @@ def _get_drama_status_payload() -> Dict[str, Any]:
     pct = _DRAMA_STATE["pct"] if _DRAMA_STATE["running"] else (int(round(done_cnt * 100.0 / max(1, tot_cnt))) if done_cnt > 0 else 0)
     return {
         "running": _DRAMA_STATE["running"],
+        "awaiting_confirm": _DRAMA_STATE.get("awaiting_confirm") or "",
+        "confirm_mode": _DRAMA_STATE.get("confirm_mode") or "auto",
         "pct": pct,
         "done_count": done_cnt,
         "total_count": tot_cnt,
@@ -11091,6 +11515,7 @@ def _get_drama_status_payload() -> Dict[str, Any]:
         "error": _DRAMA_STATE["error"],
         "final_video": _DRAMA_STATE["final_video"],
         "steps": steps_out,
+        "cast_list": wf.get("cast_list") or [],
     }
 
 
@@ -11322,8 +11747,18 @@ def _drama_run_image_step(
     _DRAMA_STATE["active_file"] = fn
     _DRAMA_STATE["pct"] = max(2, int(round((step_idx - 1) * 100.0 / tot_steps)))
     if resume and out_p.is_file() and out_p.stat().st_size > 8192:
-        _append_panel_log(f"♻️ [自动导演·断点复用] {step_label} 已存在 ({fn})，跳过重绘")
-        return out_p
+        # 若该图片依赖的角色定妆参考图 (ref_files) 在本次抽卡中被更新过 (mtime 比当前分镜图更新)，自动重新生成该分镜图以同步新面孔！
+        ref_updated = False
+        out_mtime = out_p.stat().st_mtime
+        for rf in (ref_files or []):
+            rp = DRAMA_WORK_DIR / rf
+            if rp.is_file() and rp.stat().st_mtime > out_mtime + 1.0:
+                ref_updated = True
+                break
+        if not ref_updated:
+            _append_panel_log(f"♻️ [自动导演·断点复用] {step_label} 已存在 ({fn})，跳过重绘")
+            return out_p
+        _append_panel_log(f"🔄 [抽卡联动刷新] 检测到参考定妆照已更新，正在同步重绘 {step_label} ({fn})...")
 
     w_s, h_s = res_str.split("x")
     ref_b64s = []
@@ -11625,12 +12060,213 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
     return final_gallery_p
 
 
-def _run_single_drama_step_bg(target_file: str, aspect: str = "16:9"):
+def _sync_cast_draw_history_from_disk(wf: Dict[str, Any]) -> bool:
+    """确保磁盘上已生成的 char_<ID>_half.jpg 自动登记为角色抽卡历史的第 1 抽，方便用户随时切回第 1 抽"""
+    changed = False
+    for c_item in (wf.get("cast_list") or []):
+        if not isinstance(c_item, dict):
+            continue
+        rid = str(c_item.get("id") or "").upper()
+        if not rid:
+            continue
+        half_p = DRAMA_WORK_DIR / f"char_{rid}_half.jpg"
+        draws = list(c_item.get("draw_history") or [])
+        draws = [fn for fn in draws if (DRAMA_WORK_DIR / fn).is_file()]
+        if half_p.is_file() and half_p.stat().st_size > 8192 and not draws and not c_item.get("user_uploaded"):
+            draw1_fn = f"char_{rid}_draw_1.jpg"
+            draw1_p = DRAMA_WORK_DIR / draw1_fn
+            if not draw1_p.is_file():
+                try:
+                    shutil.copy2(half_p, draw1_p)
+                except Exception:
+                    pass
+            if draw1_p.is_file():
+                draws = [draw1_fn]
+                c_item["draw_history"] = draws
+                c_item["active_draw"] = draw1_fn
+                c_item["has_photo"] = True
+                changed = True
+        elif draws != (c_item.get("draw_history") or []):
+            c_item["draw_history"] = draws
+            changed = True
+    if changed:
+        _save_drama_workflow(wf)
+    return changed
+
+
+def _roll_drama_cast_photo_sync(
+    role_id: str,
+    name: str = "",
+    desc: str = "",
+    voice: str = "",
+    global_style: str = "",
+    aspect: str = "16:9",
+) -> Dict[str, Any]:
+    """为指定角色执行一次 AI 抽卡捏脸定妆（支持无提示词智能默认造型，保留全部第 1~N 抽历史记录）"""
+    DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+    wf = _load_drama_workflow()
+    _sync_cast_draw_history_from_disk(wf)
+
+    cast_list = wf.get("cast_list") or []
+    target_role = None
+    for c_item in cast_list:
+        if isinstance(c_item, dict) and str(c_item.get("id") or "").upper() == role_id:
+            target_role = c_item
+            break
+    if target_role is None:
+        target_role = {
+            "id": role_id,
+            "name": name or f"角色{role_id}",
+            "voice": voice or ("ming:灵小柔" if role_id == "A" else "ming:灵朗"),
+            "desc": desc,
+            "file": f"char_{role_id}_half.jpg",
+            "user_uploaded": False,
+            "has_photo": False,
+            "draw_history": [],
+            "active_draw": "",
+        }
+        cast_list.append(target_role)
+        wf["cast_list"] = cast_list
+
+    if name:
+        target_role["name"] = name
+    if desc:
+        target_role["desc"] = desc
+    if voice:
+        target_role["voice"] = voice
+
+    eff_name = str(target_role.get("name") or f"角色{role_id}").strip()
+    eff_voice = str(target_role.get("voice") or "").strip()
+    eff_desc = str(target_role.get("desc") or "").strip()
+    eff_style = (global_style or str(wf.get("global_style") or "") or "写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影").strip()
+
+    # 若用户未填写任何角色描述提示词 ("如果没有提示词的话")，自动根据姓名/音色/角色代号生成高颜值电影级默认人设描述
+    if not eff_desc:
+        male_voices = ("灵朗", "灵宇", "灵楷", "灵空", "灵信远", "灵孤影", "四郎", "康熙", "武松", "唐僧")
+        is_male = any(mv in eff_voice for mv in male_voices) or any(k in eff_name for k in ("男", "哥", "总", "爷", "叔", "少", "先生")) or (role_id in ("B", "D", "F") and "女" not in eff_name)
+        if "古装" in eff_style or "仙侠" in eff_style:
+            eff_desc = (
+                "26岁中国古装俊朗青年男性，剑眉星目，五官立体轮廓分明，束发玉冠，身穿质感考究的深色暗纹古装长袍"
+                if is_male
+                else "22岁中国古装绝美少女，鹅蛋脸，清澈杏眼，真实白皙细腻皮肤，精致古装发髻配素雅玉簪，身穿轻盈雅致的刺绣汉服衫裙"
+            )
+        else:
+            eff_desc = (
+                "28岁高颜值现代都市青年男性，五官立体深邃，下颌线清晰，清爽利落黑发，身穿剪裁考究的高级质感深色西装外套与内搭"
+                if is_male
+                else "24岁高颜值现代都市年轻女性，鹅蛋脸五官精致灵动，眼神清澈有戏，真实自然细腻皮肤纹理，自然微卷长发，身穿高级感简约时尚上衣"
+            )
+
+    full_prompt = (
+        f"{eff_style} 85mm电影人像定焦镜头，平视机位，正面居中半身定妆照（完整保留头顶头发与胸部以上服装，严禁切头顶）："
+        f"{eff_name}（{eff_desc}）。面部受光均匀柔和，五官清晰立体，真实细腻皮肤纹理，双唇自然闭合，眼神清澈直视镜头；"
+        f"单人画面，背景为干净柔和的电影级浅景深虚化环境光斑，无多余路人或相框边线。"
+    )
+
+    draws = [fn for fn in (target_role.get("draw_history") or []) if (DRAMA_WORK_DIR / fn).is_file()]
+    draw_idx = len(draws) + 1
+    draw_fn = f"char_{role_id}_draw_{draw_idx}.jpg"
+    draw_p = DRAMA_WORK_DIR / draw_fn
+    half_fn = f"char_{role_id}_half.jpg"
+    half_p = DRAMA_WORK_DIR / half_fn
+    img_res = "1152x2048" if aspect == "9:16" else "2048x1152"
+
+    prev_msg = _DRAMA_STATE.get("message") or ""
+    prev_active = _DRAMA_STATE.get("active_file") or ""
+    try:
+        _DRAMA_STATE["active_file"] = half_fn
+        _drama_wait_for_engine(
+            target_engine="minimax-h3-image",
+            repo="Comfy-Org/MiniMax-H3-Image",
+            folder="MiniMax-H3-Image",
+            pattern="*.safetensors",
+            label="📸 MiniMax-H3-Image (33B · 4K锁脸定妆与首尾帧引擎)",
+        )
+        w_s, h_s = img_res.split("x")
+        step_lbl = f"🎲 角色{role_id}({eff_name}) 第{draw_idx}次定妆抽卡"
+        _DRAMA_STATE["message"] = f"🎲 正在生成 {step_lbl}..."
+        _append_panel_log(f"🎲 [角色定妆抽卡] 开始生成 {step_lbl} ({img_res}) -> {draw_fn}")
+        payload = {
+            "mode": "image",
+            "prompt": full_prompt,
+            "resolution": img_res,
+            "width": int(w_s),
+            "height": int(h_s),
+            "steps": 6,
+            "seed": -1,
+            "randomize_seed": True,
+            "batch_count": 1,
+            "ref_images_b64": [],
+            "edit_outfit": "",
+            "edit_scene": "",
+            "clean_matte": True,
+        }
+        _drama_submit_and_wait_media(payload, draw_p, step_lbl)
+        shutil.copy2(draw_p, half_p)
+        if role_id == "A":
+            shutil.copy2(draw_p, DRAMA_WORK_DIR / "char_A_closeup.jpg")
+
+        draws.append(draw_fn)
+        target_role["draw_history"] = draws
+        target_role["active_draw"] = draw_fn
+        target_role["user_uploaded"] = False
+        target_role["has_photo"] = True
+        uploaded_set = set(wf.get("user_uploaded_chars") or [])
+        uploaded_set.discard(role_id)
+        wf["user_uploaded_chars"] = sorted(list(uploaded_set))
+
+        # 同步更新或插入 workflow.image_tasks 中的定妆节点提示词
+        found_it = False
+        for it in (wf.get("image_tasks") or []):
+            if it.get("file") == half_fn:
+                it["prompt"] = full_prompt
+                found_it = True
+                break
+        if not found_it:
+            wf.setdefault("image_tasks", []).insert(0, {
+                "file": half_fn,
+                "label": f"🎭 角色{role_id}({eff_name})半身定妆",
+                "refs": [],
+                "prompt": full_prompt,
+            })
+        _save_drama_workflow(wf)
+        done_msg = f"🎉 角色{role_id}（{eff_name}）第 {draw_idx} 次抽卡完成！可继续点「🎲抽卡」或点 #1~#{draw_idx} 切换对比"
+        _DRAMA_STATE["message"] = prev_msg if _DRAMA_STATE.get("awaiting_confirm") else done_msg
+        return {
+            "ok": True,
+            "role_id": role_id,
+            "draw_file": draw_fn,
+            "draw_index": draw_idx,
+            "draw_history": draws,
+            "workflow": wf,
+            "message": done_msg,
+        }
+    finally:
+        _DRAMA_STATE["active_file"] = prev_active
+
+
+def _drama_wait_for_user_gacha_confirm(confirm_stage: str, prompt_msg: str):
+    """在定妆照或全剧底图生成完毕后暂停流水线，保持 MiniMax-H3-Image 常驻显存供用户无限次抽卡，直到用户点击确认继续"""
+    _drama_check_cancel()
+    _DRAMA_CONFIRM_EVENT.clear()
+    _DRAMA_STATE["awaiting_confirm"] = confirm_stage
+    _DRAMA_STATE["active_file"] = ""
+    _DRAMA_STATE["message"] = prompt_msg
+    _append_panel_log(f"🎲 [抽卡确认暂停 · {confirm_stage}] {prompt_msg}")
+    while not _DRAMA_CONFIRM_EVENT.is_set():
+        _drama_check_cancel()
+        _DRAMA_CONFIRM_EVENT.wait(timeout=1.0)
+    _DRAMA_STATE["awaiting_confirm"] = ""
+    _drama_check_cancel()
+
+
+def _run_single_drama_step_bg(target_file: str, aspect: str = "16:9", keep_confirm_pause: bool = False):
     """单独重新生成工作流中的某一张定妆/关键帧图片或某一条分镜视频"""
     DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
     wf = _load_drama_workflow()
     img_res = "1152x2048" if aspect == "9:16" else "2048x1152"
     vid_res = "480x832" if aspect == "9:16" else "832x480"
+    prev_wait = _DRAMA_STATE.get("awaiting_confirm") or ""
     try:
         for it in (wf.get("image_tasks") or []):
             if it.get("file") == target_file:
@@ -11710,11 +12346,20 @@ def _run_single_drama_step_bg(target_file: str, aspect: str = "16:9"):
         _DRAMA_STATE["message"] = str(e)
         _append_panel_log(f"⚠️ [单步重抽中断] {e}")
     finally:
-        _DRAMA_STATE["running"] = False
+        if keep_confirm_pause and prev_wait:
+            _DRAMA_STATE["running"] = True
+            _DRAMA_STATE["awaiting_confirm"] = prev_wait
+        else:
+            _DRAMA_STATE["running"] = False
 
 
-def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_2k: bool = False):
-    """三阶段全自动执行当前工作流 (workflow.json) 中的所有定妆图、分镜首尾帧、分流视频生成与剪辑合片"""
+def _run_auto_drama_pipeline_bg(
+    aspect: str = "16:9",
+    resume: bool = True,
+    auto_2k: bool = False,
+    confirm_mode: str = "auto",
+):
+    """三阶段全自动执行当前工作流 (workflow.json) 中的所有定妆图、分镜首尾帧、分流视频生成与剪辑合片（支持定妆抽卡确认与全底图抽卡确认）"""
     DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
     wf = _load_drama_workflow()
     img_tasks = wf.get("image_tasks") or []
@@ -11734,11 +12379,14 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
 
     try:
         # ==================== 阶段一 & 阶段二：MiniMax-H3-Image 生成所有定妆照 + 分镜首尾关键帧 ====================
+        cast_img_tasks = [it for it in img_tasks if str(it.get("file") or "").startswith("char_")]
+        shot_img_tasks = [it for it in img_tasks if not str(it.get("file") or "").startswith("char_")]
+
         need_any_img = any(
             not ((resume or it["file"] in locked_char_files) and (DRAMA_WORK_DIR / it["file"]).is_file() and (DRAMA_WORK_DIR / it["file"]).stat().st_size > 8192)
             for it in img_tasks
         )
-        if need_any_img:
+        if need_any_img or confirm_mode in ("confirm_cast", "confirm_images"):
             _drama_wait_for_engine(
                 target_engine="minimax-h3-image",
                 repo="Comfy-Org/MiniMax-H3-Image",
@@ -11748,7 +12396,7 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
             )
 
         step_cursor = 1
-        for it in img_tasks:
+        for it in cast_img_tasks:
             use_resume_for_img = resume or (it["file"] in locked_char_files)
             _drama_run_image_step(
                 it["file"],
@@ -11761,6 +12409,38 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
                 tot_steps,
             )
             step_cursor += 1
+
+        # 将已生成的角色定妆照自动归档为第 1 抽 (#1)，方便用户在抽卡历史中对比与回退
+        wf = _load_drama_workflow()
+        _sync_cast_draw_history_from_disk(wf)
+
+        if confirm_mode == "confirm_cast" and cast_img_tasks:
+            _drama_wait_for_user_gacha_confirm(
+                "cast",
+                "🎲 【角色定妆抽卡确认中】角色定妆照已就绪！不满意可点「🎲 再抽一次」无限次重抽或点 #1~#N 切换历史抽卡，满意后点右侧绿色按钮继续拍摄分镜",
+            )
+            wf = _load_drama_workflow()
+
+        for it in shot_img_tasks:
+            use_resume_for_img = resume or (it["file"] in locked_char_files)
+            _drama_run_image_step(
+                it["file"],
+                it.get("label") or it["file"],
+                it.get("prompt") or "",
+                it.get("refs") or [],
+                img_res,
+                use_resume_for_img,
+                step_cursor,
+                tot_steps,
+            )
+            step_cursor += 1
+
+        if confirm_mode == "confirm_images" and img_tasks:
+            _drama_wait_for_user_gacha_confirm(
+                "images",
+                "🖼️ 【全剧底图抽卡确认中】全部角色定妆与分镜首尾关键帧已生成！不满意可点任意图片的「🎲 重抽此图」，全部满意后点右侧绿色按钮启动视频生成与合片",
+            )
+            wf = _load_drama_workflow()
 
         # ==================== 阶段三-A：LongCat-Video-Avatar-1.6 + Ming-3.0 集中生成所有数字人对白镜头 ====================
         need_any_avatar = any(
@@ -11834,6 +12514,7 @@ def _run_auto_drama_pipeline_bg(aspect: str = "16:9", resume: bool = True, auto_
         _DRAMA_STATE["message"] = str(e)
         _append_panel_log(f"⚠️ [自动导演中断] {e}")
     finally:
+        _DRAMA_STATE["awaiting_confirm"] = ""
         _DRAMA_STATE["running"] = False
 
 
