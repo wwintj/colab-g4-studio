@@ -2106,7 +2106,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">支持外部 AI 生成任意时长剧本直接粘贴 · 单镜独立重抽 · 0.1秒卡点合片</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <button type="button" onclick="copyExternalAiScriptPrompt()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;" title="一键复制发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi 的分镜剧本生成指令">🤖 复制外部 AI 编剧指令</button>
+        <button type="button" id="btnCopyExtAiTop" onclick="copyExternalAiScriptPrompt(this)" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;transition:all 0.2s;" title="一键复制发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi 的分镜剧本生成指令">🤖 复制外部 AI 编剧指令</button>
         <button type="button" onclick="toggleDramaWorkflowEditor()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;">📜 粘贴新剧本 / 编辑工作流节点 ▾</button>
         <select id="dramaAspectSelect" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
           <option value="16:9" selected>📺 16:9 横屏电影剧集 (推荐)</option>
@@ -2146,7 +2146,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <option value="新海诚高画质唯美2D动漫电影风格，绚丽光影与细腻人物表情">🌸 唯美2D动漫电影</option>
           </select>
         </div>
-        <button type="button" onclick="copyExternalAiScriptPrompt()" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;">📋 一键复制【发给外部 AI 的编剧指令】</button>
+        <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;transition:all 0.2s;">📋 一键复制【发给外部 AI 的编剧指令】</button>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:12px;">
@@ -6127,7 +6127,25 @@ function escapeHtmlAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
-async function copyExternalAiScriptPrompt() {
+function showGlobalCopyToast(msg) {
+  let toast = document.getElementById('globalCopyToastBanner');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'globalCopyToastBanner';
+    toast.style.cssText = 'position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:99999;padding:11px 22px;border-radius:999px;background:linear-gradient(135deg,#059669,#10b981);color:#ffffff;font-size:13.5px;font-weight:800;box-shadow:0 10px 30px rgba(16,185,129,0.45);border:1.5px solid #6ee7b7;pointer-events:none;transition:opacity 0.25s,transform 0.25s;opacity:0;';
+    document.body.appendChild(toast);
+  }
+  toast.innerText = msg;
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  if (window._copyToastTimer) clearTimeout(window._copyToastTimer);
+  window._copyToastTimer = setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(-8px)';
+  }, 3600);
+}
+
+async function copyExternalAiScriptPrompt(btnEl) {
   const drawer = document.getElementById('dramaWorkflowEditorDrawer');
   if (drawer && drawer.style.display === 'none') {
     drawer.style.display = 'block';
@@ -6155,7 +6173,7 @@ async function copyExternalAiScriptPrompt() {
 【分镜】
 镜头01【时长】2.5秒
 【运镜】固定镜头 / 缓慢推镜 / 倒退跟拍 / 越肩正反打（写清机位与景别，如全景/中近景/面部特写）
-【画面】（详细描述画面中人物的位置、动作起止、表情神态変化、光影与环境细节；若该镜需要明显的前后焦点转移或大跨度连续动作，可用“起幅...；随后...”描述，系统会自动生成首尾双关键帧）
+【画面】（详细描述画面中人物的位置、动作起止、表情神态变化、光影与环境细节；若该镜需要明显的前后焦点转移或大跨度连续动作，可用“起幅...；随后...”描述，系统会自动生成首尾双关键帧）
 【环境音】（描述该镜头的纯自然环境音效，如雨声、溪水声、市集人群声、脚步声等）
 【对白】无（若有角色开口说话，请写如 A："台词内容" 或 B："台词内容"；支持在台词开头或中间加入 [Dissatisfaction-hnn] 傲娇哼声、[Sigh] 叹气、[Laughter] 轻笑、[Breathing] 呼吸、[Surprise-ah] 惊呼 等真人气口标签）
 【音色】（若有对白，可从以下官方音色中选填一个：ming:灵小柔 / ming:灵雨汐_中性 / ming:灵黛嗔_生气 / ming:灵采薇_悲伤 / ming:灵梦 / ming:妩媚妲己 / ming:灵信远_中性 / ming:灵朗 / ming:灵宇 / ming:灵孤影_厌恶 / ming:灵孤影_悲伤 / ming:灵孤影_生气 / ming:甄嬛传_四郎）
@@ -6163,19 +6181,59 @@ async function copyExternalAiScriptPrompt() {
 镜头02【时长】3.5秒
 ...（请按剧情自然展开所有分镜，镜头数量与总秒数不设硬性上限）`;
 
+  let copiedOk = false;
   try {
-    await navigator.clipboard.writeText(metaPrompt);
-    const stEl = document.getElementById('dramaStatusText');
-    if (stEl) {
-      stEl.innerText = '📋 已一键复制【外部 AI 编剧专用指令】到剪贴板！请直接粘贴给 ChatGPT / Claude / DeepSeek / Gemini，再将它生成的剧本粘回左框并点「🔍 智能解析」即可！';
-      stEl.style.color = '#e9d5ff';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(metaPrompt);
+      copiedOk = true;
     }
-  } catch (e) {
-    const rawEl = document.getElementById('inpDramaRawScript');
-    if (rawEl) {
-      rawEl.value = metaPrompt;
-      rawEl.select();
+  } catch (e) {}
+  if (!copiedOk) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = metaPrompt;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      copiedOk = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e2) {}
+  }
+
+  showGlobalCopyToast('✅ 已复制到剪贴板！请直接粘贴 (Cmd+V / Ctrl+V) 发给外部 AI 生成分镜剧本');
+
+  const bTop = document.getElementById('btnCopyExtAiTop');
+  const bDrw = document.getElementById('btnCopyExtAiDrawer');
+  if (bTop) {
+    bTop.innerText = '✅ 已复制到剪贴板！';
+    bTop.style.background = 'linear-gradient(135deg,#059669,#10b981)';
+    bTop.style.borderColor = '#34d399';
+    bTop.style.color = '#ffffff';
+  }
+  if (bDrw) {
+    bDrw.innerText = '✅ 已成功复制到剪贴板！(去粘贴给外部 AI 吧)';
+    bDrw.style.background = 'linear-gradient(135deg,#059669,#10b981)';
+  }
+  if (window._extAiBtnResetTimer) clearTimeout(window._extAiBtnResetTimer);
+  window._extAiBtnResetTimer = setTimeout(() => {
+    if (bTop) {
+      bTop.innerText = '🤖 复制外部 AI 编剧指令';
+      bTop.style.background = 'rgba(168,85,247,0.18)';
+      bTop.style.borderColor = '#a855f7';
+      bTop.style.color = '#e9d5ff';
     }
+    if (bDrw) {
+      bDrw.innerText = '📋 一键复制【发给外部 AI 的编剧指令】';
+      bDrw.style.background = 'linear-gradient(135deg,#9333ea,#6366f1)';
+    }
+  }, 3500);
+
+  const stEl = document.getElementById('dramaStatusText');
+  if (stEl) {
+    stEl.innerText = '✅ 已将【外部 AI 编剧专用指令】复制到剪贴板！请粘贴给 ChatGPT / Claude / DeepSeek / Gemini，再将它生成的剧本粘回左框并点「🔍 智能解析」即可！';
+    stEl.style.color = '#34d399';
   }
 }
 
