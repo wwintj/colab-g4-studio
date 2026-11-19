@@ -4223,7 +4223,7 @@ async function pollLogs() {
       const pBar = document.getElementById('taskProgressBar');
       const st = document.getElementById('deployStateText');
 
-      if (!d.running && (videoPollTimer || upscalePollTimer)) {
+      if (!d.running && (dramaPollTimer || videoPollTimer || upscalePollTimer)) {
         return;
       }
       if (!d.running && latestUpscaleErr) {
@@ -5489,14 +5489,18 @@ function formatCnDur(sec) {
 }
 
 function renderLiveVideoTimingText() {
-  if (liveVideoElapsedSec === null) return;
+  if (dramaPollTimer || liveVideoElapsedSec === null) return;
+  const tLabel = document.getElementById('taskProgressLabel');
   const tSpeed = document.getElementById('taskProgressSpeed');
   const st = document.getElementById('videoGenStatus');
   const elStr = `已耗时 ${formatCnDur(liveVideoElapsedSec)}`;
   const etaStr = (liveVideoEtaSec && liveVideoEtaSec > 0) ? ` · 预计剩余 ≈ ${formatCnDur(liveVideoEtaSec)}` : '';
-  const pctStr = liveVideoPct !== null ? ` · 总进度 ${liveVideoPct}%` : '';
+  const pctVal = liveVideoPct !== null ? liveVideoPct : 0;
+  if (tLabel) {
+    tLabel.innerText = `⏳ 当前任务总进度：${pctVal}%`;
+  }
   if (tSpeed) {
-    tSpeed.innerText = `${elStr}${etaStr}${pctStr}`;
+    tSpeed.innerText = `总进度 ${pctVal}%`;
   }
   if (st && liveVideoBaseMsg) {
     st.innerText = `⏳ ${liveVideoBaseMsg} · ${elStr}${etaStr}`;
@@ -5762,6 +5766,17 @@ async function startVideoGenerate(forceTarget = '') {
 }
 
 async function pollVideoStatus() {
+  if (dramaPollTimer) {
+    if (videoPollTimer) {
+      clearInterval(videoPollTimer);
+      videoPollTimer = null;
+    }
+    liveVideoElapsedSec = null;
+    liveVideoEtaSec = null;
+    liveVideoPct = null;
+    liveVideoBaseMsg = '';
+    return;
+  }
   const btn = document.getElementById('btnVideoGen');
   const st = document.getElementById('videoGenStatus');
   const pWrap = document.getElementById('videoProgressWrap');
@@ -5851,19 +5866,16 @@ async function pollVideoStatus() {
     if (d.message) {
       if (d.running) {
         liveVideoBaseMsg = d.message;
-        if (tLabel) {
-          tLabel.innerText = `⏳ ${d.message}`;
-        }
         renderLiveVideoTimingText();
       } else {
         const doneDur = (typeof d.elapsed_s === 'number' && d.elapsed_s > 0) ? ` (总耗时 ${formatCnDur(d.elapsed_s)})` : '';
         st.innerText = `${d.message}`;
         st.style.color = '#10b981';
         if (tLabel) {
-          tLabel.innerText = `✅ ${d.message}`;
+          tLabel.innerText = `✅ 当前任务总进度：100%`;
         }
         if (tSpeed) {
-          tSpeed.innerText = `已完成并保存至 ~/Movies/EasyColab${doneDur}`;
+          tSpeed.innerText = `总进度 100%`;
         }
       }
       if (dState) {
@@ -6911,6 +6923,7 @@ async function pollAutoDramaStatus() {
   const tLabel = document.getElementById('taskProgressLabel');
   const tSpeed = document.getElementById('taskProgressSpeed');
   const tBar = document.getElementById('taskProgressBar');
+  const dState = document.getElementById('deployStateText');
   try {
     const r = await fetch('/api/drama_auto_status');
     const d = await r.json();
@@ -6921,29 +6934,53 @@ async function pollAutoDramaStatus() {
     const pct = Math.max(0, Math.min(100, parseInt(d.pct || 0, 10)));
     if (pBar) pBar.style.width = `${pct}%`;
     if (d.running) {
+      if (videoPollTimer) {
+        clearInterval(videoPollTimer);
+        videoPollTimer = null;
+      }
+      liveVideoElapsedSec = null;
+      liveVideoEtaSec = null;
+      liveVideoPct = null;
+      liveVideoBaseMsg = '';
       if (!window._dramaRunningSwitched && currentMiniMaxMode !== 'drama') {
         window._dramaRunningSwitched = true;
         switchMiniMaxMode('drama');
       }
       if (btnStart) {
         btnStart.disabled = true;
-        btnStart.innerText = `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26} 步 · ${pct}%)...`;
+        btnStart.innerText = `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26} 步 · 总进度 ${pct}%)...`;
       }
       if (btnStop) btnStop.style.display = 'inline-block';
       if (stEl && d.message) {
         stEl.innerText = d.message;
         stEl.style.color = '#fde68a';
       }
-      if (tLabel && d.message) tLabel.innerText = d.message;
-      if (tSpeed) tSpeed.innerText = `全自动导演进度: ${d.done_count || 0}/${d.total_count || 26} 步 (${pct}%)`;
+      if (tLabel) tLabel.innerText = `🎬 全自动短剧拍摄总进度：${pct}%（已完成 ${d.done_count || 0} / ${d.total_count || 26} 步）`;
+      if (tSpeed) tSpeed.innerText = `总进度 ${pct}%`;
+      if (dState) {
+        dState.innerText = `🎬 总进度 ${pct}%`;
+        dState.style.color = '#f59e0b';
+      }
       if (tBar) {
         tBar.className = 'progress-fill';
-        tBar.style.width = `${Math.max(5, pct)}%`;
+        tBar.style.width = `${Math.max(2, pct)}%`;
       }
     } else {
       if (dramaPollTimer) {
         clearInterval(dramaPollTimer);
         dramaPollTimer = null;
+      }
+      if (d.done_count && d.total_count && d.done_count >= d.total_count) {
+        if (tLabel) tLabel.innerText = `✅ 全自动短剧拍摄总进度：100%（全部 ${d.total_count} 步已完成）`;
+        if (tSpeed) tSpeed.innerText = `总进度 100%`;
+        if (dState) {
+          dState.innerText = '✅ 总进度 100%';
+          dState.style.color = '#10b981';
+        }
+        if (tBar) {
+          tBar.className = 'progress-fill green';
+          tBar.style.width = '100%';
+        }
       }
       if (btnStart) {
         btnStart.disabled = false;
@@ -6983,23 +7020,29 @@ async function pollAutoDramaStatus() {
 refreshStatus(false);
 loadLocalVideoHistory(true);
 (async () => {
+  let dramaIsRunning = false;
   try {
     const rd = await fetch('/api/drama_auto_status');
     const dd = await rd.json();
     if (dd && Array.isArray(dd.steps)) renderDramaStepsGrid(dd.steps);
-    if (dd && dd.running && !dramaPollTimer) {
-      pollAutoDramaStatus();
-      dramaPollTimer = setInterval(pollAutoDramaStatus, 2000);
+    if (dd && dd.running) {
+      dramaIsRunning = true;
+      if (!dramaPollTimer) {
+        pollAutoDramaStatus();
+        dramaPollTimer = setInterval(pollAutoDramaStatus, 2000);
+      }
     }
   } catch (e) {}
-  try {
-    const rv = await fetch('/api/video_status');
-    const dv = await rv.json();
-    if (dv && dv.running && !videoPollTimer) {
-      pollVideoStatus();
-      videoPollTimer = setInterval(pollVideoStatus, 2000);
-    }
-  } catch (e) {}
+  if (!dramaIsRunning) {
+    try {
+      const rv = await fetch('/api/video_status');
+      const dv = await rv.json();
+      if (dv && dv.running && !videoPollTimer) {
+        pollVideoStatus();
+        videoPollTimer = setInterval(pollVideoStatus, 2000);
+      }
+    } catch (e) {}
+  }
   try {
     const r = await fetch('/api/video_upscale_status');
     const d = await r.json();
@@ -9474,7 +9517,8 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
     except Exception:
         pass
 
-    # 若云端上一任务尚未彻底收尾 (HTTP 409 或 already_running)，耐心等待其释放 GPU 后自动提交
+    # 若云端当前正处于本镜的扩散生成中 (HTTP 409)，直接无缝接管并继续轮询进度，无需中断或重复提交
+    saw_running_or_new = False
     for _ in range(60):
         _drama_check_cancel()
         try:
@@ -9483,21 +9527,21 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
                 res = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
             if he.code == 409:
-                time.sleep(3)
-                continue
+                saw_running_or_new = True
+                break
             raise
         if not res.get("ok"):
             if "正在生成" in str(res.get("error") or "") or "busy" in str(res.get("error") or "").lower():
-                time.sleep(3)
-                continue
+                saw_running_or_new = True
+                break
             raise RuntimeError(f"{step_label} 提交失败: {res.get('error')}")
         if not res.get("already_running"):
             break
-        time.sleep(2.5)
+        saw_running_or_new = True
+        break
 
     time.sleep(1.5)
     remote_fname = ""
-    saw_running_or_new = False
     for poll_i in range(600):
         _drama_check_cancel()
         time.sleep(1.5)
@@ -9511,12 +9555,12 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
         if sd.get("error") and not sd.get("running"):
             raise RuntimeError(f"{step_label} 云端出错: {sd.get('error')}")
 
-        msg = str(sd.get("message") or "")
+        msg = str(sd.get("message") or "").replace("总进度", "单镜进度")
         if sd.get("running"):
             saw_running_or_new = True
             if msg:
-                _DRAMA_STATE["message"] = f"🎬 [{step_label}] {msg}"
-                _append_panel_log(f"[自动导演] {step_label}: {msg}")
+                _DRAMA_STATE["message"] = f"🎬 【总进度 {_DRAMA_STATE.get('pct', 0)}%】[{step_label}] {msg}"
+                _append_panel_log(f"[自动导演·总进度{_DRAMA_STATE.get('pct', 0)}%] {step_label}: {msg}")
             continue
 
         vids = sd.get("completed_videos") or ([sd["latest_video"]] if sd.get("latest_video") else []) or (sd.get("history") or [])[:1]
