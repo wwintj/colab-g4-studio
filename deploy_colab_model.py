@@ -6462,10 +6462,25 @@ def run_local_proxy_daemon(port: int = 30000):
             api_key = cfg.get("api_key") or "sk-colab-ed28e54eb298d0c1"
             fwd_headers["Authorization"] = f"Bearer {api_key}"
 
-            req = urllib.request.Request(target_url, data=req_body, headers=fwd_headers, method=self.command)
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            opener_direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            opener_sys = urllib.request.build_opener()
             try:
-                with opener.open(req, timeout=600) as resp:
+                last_net_err = None
+                resp = None
+                for attempt_idx, cur_opener in enumerate((opener_direct, opener_sys, opener_direct)):
+                    try:
+                        req_try = urllib.request.Request(target_url, data=req_body, headers=dict(fwd_headers), method=self.command)
+                        resp = cur_opener.open(req_try, timeout=600)
+                        break
+                    except urllib.error.HTTPError:
+                        raise
+                    except Exception as net_ex:
+                        last_net_err = net_ex
+                        if attempt_idx < 2:
+                            time.sleep(0.8)
+                if resp is None:
+                    raise last_net_err or RuntimeError("Upstream tunnel connection failed")
+                with resp:
                     self.send_response(resp.status)
                     is_chunked = False
                     for hk, hv in resp.headers.items():

@@ -26,6 +26,28 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# 强制本机回环地址 (127.0.0.1 / localhost) 绕过 macOS 系统全局代理 (如 Clash/Surge/V2Ray 的 127.0.0.1:1082)，
+# 彻底根除 urllib.request.urlopen("http://127.0.0.1:30000/...") 被转发进梯子代理导致 Remote end closed connection without response！
+os.environ["no_proxy"] = "127.0.0.1,localhost,0.0.0.0,::1"
+os.environ["NO_PROXY"] = "127.0.0.1,localhost,0.0.0.0,::1"
+_ORIG_PROXY_BYPASS = urllib.request.proxy_bypass
+
+
+def _localhost_safe_proxy_bypass(host: str) -> bool:
+    h = str(host or "").split(":")[0].strip().lower()
+    if h in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
+        return True
+    try:
+        return bool(_ORIG_PROXY_BYPASS(host))
+    except Exception:
+        return False
+
+
+urllib.request.proxy_bypass = _localhost_safe_proxy_bypass
+if hasattr(urllib.request, "proxy_bypass_macosx_sysconf"):
+    urllib.request.proxy_bypass_macosx_sysconf = _localhost_safe_proxy_bypass
+_LOCAL_DIRECT_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 BASE_DIR = Path(__file__).resolve().parent
 DEPLOY_SCRIPT = BASE_DIR / "deploy_colab_model.py"
 COLAB_BIN = BASE_DIR / ".venv" / "bin" / "colab"
@@ -11148,12 +11170,16 @@ def _parse_raw_script_to_workflow(
         r_desc = (m_role.group(3) or "").strip()
         if r_desc in ("无", "暂无", "none", "None") or "不出场" in r_desc or "无此角色" in r_desc:
             continue
-        extracted_nm = _extract_char_name(r_desc) or (r_paren.split("·")[0].strip() if r_paren else "")
         voice_in_paren = ""
-        if "ming:" in r_paren:
-            m_vp = re.search(r"(ming:[^\s）)]+)", r_paren)
-            if m_vp:
-                voice_in_paren = m_vp.group(1).strip()
+        for _v_src in (r_paren, r_desc):
+            if "ming:" in _v_src:
+                m_vp = re.search(r"(ming:[^\s，,。；;）)]+)", _v_src)
+                if m_vp:
+                    voice_in_paren = m_vp.group(1).strip()
+                    break
+        # 剥离角色描述末尾可能附带的“绑定音色：ming:xxx”或“【绑定音色】ming:xxx”，防止污染生图提示词
+        r_desc = re.sub(r"[，,；;\s]*(?:【?绑定音色】?|音色)\s*[:：]?\s*ming:[^\s，,。；;）)]+", "", r_desc).strip(" ，,；;。")
+        extracted_nm = _extract_char_name(r_desc) or (r_paren.split("·")[0].strip() if r_paren else "")
         is_male_desc = any(k in r_desc for k in ("男", "哥", "叔", "爷", "胡茬", "板寸", "油头", "西装", "先生", "公子", "少侠", "总裁"))
         fallback_v = "ming:灵信远_中性" if (is_male_desc and rid in ("A", "B")) else ("ming:灵朗" if is_male_desc else default_voices.get(rid, "ming:灵小柔"))
         script_roles[rid] = {
@@ -11345,15 +11371,36 @@ def _parse_raw_script_to_workflow(
             and not any(k in check_span for k in ("面部", "侧脸", "眼睫", "眼神", "抬头", "低头看"))
         )
 
-        has_two_person_interaction = any(
-            k in check_span for k in ("双人", "两人", "二人", "全景", "抓住他", "抓住她", "把他拉近", "把她拉近", "鼻尖几乎相触", "相拥", "对视")
+        # 判断“起幅...随后...”的后半段是否包含必须用首尾双帧 FL2VA 完成的大跨度动作转场（如深情吻在一起、转身离开、招手走近、关灯等）
+        has_split_transition = ("随后" in vis_txt or "接着" in vis_txt)
+        after_clause_txt = re.split(r"[；;。]?\s*(?:随后|接着)(?:为|是|[:：])?\s*", vis_txt, maxsplit=1)[-1].strip() if has_split_transition else ""
+        needs_fl2va_dual_frame_for_dlg = bool(
+            after_clause_txt
+            and any(
+                k in after_clause_txt
+                for k in ("吻在一起", "深情吻", "接吻", "吻上", "吻住", "转身离开", "走远", "应声走近", "招了招手", "灯灭", "关上")
+            )
         )
+
+        # 判断是否走 LongCat-Avatar 数字人驱动：
+        # 只要有真实对白文字 (spoken_words_only)，且没有显式指定 fl2va、也不是“吻在一起/转身离开”等双帧大动作转场，优先走 LongCat-Avatar + Ming-3.0 开口说话！
+        if "avatar" in eng_ov or "数字人" in eng_ov:
+            use_avatar = bool(spoken_words_only)
+        elif "fl2va" in eng_ov or "首尾帧" in eng_ov:
+            use_avatar = False
+        else:
+            use_avatar = bool(spoken_words_only) and (not last_ov_txt) and (not needs_fl2va_dual_frame_for_dlg)
+
+        has_two_person_interaction = any(
+            k in check_span for k in ("双人", "两人", "二人", "全景", "抓住他", "抓住她", "把他拉近", "把她拉近", "鼻尖几乎相触", "相拥", "对视", "吻")
+        )
+        is_ots_single_focus = any(k in check_span for k in ("越肩", "正反打", "前景虚化", "肩后"))
 
         present_roles: List[str] = []
         if is_no_face_closeup:
             present_roles = []
-        elif spoken_words_only and speaker_role in roles_dict and not has_two_person_interaction:
-            # 单人说话特写镜头 (LongCat-Avatar 数字人驱动)：只传当前开口说话角色的定妆照，严禁混入其他角色导致替身张嘴
+        elif use_avatar and speaker_role in roles_dict:
+            # LongCat-Avatar 数字人说话镜头：必须只传当前开口说话角色的定妆照（画面仅保留说话人一張清晰正/侧脸），严禁同框出现两张正脸导致男女串音或替身张嘴！
             present_roles = [speaker_role]
         elif roles_line_txt:
             if not any(k in roles_line_txt for k in ("无", "空镜", "none", "None")):
@@ -11425,13 +11472,13 @@ def _parse_raw_script_to_workflow(
             ref_hint = "Pure environment / object detail shot without people standing face-to-face (纯环境空镜或局部物件特写，严禁在画面中画出两人面对面站立): "
 
         # 若画面采用“起幅：...；随后：...”结构，首帧只取“起幅”段，尾帧取“随后”段，确保首尾关键帧画面精准分离
-        has_split_transition = ("随后" in vis_txt or "接着" in vis_txt)
         if first_ov_txt:
             first_img_prompt = first_ov_txt
-        elif has_split_transition:
-            first_img_prompt = re.split(r"[；;。]?\s*(?:随后|接着)\s*[:：]?", vis_txt, maxsplit=1)[0].replace("起幅：", "").replace("起幅:", "").strip()
+        elif has_split_transition and not use_avatar:
+            first_img_prompt = re.split(r"[；;。]?\s*(?:随后|接着)(?:为|是|[:：])?\s*", vis_txt, maxsplit=1)[0].strip()
         else:
-            first_img_prompt = vis_txt
+            first_img_prompt = re.sub(r"[；;。]?\s*(?:随后|接着)(?:为|是|[:：])?\s*", "，", vis_txt).strip()
+        first_img_prompt = re.sub(r"^起幅(?:为|是|[:：])\s*", "", first_img_prompt).strip()
 
         first_img_fn = f"{shot_id}_first.jpg"
         short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", first_img_prompt)[:10] or f"分镜{idx:02d}"
@@ -11447,35 +11494,29 @@ def _parse_raw_script_to_workflow(
             "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}{solo_angle_hint}，{first_img_prompt}",
         })
 
-        # 判断是否需要生成尾帧 (显式提供了【尾帧】，或画面包含“起幅...随后/接着...”)
+        # 判断是否需要生成尾帧 (仅在非 LongCat-Avatar 镜头且显式提供了【尾帧】或包含“起幅...随后...”时生成尾帧)
         last_img_fn = ""
-        if last_ov_txt and last_ov_txt not in ("无", "暂无", "none"):
-            last_img_fn = f"{shot_id}_last.jpg"
-            short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", last_ov_txt)[:10] or "落幅"
-            image_tasks.append({
-                "file": last_img_fn,
-                "label": f"📷 镜{idx:02d}尾帧:{short_last}",
-                "refs": refs,
-                "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{last_ov_txt}",
-            })
-        elif has_split_transition and (not spoken_words_only or dur_s >= 3.5 or has_two_person_interaction):
-            last_img_fn = f"{shot_id}_last.jpg"
-            after_part = re.split(r"[；;。]?\s*(?:随后|接着)\s*[:：]?", vis_txt, maxsplit=1)[-1].strip()
-            short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", after_part)[:10] or "落幅"
-            image_tasks.append({
-                "file": last_img_fn,
-                "label": f"📷 镜{idx:02d}尾帧:{short_last}",
-                "refs": refs,
-                "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{after_part}",
-            })
-
-        # 智能路由引擎：只有包含真实可发音文字台词 (非纯 [Breathing] / [Surprise-ah] 无字气口) 且无首尾双帧转场的镜头才走 LongCat-Avatar
-        if "avatar" in eng_ov or "数字人" in eng_ov:
-            use_avatar = bool(spoken_words_only)
-        elif "fl2va" in eng_ov or "首尾帧" in eng_ov:
-            use_avatar = False
-        else:
-            use_avatar = bool(spoken_words_only) and (not last_img_fn)
+        if not use_avatar:
+            if last_ov_txt and last_ov_txt not in ("无", "暂无", "none"):
+                last_img_fn = f"{shot_id}_last.jpg"
+                clean_last_ov = re.sub(r"^(?:随后|接着|落幅|尾帧)(?:为|是|[:：])?\s*", "", last_ov_txt).strip()
+                short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", clean_last_ov)[:10] or "落幅"
+                image_tasks.append({
+                    "file": last_img_fn,
+                    "label": f"📷 镜{idx:02d}尾帧:{short_last}",
+                    "refs": refs,
+                    "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{clean_last_ov}",
+                })
+            elif has_split_transition and after_clause_txt:
+                last_img_fn = f"{shot_id}_last.jpg"
+                clean_after = re.sub(r"^(?:随后|接着|落幅|尾帧)(?:为|是|[:：])?\s*", "", after_clause_txt).strip()
+                short_last = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", clean_after)[:10] or "落幅"
+                image_tasks.append({
+                    "file": last_img_fn,
+                    "label": f"📷 镜{idx:02d}尾帧:{short_last}",
+                    "refs": refs,
+                    "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{clean_after}",
+                })
 
         if not use_avatar and not ambience_src:
             ambience_src = f"{shot_id}_raw.mp4"
@@ -11496,7 +11537,9 @@ def _parse_raw_script_to_workflow(
             if use_avatar
             else f"🎞️ 镜{idx:02d}({dur_s}s):{short_vis}"
         )
+        fl2va_dlg_clause = f" 角色{speaker_role}开口用中文说道：“{spoken_words_only}”。" if (not use_avatar and spoken_words_only) else ""
         sound_tail = f" 纯自然环境音效：{amb_txt}，无背景音乐。" if amb_txt else ("" if spoken_text else " 纯自然环境音效，无背景音乐，无人物说话。")
+        clean_vis_for_vid = re.sub(r"^起幅(?:为|是|[:：])\s*", "起幅：", vis_txt)
         video_tasks.append({
             "file": f"{shot_id}_raw.mp4",
             "label": vid_label,
@@ -11507,7 +11550,7 @@ def _parse_raw_script_to_workflow(
             "tts_text": spoken_text,
             "tts_voice": tts_voice,
             "mix_ambience": use_avatar,
-            "prompt": f"{cam_txt} {vis_txt}{sound_tail}",
+            "prompt": f"{cam_txt} {clean_vis_for_vid}{fl2va_dlg_clause}{sound_tail}",
         })
 
     if not title:
@@ -11658,7 +11701,7 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
     prev_known_files = set()
     try:
         st_req0 = urllib.request.Request("http://127.0.0.1:30000/v1/video/status", headers=headers, method="GET")
-        with urllib.request.urlopen(st_req0, timeout=8) as sr0:
+        with _LOCAL_DIRECT_OPENER.open(st_req0, timeout=10) as sr0:
             sd0 = json.loads(sr0.read().decode("utf-8"))
             for f_item in (sd0.get("completed_videos") or []):
                 if f_item:
@@ -11671,15 +11714,23 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
     except Exception:
         pass
 
-    # 若云端上一任务尚未完全释放 GPU (HTTP 409 或 already_running)，等待其完成后再提交新任务（绝不把上一镜当成本镜！）
+    # 若云端上一任务尚未完全释放 GPU (HTTP 409 或 already_running) 或 Cloudflare 隧道刚连上出现瞬时连接重置，自动重试提交！
+    transient_err_cnt = 0
     for _ in range(90):
         _drama_check_cancel()
         try:
             req = urllib.request.Request("http://127.0.0.1:30000/v1/video/generations", data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=25) as resp:
+            with _LOCAL_DIRECT_OPENER.open(req, timeout=35) as resp:
                 res = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as he:
-            if he.code == 409:
+            if he.code in (409, 502, 503, 504):
+                time.sleep(2.5)
+                continue
+            raise
+        except Exception as net_e:
+            transient_err_cnt += 1
+            if transient_err_cnt <= 8:
+                _append_panel_log(f"🔄 [自动导演·隧道重连 {transient_err_cnt}/8] {step_label} 遇到瞬时网络抖动 ({net_e})，2.5 秒后自动重试提交...")
                 time.sleep(2.5)
                 continue
             raise
@@ -11693,7 +11744,7 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
         # 若返回 already_running (例如 LongCat-Avatar 上一镜刚在收尾)，把当前 latest_video 加入 prev_known_files 并等待 2.5s 重新提交
         try:
             st_req_w = urllib.request.Request("http://127.0.0.1:30000/v1/video/status", headers=headers, method="GET")
-            with urllib.request.urlopen(st_req_w, timeout=8) as sr_w:
+            with _LOCAL_DIRECT_OPENER.open(st_req_w, timeout=10) as sr_w:
                 sd_w = json.loads(sr_w.read().decode("utf-8"))
                 for f_item in (sd_w.get("completed_videos") or []):
                     if f_item:
@@ -11711,7 +11762,7 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
         time.sleep(1.5)
         try:
             st_req = urllib.request.Request("http://127.0.0.1:30000/v1/video/status", headers=headers, method="GET")
-            with urllib.request.urlopen(st_req, timeout=12) as sr:
+            with _LOCAL_DIRECT_OPENER.open(st_req, timeout=14) as sr:
                 sd = json.loads(sr.read().decode("utf-8"))
         except Exception:
             continue
