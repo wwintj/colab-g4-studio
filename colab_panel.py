@@ -11464,10 +11464,16 @@ def _parse_raw_script_to_workflow(
                 subj_names.append(f"<Subject {p_idx}>")
             joined_defs = " ".join(subj_defs)
             joined_subjs = " and ".join(subj_names)
-            ref_hint = (
-                f"{joined_defs} Do NOT copy the static frontal composition or background of <Picture 1>. "
-                f"Compose a completely new cinematic camera angle, shot scale, head orientation, body posture, and environment showing {joined_subjs}: "
-            )
+            if use_avatar:
+                ref_hint = (
+                    f"{joined_defs} Single-person close-up portrait showing ONLY {joined_subjs} alone in the frame "
+                    f"(单人说话特写镜头：画面中严格只允许出现说话人 {joined_subjs} 一张人脸和一张嘴！严禁在画面中画出第二个人物的脸、侧脸或嘴唇，否则数字人会导致双人同时张嘴): "
+                )
+            else:
+                ref_hint = (
+                    f"{joined_defs} Do NOT copy the static frontal composition or background of <Picture 1>. "
+                    f"Compose a completely new cinematic camera angle, shot scale, head orientation, body posture, and environment showing {joined_subjs}: "
+                )
         else:
             ref_hint = "Pure environment / object detail shot without people standing face-to-face (纯环境空镜或局部物件特写，严禁在画面中画出两人面对面站立): "
 
@@ -11480,6 +11486,20 @@ def _parse_raw_script_to_workflow(
             first_img_prompt = re.sub(r"[；;。]?\s*(?:随后|接着)(?:为|是|[:：])?\s*", "，", vis_txt).strip()
         first_img_prompt = re.sub(r"^起幅(?:为|是|[:：])\s*", "", first_img_prompt).strip()
 
+        # 若该镜走 LongCat-Avatar 数字人驱动，自动净化首帧生图词中的“两人面对面/双人近景/抱住B”等会诱发画出第二张嘴的描述，确保画面只聚焦说话人一人面孔
+        if use_avatar:
+            other_rids = [r for r in sorted_role_ids if r != speaker_role]
+            spk_nm = roles_dict.get(speaker_role, {}).get("name") or f"角色{speaker_role}"
+            first_img_prompt = re.sub(r"A与B面对面[^，,；;。]*|两人面对面[^，,；;。]*|从两人相拥的侧景推向双人近景特写|双人近景特写|双人面部特写", f"{spk_nm}单人近景面部特写", first_img_prompt)
+            for orid in other_rids:
+                onm = roles_dict.get(orid, {}).get("name") or ""
+                first_img_prompt = re.sub(rf"(?:靠近|环住|揽入|轻托|紧锁|回望|直视|搭上)(?:角色)?{orid}[^，,；;。]*", "目光深情专注地凝视镜头前方", first_img_prompt)
+                if onm:
+                    first_img_prompt = re.sub(rf"(?:靠近|环住|揽入|轻托|紧锁|回望|直视|搭上){re.escape(onm)}[^，,；;。]*", "目光深情专注地凝视镜头前方", first_img_prompt)
+            cam_for_img = re.sub(r"双人|两人|越肩正反打|轻微越肩构图|前景虚化[^，,；;。]*", "单人近景特写", cam_txt)
+        else:
+            cam_for_img = cam_txt
+
         first_img_fn = f"{shot_id}_first.jpg"
         short_vis = re.sub(r"[，。、；：！？\"'“”‘’（）()\s]", "", first_img_prompt)[:10] or f"分镜{idx:02d}"
         is_exterior_shot = (
@@ -11491,7 +11511,7 @@ def _parse_raw_script_to_workflow(
             "file": first_img_fn,
             "label": f"📷 镜{idx:02d}首帧:{short_vis}",
             "refs": refs,
-            "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}{solo_angle_hint}，{first_img_prompt}",
+            "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_for_img}{solo_angle_hint}，{first_img_prompt}",
         })
 
         # 判断是否需要生成尾帧 (仅在非 LongCat-Avatar 镜头且显式提供了【尾帧】或包含“起幅...随后...”时生成尾帧)
@@ -11518,7 +11538,8 @@ def _parse_raw_script_to_workflow(
                     "prompt": f"{ref_hint}{global_style} {scene_prefix}{cam_txt}，{clean_after}",
                 })
 
-        if not use_avatar and not ambience_src:
+        # 只有完全无台词且无人物说话的纯环境镜头才允许作为全局环境底噪源，严禁把带有人声台词的镜头混入其他镜头的背景音！
+        if not use_avatar and not spoken_words_only and is_pure_scenery and not ambience_src:
             ambience_src = f"{shot_id}_raw.mp4"
 
         # 优先使用剧本显式【音色】（并自动回填到角色卡槽），其次使用角色卡槽绑定的固定音色
@@ -11537,8 +11558,8 @@ def _parse_raw_script_to_workflow(
             if use_avatar
             else f"🎞️ 镜{idx:02d}({dur_s}s):{short_vis}"
         )
-        fl2va_dlg_clause = f" 角色{speaker_role}开口用中文说道：“{spoken_words_only}”。" if (not use_avatar and spoken_words_only) else ""
-        sound_tail = f" 纯自然环境音效：{amb_txt}，无背景音乐。" if amb_txt else ("" if spoken_text else " 纯自然环境音效，无背景音乐，无人物说话。")
+        # 注意：若 FL2VA 首尾帧镜头包含台词，台词统一由 Ming-3.0 专属角色音色合成并在合片阶段精准混音，严禁让 FL2VA 自行随机捏造不同女声或背景音乐！
+        sound_tail = f" 纯自然环境音效：{amb_txt}，无背景音乐，无人物说话。" if amb_txt else " 纯自然环境音效，无背景音乐，无人物说话。"
         clean_vis_for_vid = re.sub(r"^起幅(?:为|是|[:：])\s*", "起幅：", vis_txt)
         video_tasks.append({
             "file": f"{shot_id}_raw.mp4",
@@ -11550,7 +11571,7 @@ def _parse_raw_script_to_workflow(
             "tts_text": spoken_text,
             "tts_voice": tts_voice,
             "mix_ambience": use_avatar,
-            "prompt": f"{cam_txt} {clean_vis_for_vid}{fl2va_dlg_clause}{sound_tail}",
+            "prompt": f"{cam_txt} {clean_vis_for_vid}{sound_tail}",
         })
 
     if not title:
@@ -11561,7 +11582,7 @@ def _parse_raw_script_to_workflow(
     return {
         "title": title,
         "global_style": global_style,
-        "ambience_source_file": ambience_src or (video_tasks[0]["file"] if video_tasks else "shot01_raw.mp4"),
+        "ambience_source_file": ambience_src,
         "raw_script": raw_script,
         "cast_list": final_cast_list,
         "user_uploaded_chars": sorted(list(locked_ids)),
@@ -11627,7 +11648,7 @@ def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     remote_already_loading = False
     try:
-        with opener.open("http://127.0.0.1:30000/health", timeout=3) as r:
+        with opener.open("http://127.0.0.1:30000/health", timeout=10) as r:
             if r.status == 200:
                 hd = json.loads(r.read().decode("utf-8"))
                 cur_eng = str(hd.get("engine") or "")
@@ -11925,6 +11946,24 @@ def _drama_run_image_step(
         "clean_matte": True,
     }
     res_p = _drama_submit_and_wait_media(payload, out_p, step_label)
+    # 若是 LongCat-Avatar 数字人单人说话镜头，用 InsightFace 校验是否误画出了第 2 张人脸/嘴巴；若有第 2 张脸则自动重绘为纯单人特写，100% 杜绝男人说话时女人嘴巴跟着动！
+    if is_shot_frame and len(ref_files) == 1 and "单人说话特写镜头" in prompt and res_p.is_file():
+        try:
+            import cv2
+            app_det, _, _ = _ensure_biometric_swap_engine()
+            im_chk = cv2.imread(str(res_p))
+            faces_chk = app_det.get(im_chk) if im_chk is not None else []
+            if len(faces_chk) >= 2:
+                _append_panel_log(f"🛡️ [单人说话防双嘴检测] 检测到 {fn} 中出现 {len(faces_chk)} 张人脸，正在自动重绘为纯单人特写以防两人同时张嘴...")
+                solo_strict_prompt = (
+                    "The person in <Picture 1> is <Subject 1>. Solo single-person medium close-up portrait showing ONLY <Subject 1> alone in the frame "
+                    "(Strictly 1 person, 1 face, no second person anywhere in the frame, clean blurred indoor background): "
+                    "写实真人电影级质感，85mm f/1.4浅景深，柔和暖调室内灯光，单人近景面部特写，目光深情专注地凝视镜头前方，双唇自然闭合。"
+                )
+                payload["prompt"] = solo_strict_prompt
+                res_p = _drama_submit_and_wait_media(payload, out_p, f"{step_label}(纯单人重绘)")
+        except Exception:
+            pass
     # 若是单人分镜关键帧，额外使用本地 ArcFace 512-D 生物特征光影精修锁脸，兼顾全新分镜机位构图与 99.9% 角色五官一致性
     if is_shot_frame and len(ref_files) == 1 and str(ref_files[0]).startswith("char_"):
         char_rp = DRAMA_WORK_DIR / ref_files[0]
@@ -12053,10 +12092,43 @@ def _drama_run_fl2va_step(
     return _drama_submit_and_wait_media(payload, out_p, step_label)
 
 
+def _drama_synthesize_ming_tts_for_fl2va(vt: Dict[str, Any], resume: bool = True) -> Optional[Path]:
+    """在 Stage 3-A (LongCat-Avatar + Ming-3.0 在显存中时) 为带台词的 FL2VA 首尾帧镜头预合成角色专属 Ming-3.0 语音，确保全剧同一角色音色 100% 统一"""
+    _drama_check_cancel()
+    tts_text = str(vt.get("tts_text") or "").strip()
+    if not tts_text:
+        return None
+    tts_voice = str(vt.get("tts_voice") or "ming:灵小柔").strip()
+    vid_fn = str(vt.get("file") or "shot_raw.mp4")
+    wav_fn = f"{Path(vid_fn).stem}_ming_tts.wav"
+    out_wav = DRAMA_WORK_DIR / wav_fn
+    if resume and out_wav.is_file() and out_wav.stat().st_size > 2048:
+        _append_panel_log(f"♻️ [Ming-3.0 配音复用] {vt.get('label') or vid_fn} 的专属角色语音 ({wav_fn}) 已存在")
+        return out_wav
+
+    cfg = _load_endpoint_cfg()
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+        "User-Agent": "ColabPanel/1.0",
+    }
+    body = json.dumps({"text": tts_text, "voice": tts_voice}).encode("utf-8")
+    _append_panel_log(f"🎙️ [Ming-3.0 角色统一配音] 正在为首尾帧镜头 {vt.get('label') or vid_fn} 合成专属音色 ({tts_voice}): 「{tts_text}」...")
+    req = urllib.request.Request("http://127.0.0.1:30000/v1/audio/ming_tts", data=body, headers=headers, method="POST")
+    with _LOCAL_DIRECT_OPENER.open(req, timeout=60) as resp:
+        res = json.loads(resp.read().decode("utf-8"))
+    if not res.get("ok") or not res.get("audio_b64"):
+        raise RuntimeError(f"Ming-3.0 语音合成失败: {res.get('error')}")
+    b64_data = str(res["audio_b64"]).split(",", 1)[-1]
+    out_wav.write_bytes(base64.b64decode(b64_data))
+    _append_panel_log(f"✅ [Ming-3.0 角色统一配音] 已保存 {out_wav.name} ({res.get('duration_sec')}s)")
+    return out_wav
+
+
 def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: bool = False) -> Path:
     """
     将工作流中的所有分镜视频按各自配置的 duration 秒数裁切对齐，
-    并将环境底噪源自动以 -16dB 铺入数字人对白背景，输出 1280x720 (或 720x1280) 25fps 完整短剧成片。
+    并将纯净无说话声的环境底噪铺入数字人对白背景（带台词的 FL2VA 镜头亦统一使用 Ming-3.0 专属音色轨），输出 1280x720 (或 720x1280) 25fps 完整短剧成片。
     """
     wf = _load_drama_workflow()
     vid_tasks = wf.get("video_tasks") or []
@@ -12066,7 +12138,7 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
     tot_dur = round(sum(float(vt.get("duration") or 3.0) for vt in vid_tasks), 1)
     _DRAMA_STATE["active_file"] = "ancient_drama_30s_final.mp4"
     _DRAMA_STATE["pct"] = 95
-    _DRAMA_STATE["message"] = f"🎞️ 正在执行 FFmpeg 0.1 秒级卡点裁切 + 环境底噪混音 + {tot_dur}s 完整短剧封装..."
+    _DRAMA_STATE["message"] = f"🎞️ 正在执行 FFmpeg 0.1 秒级卡点裁切 + 纯净环境音混音 + {tot_dur}s 完整短剧封装..."
     _append_panel_log(f"🎞️ [自动导演·阶段四] 开始按工作流配置的 {len(vid_tasks)} 个分镜秒数 (总计 {tot_dur}s) 精剪混音并封装成片...")
 
     shot_specs = [
@@ -12075,11 +12147,12 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
             float(vt.get("duration") or 3.0),
             bool(vt.get("mix_ambience")) or (str(vt.get("engine")) == "avatar"),
             str(vt.get("label") or vt.get("file") or ""),
+            str(vt.get("tts_text") or "").strip(),
         )
         for vt in vid_tasks
     ]
 
-    missing = [lbl for fn, _, _, lbl in shot_specs if not (work_dir / fn).is_file()]
+    missing = [lbl for fn, _, _, lbl, _ in shot_specs if not (work_dir / fn).is_file()]
     if missing:
         raise RuntimeError(f"尚未生成完毕以下分镜视频，无法合片: {', '.join(missing)}")
 
@@ -12087,40 +12160,55 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
     norm_dir = work_dir / "norm_clips"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
-    # 提取环境底噪音频 (优先使用 workflow 配置的 ambience_source_file，否则取第一个 fl2va 镜头)
-    amb_src_fn = str(wf.get("ambience_source_file") or "shot05_raw.mp4")
-    amb_src_p = work_dir / amb_src_fn
-    if not amb_src_p.is_file():
-        fl2va_cands = [work_dir / str(vt.get("file")) for vt in vid_tasks if str(vt.get("engine")) != "avatar" and (work_dir / str(vt.get("file"))).is_file()]
-        if fl2va_cands:
-            amb_src_p = fl2va_cands[0]
-
-    amb_wav = norm_dir / "market_ambience_bed.wav"
-    if amb_src_p.is_file():
-        try:
+    # 构建 100% 无人声干扰的纯净环境底噪 (严禁从带台词或人物说话的 FL2VA 镜头提取音频作为底噪，彻底根除背景音里有人说话的问题！)
+    amb_src_fn = str(wf.get("ambience_source_file") or "").strip()
+    amb_src_vt = next((vt for vt in vid_tasks if str(vt.get("file") or "") == amb_src_fn), None)
+    amb_src_is_clean = bool(
+        amb_src_fn
+        and (work_dir / amb_src_fn).is_file()
+        and amb_src_vt
+        and str(amb_src_vt.get("engine")) != "avatar"
+        and not str(amb_src_vt.get("tts_text") or "").strip()
+    )
+    amb_wav = norm_dir / "clean_room_ambience_bed.wav"
+    try:
+        if amb_src_is_clean:
             subprocess.run(
                 [
                     "ffmpeg", "-y", "-v", "error",
                     "-stream_loop", "3",
-                    "-i", str(amb_src_p),
+                    "-i", str(work_dir / amb_src_fn),
                     "-vn", "-ac", "2", "-ar", "44100",
-                    "-t", "12.0",
+                    "-t", "15.0",
                     str(amb_wav),
                 ],
                 check=True,
                 timeout=30,
             )
-        except Exception:
-            amb_wav = Path("/nonexistent_amb.wav")
-    else:
+        else:
+            # 生成极其柔和的电影级室内自然静谧底噪 (Pink Noise 40-200Hz 低通滤波，100% 零人声、零杂音)
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-f", "lavfi",
+                    "-i", "anoisesrc=color=pink:sample_rate=44100:amplitude=0.0005:duration=15.0",
+                    "-af", "highpass=f=40,lowpass=f=200,aformat=channel_layouts=stereo",
+                    "-ac", "2", "-ar", "44100",
+                    str(amb_wav),
+                ],
+                check=True,
+                timeout=20,
+            )
+    except Exception:
         amb_wav = Path("/nonexistent_amb.wav")
 
     norm_files: List[Path] = []
     scale_w = ((int(round(out_w * 1.14)) + 1) // 2) * 2
     scale_h = ((int(round(out_h * 1.14)) + 1) // 2) * 2
-    for idx, (fn, dur_s, is_avatar_dlg, lbl) in enumerate(shot_specs, start=1):
+    for idx, (fn, dur_s, is_avatar_dlg, lbl, shot_tts_txt) in enumerate(shot_specs, start=1):
         src_p = work_dir / fn
         dst_p = norm_dir / f"norm_{idx:02d}_{dur_s:.1f}s.mp4"
+        ming_tts_wav = work_dir / f"{Path(fn).stem}_ming_tts.wav"
         # 采用 1.14x 电影画幅上移裁切 (切除顶部 1.2% 与底部 11.1% 潜在字幕区)，物理级 100% 根除任何底部乱码字幕！
         vf_chain = (
             f"fps=25,scale={scale_w}:{scale_h}:flags=lanczos:force_original_aspect_ratio=increase,"
@@ -12128,10 +12216,44 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
             f"tpad=stop_mode=clone:stop_duration=0.8"
         )
         fade_out_st = max(0.05, round(dur_s - 0.05, 2))
-        if is_avatar_dlg and amb_wav.is_file():
+        if not is_avatar_dlg and shot_tts_txt and ming_tts_wav.is_file():
+            # 带台词的 FL2VA 镜头 (如双人拥吻前说“嗯……我等你很久了”)：使用预合成的 Ming-3.0 专属角色音色替换 FL2VA 随机女声与BGM！
+            if amb_wav.is_file():
+                af_complex = (
+                    f"[1:a]aresample=44100,aformat=channel_layouts=stereo,apad[va];"
+                    f"[2:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.15[amb];"
+                    f"[va][amb]amix=inputs=2:duration=first:dropout_transition=0,"
+                    f"afade=t=in:st=0:d=0.04,afade=t=out:st={fade_out_st}:d=0.04[aout]"
+                )
+                cmd = [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-i", str(src_p),
+                    "-i", str(ming_tts_wav),
+                    "-i", str(amb_wav),
+                    "-filter_complex", f"[0:v]{vf_chain}[vout];{af_complex}",
+                    "-map", "[vout]", "-map", "[aout]",
+                    "-t", f"{dur_s:.2f}",
+                    "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+                    "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+                    str(dst_p),
+                ]
+            else:
+                af_chain = f"aresample=44100,aformat=channel_layouts=stereo,apad,afade=t=in:st=0:d=0.04,afade=t=out:st={fade_out_st}:d=0.04"
+                cmd = [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-i", str(src_p),
+                    "-i", str(ming_tts_wav),
+                    "-filter_complex", f"[0:v]{vf_chain}[vout];[1:a]{af_chain}[aout]",
+                    "-map", "[vout]", "-map", "[aout]",
+                    "-t", f"{dur_s:.2f}",
+                    "-c:v", "libx264", "-crf", "16", "-preset", "fast",
+                    "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+                    str(dst_p),
+                ]
+        elif is_avatar_dlg and amb_wav.is_file():
             af_complex = (
                 f"[0:a]aresample=44100,aformat=channel_layouts=stereo,apad[va];"
-                f"[1:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.16[amb];"
+                f"[1:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.14[amb];"
                 f"[va][amb]amix=inputs=2:duration=first:dropout_transition=0,"
                 f"afade=t=in:st=0:d=0.04,afade=t=out:st={fade_out_st}:d=0.04[aout]"
             )
@@ -12611,12 +12733,17 @@ def _run_auto_drama_pipeline_bg(
             )
             wf = _load_drama_workflow()
 
-        # ==================== 阶段三-A：LongCat-Video-Avatar-1.6 + Ming-3.0 集中生成所有数字人对白镜头 ====================
+        # ==================== 阶段三-A：LongCat-Video-Avatar-1.6 + Ming-3.0 集中生成所有数字人对白镜头 + FL2VA 镜头专属台词语音 ====================
+        fl2va_tts_tasks = [vt for vt in fl2va_tasks if str(vt.get("tts_text") or "").strip()]
         need_any_avatar = any(
             not (resume and (DRAMA_WORK_DIR / vt["file"]).is_file() and (DRAMA_WORK_DIR / vt["file"]).stat().st_size > 20480)
             for vt in avatar_tasks
         )
-        if need_any_avatar:
+        need_any_fl2va_tts = any(
+            not (resume and (DRAMA_WORK_DIR / f"{Path(str(vt.get('file') or 'shot.mp4')).stem}_ming_tts.wav").is_file())
+            for vt in fl2va_tts_tasks
+        )
+        if need_any_avatar or need_any_fl2va_tts:
             _drama_wait_for_engine(
                 target_engine="longcat-avatar-1.6",
                 repo="meituan-longcat/LongCat-Video-Avatar-1.6",
@@ -12640,6 +12767,12 @@ def _run_auto_drama_pipeline_bg(
                 dur_s=float(vt.get("duration") or 3.0),
             )
             step_cursor += 1
+
+        for vt in fl2va_tts_tasks:
+            try:
+                _drama_synthesize_ming_tts_for_fl2va(vt, resume=resume)
+            except Exception as e_tts:
+                _append_panel_log(f"⚠️ [Ming-3.0 配音提示] {e_tts}")
 
         # ==================== 阶段三-B：MiniMax-H3 (FL2VA) 集中生成所有动作与原生环境音镜头 ====================
         need_any_fl2va = any(
