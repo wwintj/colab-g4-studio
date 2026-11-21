@@ -1373,6 +1373,9 @@ print("PANEL_JSON_START:" + json.dumps(res, ensure_ascii=False) + ":PANEL_JSON_E
                 if float(data["llama_log_mtime"]) > prev_ts:
                     cfg["last_activity_ts"] = float(data["llama_log_mtime"])
                     changed = True
+            if data.get("llama_running") and cfg.get("deploying") and not _DEPLOY_STATE.get("running"):
+                cfg["deploying"] = False
+                changed = True
             if changed:
                 ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             return data
@@ -5566,27 +5569,29 @@ function buildFusionRefsAndPrompt(targetListForJob) {
   const styleTail = extraMods ? ` ${extraMods}.` : '';
 
   // 情形 A：人脸 + 1张服装/姿势目标图 (+ 可选场景图)
-  // 将【服装/姿势目标图】放在 image_1 (<Picture 1> = 待编辑的空间与姿势底图)，将【严苛裁切至下巴的纯人脸照】放在 image_2 (<Picture 2> = 脸型与五官身份源)！
+  // 将【服装/姿势目标图】放在 image_1 (<Picture 1> = 待编辑的空间与姿势底图)，将【人脸照】放在 image_2 (<Picture 2> = 脸型与五官身份源)！
   if (hasFace && targets.length === 1) {
     const poseOrOutfitB64 = targets[0];
+    const isOutfitMode = (currentFusionSubMode === 'outfit') || (hairVal === 'keep_face_hair');
+    const personRefB64 = (isOutfitMode && fusionFaceOrigB64) ? fusionFaceOrigB64 : faceB64;
     if (hasScene) {
-      const refs = [poseOrOutfitB64, faceB64, sceneB64];
+      const refs = [poseOrOutfitB64, personRefB64, sceneB64];
       const hairInstruction = hairVal === 'keep_target_hair'
         ? "Keep the hairstyle and headwear from <Picture 1>, replacing only the face shape, jawline contour, and facial features with <Subject 2> from <Picture 2>."
-        : "Keep <Subject 2>'s exact slim face shape, narrow jawline contour, facial features, warm expression, and hairstyle from <Picture 2> 100% unchanged.";
+        : "Keep <Subject 2>'s exact slim face shape, narrow jawline contour, facial features, warm expression, and full hairstyle from <Picture 2> 100% unchanged.";
       const prompt = (
-        "Edit <Picture 1>. The person, body posture, hand gesture, and clothing outfit in <Picture 1> is <Subject 1>. " +
-        "The face in <Picture 2> is <Subject 2>. " +
+        "Edit <Picture 1>. The clothing outfit and body posture in <Picture 1> is <Subject 1>. " +
+        "The person in <Picture 2> is <Subject 2>. " +
         "The background environment and lighting in <Picture 3> is <Subject 3>. " +
-        `Replace the face of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, and place the figure naturally inside <Subject 3> (<Picture 3>). ${hairInstruction} ` +
-        "100% preserve the exact body posture, hand/leg gesture, and complete clothing outfit from <Picture 1>, relit naturally by <Picture 3>." +
+        `Generate a complete photorealistic portrait of <Subject 2> from <Picture 2> wearing the complete clothing outfit <Subject 1> from <Picture 1>, placed naturally inside <Subject 3> (<Picture 3>). ${hairInstruction} ` +
+        "If <Picture 1> is a headless garment display, naturally complete <Subject 2>'s full head, hairstyle, neck, shoulders, arms, hands, and body wearing <Subject 1>, relit naturally by <Picture 3>." +
         styleTail
       );
       return {refs, prompt};
     }
 
-    const refs = [poseOrOutfitB64, faceB64];
-    if (hairVal === 'keep_target_hair') {
+    const refs = [poseOrOutfitB64, personRefB64];
+    if (hairVal === 'keep_target_hair' && currentFusionSubMode !== 'outfit') {
       const prompt = (
         "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. " +
         "The face in <Picture 2> is <Subject 2>. " +
@@ -5599,11 +5604,11 @@ function buildFusionRefsAndPrompt(targetListForJob) {
     }
 
     const prompt = (
-      "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. " +
-      "The face and hairstyle in <Picture 2> is <Subject 2>. " +
-      "Replace ONLY the head, face, and hairstyle of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. " +
-      "Keep <Subject 2>'s exact facial features, slim V-shaped oval face contour, hairstyle, and natural smile/expression from <Picture 2>, " +
-      "while keeping EVERYTHING ELSE in <Picture 1> (the exact background scene, outdoor/indoor environment, architecture, water, bridge, trees, ambient lighting, seated/standing body pose, hand and leg positions, complete clothing outfit, jacket/top, skirt/pants, stockings, shoes, and full camera framing) 100% preserved and unchanged." +
+      "Edit <Picture 1>. The clothing outfit and body posture in <Picture 1> is <Subject 1>. " +
+      "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. " +
+      "Dress <Subject 2> from <Picture 2> in the exact complete clothing outfit <Subject 1> from <Picture 1>. " +
+      "If <Picture 1> is a headless clothing/mannequin display without a head or arms, naturally generate <Subject 2>'s complete head, hairstyle, neck, shoulders, arms, hands, and full body wearing <Subject 1>. " +
+      "If <Picture 1> contains a person, replace the head, face, and hairstyle with <Subject 2> from <Picture 2> while keeping the exact body pose, clothing outfit, and background of <Picture 1> 100% preserved." +
       styleTail
     );
     return {refs, prompt};
@@ -5701,7 +5706,8 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
     const tLabel = document.getElementById('taskProgressLabel');
     const tSpeed = document.getElementById('taskProgressSpeed');
     const tBar = document.getElementById('taskProgressBar');
-    let sawRunning = false;
+    let sawAutoSwitching = false;
+    let sawRemoteRunning = false;
     let pollTicks = 0;
 
     const timer = setInterval(async () => {
@@ -5717,7 +5723,7 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
         await pollLogs();
 
         if (d.auto_switching) {
-          sawRunning = true;
+          sawAutoSwitching = true;
           const swPct = typeof d.pct === 'number' ? Math.max(8, Math.min(96, d.pct)) : 15;
           if (fBar) fBar.style.width = `${swPct}%`;
           if (stEl) {
@@ -5728,7 +5734,7 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
         }
 
         if (d.running) {
-          sawRunning = true;
+          sawRemoteRunning = true;
           const jobPct = typeof d.pct === 'number' ? Math.max(10, Math.min(99, d.pct)) : 35;
           const overallPct = Math.round(((jobIdx - 1) * 100 + jobPct) / totalJobs);
           if (fBar) fBar.style.width = `${overallPct}%`;
@@ -5750,7 +5756,12 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
         }
 
         const hasNewFile = d.latest_video && d.latest_video !== prevLatestFile;
-        if (sawRunning || hasNewFile || pollTicks >= 3) {
+        if (sawAutoSwitching && !sawRemoteRunning && !hasNewFile) {
+          clearInterval(timer);
+          resolve({ok: false, need_resubmit: true});
+          return;
+        }
+        if (sawRemoteRunning || hasNewFile || pollTicks >= 3) {
           clearInterval(timer);
           const doneFiles = Array.isArray(d.completed_videos) && d.completed_videos.length
             ? d.completed_videos
@@ -5915,7 +5926,18 @@ async function startFusionStudioGenerate() {
         }
       }
 
-      const waitRes = await waitForSingleFusionJobCompletion(i + 1, jobTargetLists.length, prevLatest);
+      let waitRes = await waitForSingleFusionJobCompletion(i + 1, jobTargetLists.length, prevLatest);
+      if (waitRes.need_resubmit && !fusionBatchCancelled) {
+        const rRetry = await fetch('/api/video_generate', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        const dRetry = await rRetry.json();
+        if (dRetry && dRetry.ok) {
+          waitRes = await waitForSingleFusionJobCompletion(i + 1, jobTargetLists.length, prevLatest);
+        }
+      }
       if (waitRes.cancelled) break;
       if (!waitRes.ok) {
         if (stEl) {
@@ -8237,6 +8259,11 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
       }
       if (currentMiniMaxMode !== 'fusion') {
         switchMiniMaxMode('fusion');
+      }
+      if (_cc0ModalState.tab === 'costume' || _cc0ModalState.tab === 'anime') {
+        switchFusionSubMode('outfit');
+        const hairSel = document.getElementById('fusionHairModeSelect');
+        if (hairSel) hairSel.value = 'keep_face_hair';
       }
       document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
       showGlobalCopyToast(`✅ 已将「${descZh.slice(0, 24)}」高清参考图与提示词载入【02 · 角色合成】第二步！`);
