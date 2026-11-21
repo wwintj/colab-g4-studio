@@ -2635,22 +2635,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <option value="约 120 秒 2分钟（建议 32~40 个分镜）">⏱️ 约 120 秒 (32~40 镜)</option>
         </select>
         <select id="selAiVisualStyle" style="height:28px;width:158px;padding:0 7px;font-size:11.5px;border-radius:6px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;flex-shrink:0;">
-          <optgroup label="🎬 影视实拍质感">
-            <option value="写实真人电影级质感，85mm f/1.4散景(Bokeh)，真实细腻皮肤纹理，自然柔和光影" selected>🎥 写实真人电影级</option>
-            <option value="现代都市高质感影视剧，时尚精致妆造，电影级都市光影与85mm浅景深散景">🏙️ 现代都市影视剧</option>
-            <option value="唯美中国古装仙侠剧质感，精致古装汉服与发髻配饰，电影级逆光发丝轮廓光(Backlighting & Rim light)与柔美浅景深">🏮 中国古装/仙侠剧</option>
-          </optgroup>
-          <optgroup label="💡 电影光影与色调 (Motion-Prompt)">
-            <option value="写实真人电影级质感，电影青橙色调(Teal and orange, 阴影偏青、肤色与高光偏暖橙)，85mm f/1.4大光圈散景，轻微胶片颗粒(Film grain)">🎞️ 电影青橙色调 (Teal & Orange)</option>
-            <option value="写实真人电影级质感，伦勃朗戏剧布光(Rembrandt lighting, 侧上方45度主光，背光脸颊留三角亮区)，低调暗调光影(Low-key lighting)，高对比度电影叙事">🕯️ 伦勃朗暗调悬疑/深情</option>
-            <option value="写实真人电影级质感，黄金时刻低角度暖阳逆光(Golden hour backlighting, 发丝边缘发亮轮廓光 Rim light)，温暖镜头眩光与柔美散景">🌅 黄金时刻唯美逆光</option>
-            <option value="写实真人电影级质感，蓝调时刻(Blue hour, 日落后深蓝天空与室内暖黄灯光冷暖交织)，大光圈夜景圆润散景光斑">🌃 蓝调时刻都市冷暖</option>
-          </optgroup>
-          <optgroup label="🎨 动漫与艺术画风 (Motion-Prompt)">
-            <option value="新海诚高画质唯美2D动漫电影风格，绚丽黄金时刻光影与细腻人物表情">🌸 唯美 2D 动漫电影</option>
-            <option value="东方传统水墨画风格(Ink wash painting / sumi-e)，浓淡墨色晕染与宣纸留白意境">🖌️ 东方传统水墨画风</option>
-            <option value="唯美水彩画风格(Watercolor illustration)，柔和色彩晕染与纸纹留白质感">🎨 唯美水彩手绘插画</option>
-          </optgroup>
+          <option value="写实真人电影级质感，85mm f/1.4散景(Bokeh)，真实细腻皮肤纹理，自然柔和光影" selected>🎥 【影视实拍】写实真人电影级</option>
+          <option value="现代都市高质感影视剧，时尚精致妆造，电影级都市光影与85mm浅景深散景">🏙️ 【影视实拍】现代都市影视剧</option>
+          <option value="唯美中国古装仙侠剧质感，精致古装汉服与发髻配饰，电影级逆光发丝轮廓光(Backlighting & Rim light)与柔美浅景深">🏮 【影视实拍】中国古装/仙侠剧</option>
+          <option value="写实真人电影级质感，电影青橙色调(Teal and orange, 阴影偏青、肤色与高光偏暖橙)，85mm f/1.4大光圈散景，轻微胶片颗粒(Film grain)">🎞️ 【电影光影】青橙色调 (Teal &amp; Orange)</option>
+          <option value="写实真人电影级质感，伦勃朗戏剧布光(Rembrandt lighting, 侧上方45度主光，背光脸颊留三角亮区)，低调暗调光影(Low-key lighting)，高对比度电影叙事">🕯️ 【电影光影】伦勃朗暗调悬疑/深情</option>
+          <option value="写实真人电影级质感，黄金时刻低角度暖阳逆光(Golden hour backlighting, 发丝边缘发亮轮廓光 Rim light)，温暖镜头眩光与柔美散景">🌅 【电影光影】黄金时刻唯美逆光</option>
+          <option value="写实真人电影级质感，蓝调时刻(Blue hour, 日落后深蓝天空与室内暖黄灯光冷暖交织)，大光圈夜景圆润散景光斑">🌃 【电影光影】蓝调时刻都市冷暖</option>
+          <option value="新海诚高画质唯美2D动漫电影风格，绚丽黄金时刻光影与细腻人物表情">🌸 【动漫艺术】唯美 2D 动漫电影</option>
+          <option value="东方传统水墨画风格(Ink wash painting / sumi-e)，浓淡墨色晕染与宣纸留白意境">🖌️ 【动漫艺术】东方传统水墨画风</option>
+          <option value="唯美水彩画风格(Watercolor illustration)，柔和色彩晕染与纸纹留白质感">🎨 【动漫艺术】唯美水彩手绘插画</option>
         </select>
         <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="height:28px;padding:0 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;flex-shrink:0;">📋 一键复制【发给外部 AI 的编剧指令】</button>
       </div>
@@ -2788,18 +2782,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <label style="font-size:12.5px;font-weight:800;color:#fcd34d;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🪄 2. 免Mask锁脸换装 &amp; 4K去磨砂黄金模板</label>
           <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:24px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11px;font-weight:700;max-width:225px;flex-shrink:0;cursor:pointer;">
             <option value="">✨ 一键套用 4K 写真 / 锁脸换装模板...</option>
-            <optgroup label="👗 免涂 Mask 锁脸换装模板 (需上传 Picture 1)">
-              <option value="edit_qipao">👘 锁脸换装：黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
-              <option value="edit_silk">🍷 锁脸换装：酒红真丝滑落肩头吊带睡袍 + 黑色蕾丝花边</option>
-              <option value="edit_lace">🤍 锁脸换装：纯白镂空蕾丝吊带短裙 + 柔光私房质感</option>
-              <option value="edit_ol">🖤 锁脸换装：修身黑丝绒高开叉晚礼服 + 璀璨钻石颈链</option>
-            </optgroup>
-            <optgroup label="📸 纯文生 4K 原生超清写真模板 (无需传图 · 去磨砂真皮)">
-              <option value="t2i_courtyard">🏮 4K江南少女：苏州庭院黄昏白玉簪中国少女 (单反真皮)</option>
-              <option value="t2i_boudoir">🥂 4K私房写真：午后百叶窗暖光酒红真丝蕾丝写真 (Heretic无审查)</option>
-              <option value="t2i_white_lace">🦢 4K纯白蕾丝：晨光落地窗纯白蕾丝吊带少女特写 (通透真皮)</option>
-              <option value="t2i_chongqing">🌃 4K雨夜街拍：重庆洪崖洞透明伞回眸姑娘 + 中英双语招牌</option>
-            </optgroup>
+            <option value="edit_qipao">👘 【锁脸换装·需传图】黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
+            <option value="edit_silk">🍷 【锁脸换装·需传图】酒红真丝滑落肩头吊带睡袍 + 黑色蕾丝花边</option>
+            <option value="edit_lace">🤍 【锁脸换装·需传图】纯白镂空蕾丝吊带短裙 + 柔光私房质感</option>
+            <option value="edit_ol">🖤 【锁脸换装·需传图】修身黑丝绒高开叉晚礼服 + 璀璨钻石颈链</option>
+            <option value="t2i_courtyard">🏮 【纯文生4K·免传图】江南少女：苏州庭院黄昏白玉簪中国少女 (单反真皮)</option>
+            <option value="t2i_boudoir">🥂 【纯文生4K·免传图】私房写真：午后百叶窗暖光酒红真丝蕾丝写真 (无审查)</option>
+            <option value="t2i_white_lace">🦢 【纯文生4K·免传图】纯白蕾丝：晨光落地窗纯白蕾丝吊带少女特写 (通透真皮)</option>
+            <option value="t2i_chongqing">🌃 【纯文生4K·免传图】雨夜街拍：重庆洪崖洞透明伞回眸姑娘 + 双语霓虹</option>
           </select>
         </div>
         <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;flex:1;display:flex;flex-direction:column;justify-content:center;">
@@ -2837,91 +2827,81 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 台词配音 (Ming-3.0 戏剧人设/气口/克隆 + 微软极速音色 · 共75+款)</span>
             <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
               <select id="avatarTtsVoiceSelect" onchange="onAvatarVoiceOrStyleChange()" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;max-width:235px;">
-                <optgroup label="🔥 Ming-3.0 戏剧女声 (百灵3.0 GPU · 支持呼吸/笑声/哼声气口)">
-                  <option value="ming:妩媚妲己">🔥 妩媚妲己 (酥麻撩人·尾音微扬魅惑女声)</option>
-                  <option value="ming:灵梦">💕 灵梦 (撒娇粘人·恋爱女友求陪伴)</option>
-                  <option value="ming:灵恬">🍬 灵恬 (蜜糖甜妹·娇羞笃定表白腔)</option>
-                  <option value="ming:灵雨汐_中性" selected>☁️ 灵雨汐·温柔 (棉花糖软妹·贴耳自然呼吸感)</option>
-                  <option value="ming:灵雨汐_高兴">✨ 灵雨汐·开心 (清甜少女·雀跃欢快)</option>
-                  <option value="ming:灵雨汐_生气">💢 灵雨汐·嗔怒 (傲娇女友/闺蜜急促娇嗔)</option>
-                  <option value="ming:灵雨汐_悲伤">💧 灵雨汐·委屈 (楚楚可怜·带脆弱呼吸感)</option>
-                  <option value="ming:灵雨汐_惊讶">😮 灵雨汐·惊喜 (银铃清脆赞叹少女音)</option>
-                  <option value="ming:灵雨汐_恐惧">😨 灵雨汐·惊慌 (压低声音急促呼吸颤音)</option>
-                  <option value="ming:灵黛嗔_生气">👑 灵黛嗔·傲娇 (大小姐发脾气·要人哄的娇纵感)</option>
-                  <option value="ming:灵黛嗔_高兴">🌻 灵黛嗔·明媚 (午后暖阳带笑意治愈女声)</option>
-                  <option value="ming:灵黛嗔_惊讶">🎉 灵黛嗔·惊喜 (中奖般高亢雀跃邻家女孩)</option>
-                  <option value="ming:灵书悦_悲伤">📱 灵书悦·吃醋 (查岗怀疑男友·委屈质问女友腔)</option>
-                  <option value="ming:灵书悦_厌恶">🙄 灵书悦·绿茶 (看似无辜柔弱·实则敷衍拉扯)</option>
-                  <option value="ming:灵书悦_高兴">🍰 灵书悦·吃货 (邻家甜妹吃到美食的幸福感)</option>
-                  <option value="ming:灵风信_中性">🌷 灵风信·暖心 (春光般温柔体贴·深夜哄睡女友)</option>
-                  <option value="ming:灵惜梦_中性">💎 灵惜梦·御姐 (珠落玉盘·独立干练都市姐姐)</option>
-                  <option value="ming:灵惜梦_悲伤">💔 灵惜梦·破碎 (带明显哭腔与脆弱绝望感)</option>
-                  <option value="ming:灵采薇_悲伤">🌙 灵采薇·凄美 (字字裹着气音的深情破碎感)</option>
-                  <option value="ming:灵心澜_厌恶">👠 灵心澜·女王 (冷艳高贵·大女主压迫感)</option>
-                  <option value="ming:灵小柔">🌸 灵小柔 (清亮甜美·百灵官方看板娘)</option>
-                  <option value="ming:灵婉">💌 灵婉 (深夜谈心·私密治愈告白少女)</option>
-                  <option value="ming:灵小梨">🍐 灵小梨 (江南水乡微风·灵动俏皮文艺女声)</option>
-                  <option value="ming:水浒传_潘金莲">🎬 潘金莲 (《水浒传》经典娇媚影视角色原声)</option>
-                </optgroup>
-                <optgroup label="🕺 Ming-3.0 戏剧男声 & 影视名角 (低音炮/霸总/帝王/动漫)">
-                  <option value="ming:灵空">🎧 灵空 (深夜哄睡低音炮男友·贴耳呼吸感 ASMR)</option>
-                  <option value="ming:灵宇">🌹 灵宇 (乙女游戏男主·自信含笑撩人学长)</option>
-                  <option value="ming:灵朗">🥂 灵朗 (深情霸总·成熟稳重宠溺男主)</option>
-                  <option value="ming:灵信远_中性">☀️ 灵信远·暖男 (带浅笑与呼吸感的新婚男友)</option>
-                  <option value="ming:灵孤影_厌恶">❄️ 灵孤影·高冷 (冰冷禁欲系霸总·生人勿近)</option>
-                  <option value="ming:灵孤影_悲伤">🌧️ 灵孤影·心碎 (浓重鼻音与叹息·深情虐恋男主)</option>
-                  <option value="ming:灵孤影_生气">🔥 灵孤影·震怒 (低沉压迫感·暴风雨前夕霸总)</option>
-                  <option value="ming:灵思齐_生气">💳 灵思齐·霸总 (给钱不给爱·居高临下冷酷总裁)</option>
-                  <option value="ming:灵晓声_中性">♟️ 灵晓声·腹黑 (运筹帷幄·极具侵略性宿敌男主)</option>
-                  <option value="ming:灵楷">📻 灵楷 (温润磁性电台主播·百灵官方男主)</option>
-                  <option value="ming:甄嬛传_四郎">🎬 甄嬛传·四郎 (经典雍正帝沉稳威严影视原声)</option>
-                  <option value="ming:康熙王朝_康熙">🎬 康熙大帝 (《康熙王朝》霸气帝王影视原声)</option>
-                  <option value="ming:雍正王朝_雍正">🎬 雍正王朝·雍正 (冷峻威严帝王影视原声)</option>
-                  <option value="ming:西游记_唐僧">🎬 西游记·唐僧 (温润慈悲经典影视原声)</option>
-                  <option value="ming:水浒传_武松">🎬 水浒传·武松 (豪迈硬汉经典影视原声)</option>
-                  <option value="ming:潜伏_余则成">🎬 潜伏·余则成 (沉稳内敛谍战经典原声)</option>
-                  <option value="ming:悟空">🐵 悟空 (活灵活现神话评书大师腔)</option>
-                  <option value="ming:说唱小哥">🎤 说唱小哥 (节奏感拉满潮流 Rap 青年)</option>
-                  <option value="ming:蜡笔小新_野原新之助">🖍️ 蜡笔小新 (经典搞怪呆萌卡通原声)</option>
-                  <option value="ming:蜡笔小新_野原美伢">👩 野原美伢 (《蜡笔小新》妈妈经典原声)</option>
-                  <option value="ming:小猪佩奇_佩奇">🐷 小猪佩奇 (经典可爱动画角色原声)</option>
-                  <option value="ming:US_Stella">🇺🇸 US_Stella (地道美式温暖自然女声)</option>
-                  <option value="ming:US_James">🇺🇸 US_James (地道美式磁性纪录片男声)</option>
-                </optgroup>
-                <optgroup label="🧬 Ming-3.0 零样本声音克隆 (3~10秒样本复刻任意人声)">
-                  <option value="ming:__clone__">🧬 零样本声音克隆 (使用下方上传的 3~10 秒声音样本)</option>
-                </optgroup>
-                <optgroup label="⚡ 微软 Edge-TTS 极速女声 (本机0.5秒直出 · 15款)">
-                  <option value="zh-CN-XiaoyiNeural">🎀 晓伊 (俏皮甜美·活泼少女音)</option>
-                  <option value="zh-CN-XiaoyiNeural|pitch=+6Hz|rate=-5%">🍬 晓伊·撒娇版 (软糯夹子音·甜度拉满)</option>
-                  <option value="zh-CN-XiaoxiaoNeural">🌸 晓晓 (温柔知性·自然女友音)</option>
-                  <option value="zh-CN-XiaoxiaoNeural|pitch=-6Hz|rate=-6%">🍷 晓晓·御姐版 (低沉磁性·成熟姐姐音)</option>
-                  <option value="zh-TW-HsiaoChenNeural">🧋 晓臻 (台湾甜美软糯·超嗲台妹腔)</option>
-                  <option value="zh-TW-HsiaoYuNeural">🍃 晓雨 (台湾温柔知性·治愈台湾腔)</option>
-                  <option value="zh-HK-HiuMaanNeural">🇭🇰 晓曼 (香港粤语·甜美港风女声)</option>
-                  <option value="zh-HK-HiuGaaiNeural">🇭🇰 晓佳 (香港粤语·知性都市女声)</option>
-                  <option value="zh-CN-liaoning-XiaobeiNeural">🥟 晓北 (东北大妞·幽默爽朗东北话)</option>
-                  <option value="zh-CN-shaanxi-XiaoniNeural">🍜 晓妮 (陕西妹子·俏皮关中陕北话)</option>
-                  <option value="en-US-AvaMultilingualNeural">💎 Ava (轻熟温柔女声·支持中英双语)</option>
-                  <option value="en-US-EmmaMultilingualNeural">✨ Emma (明快清亮女声·支持中英双语)</option>
-                  <option value="fr-FR-VivienneMultilingualNeural">🌹 Vivienne (法式微醺女声·可说中文)</option>
-                  <option value="ja-JP-NanamiNeural">🇯🇵 七海 Nanami (日本动漫萌妹·日语)</option>
-                  <option value="ko-KR-SunHiNeural">🇰🇷 善熙 SunHi (韩国温柔韩剧女声·韩语)</option>
-                </optgroup>
-                <optgroup label="⚡ 微软 Edge-TTS 极速男声 (本机0.5秒直出 · 12款)">
-                  <option value="zh-CN-YunxiNeural">🎙️ 云希 (阳光少年·清朗磁性男声)</option>
-                  <option value="zh-CN-YunxiNeural|pitch=-8Hz|rate=-5%">🥂 云希·低音炮 (深情耳畔低语·磁性男声)</option>
-                  <option value="zh-CN-YunjianNeural">🦁 云健 (霸总沉稳·浑厚爆发力男声)</option>
-                  <option value="zh-CN-YunyangNeural">👔 云扬 (儒雅温润·成熟磁性男声)</option>
-                  <option value="zh-CN-YunxiaNeural">👦 云夏 (元气正太·清脆少年音)</option>
-                  <option value="zh-TW-YunJheNeural">🧋 云哲 (台湾温柔暖男·偶像剧台湾腔)</option>
-                  <option value="zh-HK-WanLungNeural">🇭🇰 云龙 (香港粤语·港片磁性男声)</option>
-                  <option value="en-US-AndrewMultilingualNeural">🥃 Andrew (欧美深沉磁性男声·可说中文)</option>
-                  <option value="en-US-BrianMultilingualNeural">🎸 Brian (随性自然青年男声·可说中文)</option>
-                  <option value="fr-FR-RemyMultilingualNeural">🍷 Remy (法式绅士低音男声·可说中文)</option>
-                  <option value="ko-KR-HyunsuMultilingualNeural">🇰🇷 贤洙 Hyunsu (韩国欧巴低音·支持中韩)</option>
-                  <option value="ja-JP-KeitaNeural">🇯🇵 圭太 Keita (日本爽朗青年男声·日语)</option>
-                </optgroup>
+                <option value="ming:妩媚妲己">🔥 【百灵女声】妩媚妲己 (酥麻撩人·尾音微扬魅惑女声)</option>
+                <option value="ming:灵梦">💕 【百灵女声】灵梦 (撒娇粘人·恋爱女友求陪伴)</option>
+                <option value="ming:灵恬">🍬 【百灵女声】灵恬 (蜜糖甜妹·娇羞笃定表白腔)</option>
+                <option value="ming:灵雨汐_中性" selected>☁️ 【百灵女声】灵雨汐·温柔 (棉花糖软妹·贴耳自然呼吸感)</option>
+                <option value="ming:灵雨汐_高兴">✨ 【百灵女声】灵雨汐·开心 (清甜少女·雀跃欢快)</option>
+                <option value="ming:灵雨汐_生气">💢 【百灵女声】灵雨汐·嗔怒 (傲娇女友/闺蜜急促娇嗔)</option>
+                <option value="ming:灵雨汐_悲伤">💧 【百灵女声】灵雨汐·委屈 (楚楚可怜·带脆弱呼吸感)</option>
+                <option value="ming:灵雨汐_惊讶">😮 【百灵女声】灵雨汐·惊喜 (银铃清脆赞叹少女音)</option>
+                <option value="ming:灵雨汐_恐惧">😨 【百灵女声】灵雨汐·惊慌 (压低声音急促呼吸颤音)</option>
+                <option value="ming:灵黛嗔_生气">👑 【百灵女声】灵黛嗔·傲娇 (大小姐发脾气·要人哄的娇纵感)</option>
+                <option value="ming:灵黛嗔_高兴">🌻 【百灵女声】灵黛嗔·明媚 (午后暖阳带笑意治愈女声)</option>
+                <option value="ming:灵黛嗔_惊讶">🎉 【百灵女声】灵黛嗔·惊喜 (中奖般高亢雀跃邻家女孩)</option>
+                <option value="ming:灵书悦_悲伤">📱 【百灵女声】灵书悦·吃醋 (查岗怀疑男友·委屈质问女友腔)</option>
+                <option value="ming:灵书悦_厌恶">🙄 【百灵女声】灵书悦·绿茶 (看似无辜柔弱·实则敷衍拉扯)</option>
+                <option value="ming:灵书悦_高兴">🍰 【百灵女声】灵书悦·吃货 (邻家甜妹吃到美食的幸福感)</option>
+                <option value="ming:灵风信_中性">🌷 【百灵女声】灵风信·暖心 (春光般温柔体贴·深夜哄睡女友)</option>
+                <option value="ming:灵惜梦_中性">💎 【百灵女声】灵惜梦·御姐 (珠落玉盘·独立干练都市姐姐)</option>
+                <option value="ming:灵惜梦_悲伤">💔 【百灵女声】灵惜梦·破碎 (带明显哭腔与脆弱绝望感)</option>
+                <option value="ming:灵采薇_悲伤">🌙 【百灵女声】灵采薇·凄美 (字字裹着气音的深情破碎感)</option>
+                <option value="ming:灵心澜_厌恶">👠 【百灵女声】灵心澜·女王 (冷艳高贵·大女主压迫感)</option>
+                <option value="ming:灵小柔">🌸 【百灵女声】灵小柔 (清亮甜美·百灵官方看板娘)</option>
+                <option value="ming:灵婉">💌 【百灵女声】灵婉 (深夜谈心·私密治愈告白少女)</option>
+                <option value="ming:灵小梨">🍐 【百灵女声】灵小梨 (江南水乡微风·灵动俏皮文艺女声)</option>
+                <option value="ming:水浒传_潘金莲">🎬 【百灵女声】潘金莲 (《水浒传》经典娇媚影视角色原声)</option>
+                <option value="ming:灵空">🎧 【百灵男声】灵空 (深夜哄睡低音炮男友·贴耳呼吸感 ASMR)</option>
+                <option value="ming:灵宇">🌹 【百灵男声】灵宇 (乙女游戏男主·自信含笑撩人学长)</option>
+                <option value="ming:灵朗">🥂 【百灵男声】灵朗 (深情霸总·成熟稳重宠溺男主)</option>
+                <option value="ming:灵信远_中性">☀️ 【百灵男声】灵信远·暖男 (带浅笑与呼吸感的新婚男友)</option>
+                <option value="ming:灵孤影_厌恶">❄️ 【百灵男声】灵孤影·高冷 (冰冷禁欲系霸总·生人勿近)</option>
+                <option value="ming:灵孤影_悲伤">🌧️ 【百灵男声】灵孤影·心碎 (浓重鼻音与叹息·深情虐恋男主)</option>
+                <option value="ming:灵孤影_生气">🔥 【百灵男声】灵孤影·震怒 (低沉压迫感·暴风雨前夕霸总)</option>
+                <option value="ming:灵思齐_生气">💳 【百灵男声】灵思齐·霸总 (给钱不给爱·居高临下冷酷总裁)</option>
+                <option value="ming:灵晓声_中性">♟️ 【百灵男声】灵晓声·腹黑 (运筹帷幄·极具侵略性宿敌男主)</option>
+                <option value="ming:灵楷">📻 【百灵男声】灵楷 (温润磁性电台主播·百灵官方男主)</option>
+                <option value="ming:甄嬛传_四郎">🎬 【百灵男声】甄嬛传·四郎 (经典雍正帝沉稳威严影视原声)</option>
+                <option value="ming:康熙王朝_康熙">🎬 【百灵男声】康熙大帝 (《康熙王朝》霸气帝王影视原声)</option>
+                <option value="ming:雍正王朝_雍正">🎬 【百灵男声】雍正王朝·雍正 (冷峻威严帝王影视原声)</option>
+                <option value="ming:西游记_唐僧">🎬 【百灵男声】西游记·唐僧 (温润慈悲经典影视原声)</option>
+                <option value="ming:水浒传_武松">🎬 【百灵男声】水浒传·武松 (豪迈硬汉经典影视原声)</option>
+                <option value="ming:潜伏_余则成">🎬 【百灵男声】潜伏·余则成 (沉稳内敛谍战经典原声)</option>
+                <option value="ming:悟空">🐵 【百灵男声】悟空 (活灵活现神话评书大师腔)</option>
+                <option value="ming:说唱小哥">🎤 【百灵男声】说唱小哥 (节奏感拉满潮流 Rap 青年)</option>
+                <option value="ming:蜡笔小新_野原新之助">🖍️ 【影视卡通】蜡笔小新 (经典搞怪呆萌卡通原声)</option>
+                <option value="ming:蜡笔小新_野原美伢">👩 【影视卡通】野原美伢 (《蜡笔小新》妈妈经典原声)</option>
+                <option value="ming:小猪佩奇_佩奇">🐷 【影视卡通】小猪佩奇 (经典可爱动画角色原声)</option>
+                <option value="ming:US_Stella">🇺🇸 【英语原声】US_Stella (地道美式温暖自然女声)</option>
+                <option value="ming:US_James">🇺🇸 【英语原声】US_James (地道美式磁性纪录片男声)</option>
+                <option value="ming:__clone__">🧬 【声音克隆】零样本声音克隆 (使用下方上传的 3~10 秒声音样本)</option>
+                <option value="zh-CN-XiaoyiNeural">🎀 【极速女声】晓伊 (俏皮甜美·活泼少女音)</option>
+                <option value="zh-CN-XiaoyiNeural|pitch=+6Hz|rate=-5%">🍬 【极速女声】晓伊·撒娇版 (软糯夹子音·甜度拉满)</option>
+                <option value="zh-CN-XiaoxiaoNeural">🌸 【极速女声】晓晓 (温柔知性·自然女友音)</option>
+                <option value="zh-CN-XiaoxiaoNeural|pitch=-6Hz|rate=-6%">🍷 【极速女声】晓晓·御姐版 (低沉磁性·成熟姐姐音)</option>
+                <option value="zh-TW-HsiaoChenNeural">🧋 【极速女声】晓臻 (台湾甜美软糯·超嗲台妹腔)</option>
+                <option value="zh-TW-HsiaoYuNeural">🍃 【极速女声】晓雨 (台湾温柔知性·治愈台湾腔)</option>
+                <option value="zh-HK-HiuMaanNeural">🇭🇰 【极速女声】晓曼 (香港粤语·甜美港风女声)</option>
+                <option value="zh-HK-HiuGaaiNeural">🇭🇰 【极速女声】晓佳 (香港粤语·知性都市女声)</option>
+                <option value="zh-CN-liaoning-XiaobeiNeural">🥟 【极速女声】晓北 (东北大妞·幽默爽朗东北话)</option>
+                <option value="zh-CN-shaanxi-XiaoniNeural">🍜 【极速女声】晓妮 (陕西妹子·俏皮关中陕北话)</option>
+                <option value="en-US-AvaMultilingualNeural">💎 【极速女声】Ava (轻熟温柔女声·支持中英双语)</option>
+                <option value="en-US-EmmaMultilingualNeural">✨ 【极速女声】Emma (明快清亮女声·支持中英双语)</option>
+                <option value="fr-FR-VivienneMultilingualNeural">🌹 【极速女声】Vivienne (法式微醺女声·可说中文)</option>
+                <option value="ja-JP-NanamiNeural">🇯🇵 【极速女声】七海 Nanami (日本动漫萌妹·日语)</option>
+                <option value="ko-KR-SunHiNeural">🇰🇷 【极速女声】善熙 SunHi (韩国温柔韩剧女声·韩语)</option>
+                <option value="zh-CN-YunxiNeural">🎙️ 【极速男声】云希 (阳光少年·清朗磁性男声)</option>
+                <option value="zh-CN-YunxiNeural|pitch=-8Hz|rate=-5%">🥂 【极速男声】云希·低音炮 (深情耳畔低语·磁性男声)</option>
+                <option value="zh-CN-YunjianNeural">🦁 【极速男声】云健 (霸总沉稳·浑厚爆发力男声)</option>
+                <option value="zh-CN-YunyangNeural">👔 【极速男声】云扬 (儒雅温润·成熟磁性男声)</option>
+                <option value="zh-CN-YunxiaNeural">👦 【极速男声】云夏 (元气正太·清脆少年音)</option>
+                <option value="zh-TW-YunJheNeural">🧋 【极速男声】云哲 (台湾温柔暖男·偶像剧台湾腔)</option>
+                <option value="zh-HK-WanLungNeural">🇭🇰 【极速男声】云龙 (香港粤语·港片磁性男声)</option>
+                <option value="en-US-AndrewMultilingualNeural">🥃 【极速男声】Andrew (欧美深沉磁性男声·可说中文)</option>
+                <option value="en-US-BrianMultilingualNeural">🎸 【极速男声】Brian (随性自然青年男声·可说中文)</option>
+                <option value="fr-FR-RemyMultilingualNeural">🍷 【极速男声】Remy (法式绅士低音男声·可说中文)</option>
+                <option value="ko-KR-HyunsuMultilingualNeural">🇰🇷 【极速男声】贤洙 Hyunsu (韩国欧巴低音·支持中韩)</option>
+                <option value="ja-JP-KeitaNeural">🇯🇵 【极速男声】圭太 Keita (日本爽朗青年男声·日语)</option>
               </select>
               <select id="avatarTtsStyleSelect" onchange="onAvatarVoiceOrStyleChange()" title="微调 Edge-TTS 音色的音调高低与语速快慢" style="padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:600;">
                 <option value="" selected>🎛️ 默认语感</option>
