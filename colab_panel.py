@@ -5206,6 +5206,8 @@ function removeFusionTargetSlot(idx) {
 }
 
 function clearAllFusionTargets() {
+  window._lastPosewearOutfitDesc = '';
+  window._isHeadlessCostumeTarget = false;
   fusionTargetList = [''];
   renderFusionTargetCards();
 }
@@ -5213,6 +5215,8 @@ function clearAllFusionTargets() {
 function onFusionTargetCardFileChange(slotIdx, inputEl) {
   const files = inputEl && inputEl.files ? Array.from(inputEl.files) : [];
   if (!files.length) return;
+  window._lastPosewearOutfitDesc = '';
+  window._isHeadlessCostumeTarget = false;
   if (files.length === 1) {
     const reader = new FileReader();
     reader.onload = ev => {
@@ -5239,6 +5243,8 @@ function onFusionTargetCardFileChange(slotIdx, inputEl) {
 function onFusionMultiFilesSelect(inputEl) {
   const files = inputEl && inputEl.files ? Array.from(inputEl.files) : [];
   if (!files.length) return;
+  window._lastPosewearOutfitDesc = '';
+  window._isHeadlessCostumeTarget = false;
   Promise.all(files.map(f => new Promise(res => {
     const r = new FileReader();
     r.onload = e => res(e.target.result || '');
@@ -10671,6 +10677,48 @@ p.wait()
             req_mode = str(payload.get("mode") or "t2va").strip()
             active_folder = str(cfg.get("model_folder") or "").strip()
             if req_mode == "image":
+                raw_p = str(payload.get("prompt") or "")
+                # 后端强制净化旧版前端残留的具象场景/衣服污染词，即便用户未刷新浏览器也绝不画出河水/大桥/西装外套/百褶裙！
+                for bad_frag in (
+                    "outdoor/indoor environment, architecture, water, bridge, trees, ",
+                    "architecture, water, bridge, trees, ",
+                    "seated/standing body pose, ",
+                    "headwear/hat, ",
+                    "jacket/top, skirt/pants, stockings, shoes, ",
+                ):
+                    if bad_frag in raw_p:
+                        raw_p = raw_p.replace(bad_frag, "")
+                refs_in = payload.get("ref_images_b64") or []
+                if len(refs_in) == 2 and "Edit <Picture 1>" in raw_p:
+                    try:
+                        venv_sp = BASE_DIR / ".venv" / "lib" / "python3.12" / "site-packages"
+                        if venv_sp.is_dir() and str(venv_sp) not in sys.path:
+                            sys.path.insert(0, str(venv_sp))
+                        import cv2
+                        import numpy as np
+                        b0 = base64.b64decode(str(refs_in[0]).split(",", 1)[-1])
+                        im0 = cv2.imdecode(np.frombuffer(b0, dtype=np.uint8), cv2.IMREAD_COLOR)
+                        app_det, _, _ = _ensure_biometric_swap_engine()
+                        has_real_face_in_pic1 = bool(im0 is not None and len(app_det.get(im0)) > 0)
+                        m_add = re.search(r"Additional requirements:\s*([^.]+)", raw_p)
+                        add_tail = ""
+                        if m_add:
+                            add_txt = m_add.group(1).strip()
+                            if not any(k in add_txt for k in ("全身·标准", "全身·性感", "正面视角", "俯拍视角", "仰拍视角")):
+                                add_tail = f" Additional requirements: {add_txt}."
+                        if has_real_face_in_pic1:
+                            # <Picture 1> 是带真人的目标照片（非无头服装卡）：严格锁定原图衣服、花色、姿势与背景 100% 不变，只替换头脸（或头脸+发型）！
+                            raw_p = (
+                                "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. "
+                                "The face and hairstyle in <Picture 2> is <Subject 2>. "
+                                "Replace ONLY the head, face, and hairstyle of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. "
+                                "Keep the exact original clothing, fabric pattern, body posture, hand and leg positions, footwear, lighting, and background of <Picture 1> 100% identical and unchanged. "
+                                "Do NOT add any jacket, coat, or extra clothing, and do NOT change the clothing or background of <Picture 1>."
+                                + add_tail
+                            )
+                    except Exception:
+                        pass
+                payload["prompt"] = raw_p
                 _append_panel_log(
                     f"📸 [提交 4K 写真/换装任务] 分辨率 {payload.get('resolution', '3552x4736')} · 6步蒸馏直出 · 参考图 {len(payload.get('ref_images_b64') or [])}张"
                 )
