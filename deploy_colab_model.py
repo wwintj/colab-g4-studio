@@ -945,6 +945,126 @@ def _list_history_videos():
     return [os.path.basename(p) for p in files[:12]]
 
 
+def _normalize_h3_lora_mod_name(raw_mod: str) -> str:
+    s = raw_mod.strip()
+    for pref in ("diffusion_model.", "model.diffusion_model.", "transformer.", "dit.", "lora_unet_"):
+        if s.startswith(pref):
+            s = s[len(pref):]
+    s = re.sub(r"^blocks_(\d+)_(attn|mlp|cross_attn)_(.+)$", r"blocks.\1.\2.\3", s)
+    s = re.sub(r"^refiner_blocks_(\d+)_(attn|mlp)_(.+)$", r"refiner_blocks.\1.\2.\3", s)
+    return s
+
+
+def _apply_or_switch_sentinel_h3_lora(pipe, lora_path: str, lora_strength: float = 0.85, prefix: str = ""):
+    dit = getattr(pipe, "dit", None)
+    if dit is None:
+        return
+    clean_path = str(lora_path or "").strip().lstrip("/")
+    strength = round(float(lora_strength if lora_strength is not None else 0.85), 3) if clean_path else 0.0
+    req_key = (clean_path, strength)
+    cur_key = getattr(dit, "_active_lora_key", ("", 0.0))
+    if cur_key == req_key:
+        return
+
+    # 1. 先卸载旧 LoRA 增量权重，无损还原基座权重
+    old_deltas = getattr(dit, "_active_lora_deltas", None) or []
+    if old_deltas:
+        for param, delta_cpu in old_deltas:
+            try:
+                param.data.sub_(delta_cpu.to(device=param.device, dtype=param.dtype))
+            except Exception:
+                pass
+        dit._active_lora_deltas = []
+        dit._active_lora_key = ("", 0.0)
+        torch.cuda.empty_cache()
+
+    if not clean_path or abs(strength) < 1e-4:
+        return
+
+    lora_dir = "/content/local_models/MiniMax-H3-LoRAs"
+    os.makedirs(lora_dir, exist_ok=True)
+    safe_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", clean_path)
+    if not safe_fn.endswith(".safetensors"):
+        safe_fn += ".safetensors"
+    local_p = os.path.join(lora_dir, safe_fn)
+    rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+
+    if not (os.path.isfile(local_p) and os.path.getsize(local_p) > 65536):
+        if os.path.isfile(rc_conf) and shutil.which("rclone"):
+            JOB_STATE["message"] = f"{prefix}☁️ 正在从 Google Drive 云盘极速拉取 H3 LoRA ({os.path.basename(clean_path)})..."
+            subprocess.run(
+                ["rclone", "copy", f"gdrive:models/MiniMax-H3-LoRAs/{safe_fn}", lora_dir, "--config", rc_conf],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+    if not (os.path.isfile(local_p) and os.path.getsize(local_p) > 65536):
+        import urllib.parse
+        JOB_STATE["message"] = f"{prefix}⬇️ 正在从 HuggingFace (Sentinel7/h3) 高速下载 LoRA ({os.path.basename(clean_path)})..."
+        hf_url = "https://huggingface.co/Sentinel7/h3/resolve/main/" + urllib.parse.quote(clean_path, safe="/")
+        tmp_p = local_p + ".part"
+        subprocess.run(["curl", "-fL", "--retry", "3", "-o", tmp_p, hf_url], check=True)
+        os.replace(tmp_p, local_p)
+        if os.path.isfile(rc_conf) and shutil.which("rclone"):
+            subprocess.Popen(
+                ["rclone", "copy", local_p, "gdrive:models/MiniMax-H3-LoRAs", "--config", rc_conf],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+
+    from safetensors.torch import load_file
+    JOB_STATE["message"] = f"{prefix}🔌 正在向 H3 DiT 显存挂载 LoRA ({os.path.basename(clean_path)} · 权重 {strength})..."
+    sd = load_file(local_p, device="cpu")
+    grouped = {}
+    for k, v in sd.items():
+        m = re.match(r"^(.+?)\.(lora_A|lora_B|lora_down|lora_up|alpha)(?:\.weight)?$", k)
+        if not m:
+            continue
+        mod_name = _normalize_h3_lora_mod_name(m.group(1))
+        kind = m.group(2)
+        entry = grouped.setdefault(mod_name, {})
+        if kind in ("lora_A", "lora_down"):
+            entry["down"] = v
+        elif kind in ("lora_B", "lora_up"):
+            entry["up"] = v
+        elif kind == "alpha":
+            try:
+                entry["alpha"] = float(v.item())
+            except Exception:
+                pass
+
+    mod_map = dict(dit.named_modules())
+    applied_deltas = []
+    for mod_name, item in grouped.items():
+        down = item.get("down")
+        up = item.get("up")
+        if down is None or up is None:
+            continue
+        target_mod = mod_map.get(mod_name)
+        if target_mod is None or not hasattr(target_mod, "weight"):
+            continue
+        w_param = target_mod.weight
+        rank = max(1, int(down.shape[0]))
+        alpha = float(item.get("alpha", rank))
+        scale = float(strength) * (alpha / float(rank))
+        up_f = up.to(device=w_param.device, dtype=torch.float32)
+        down_f = down.to(device=w_param.device, dtype=torch.float32)
+        if up_f.ndim == 2 and down_f.ndim == 2:
+            delta_f = (up_f @ down_f) * scale
+        else:
+            delta_f = (up_f.flatten(1) @ down_f.flatten(1)).view_as(w_param) * scale
+        if delta_f.shape == w_param.shape:
+            delta_cast = delta_f.to(dtype=w_param.dtype)
+            w_param.data.add_(delta_cast)
+            applied_deltas.append((w_param, delta_cast.to(dtype=torch.float16).cpu()))
+        del up_f, down_f, delta_f
+
+    del sd, grouped
+    dit._active_lora_deltas = applied_deltas
+    dit._active_lora_key = req_key
+    print(f"SENTINEL_H3_LORA_APPLIED: {clean_path} (strength={strength}, layers={len(applied_deltas)})", flush=True)
+
+
 def _run_video_job(payload: dict):
     global JOB_STATE
     t0 = time.time()
@@ -1013,6 +1133,20 @@ def _run_video_job(payload: dict):
             with GPU_LOCK:
                 gc.collect()
                 torch.cuda.empty_cache()
+                try:
+                    _apply_or_switch_sentinel_h3_lora(
+                        PIPELINE,
+                        str(payload.get("lora_path") or "").strip(),
+                        float(payload.get("lora_strength") if payload.get("lora_strength") is not None else 0.85),
+                        prefix=prefix,
+                    )
+                    if payload.get("sigma_shift") is not None and hasattr(PIPELINE, "scheduler"):
+                        try:
+                            PIPELINE.scheduler.shift = float(payload.get("sigma_shift"))
+                        except Exception:
+                            pass
+                except Exception as e_lora:
+                    print(f"LORA_MOUNT_WARN: {e_lora}", flush=True)
                 ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
                 mode_tag = "fl2va" if payload.get("first_frame_b64") else "t2va"
                 call_kwargs = dict(

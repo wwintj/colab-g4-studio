@@ -2309,6 +2309,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </select>
         <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:3px 7px;font-size:11.5px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把生成好的图直接设为短剧对应角色定妆照">📌设为定妆</button>
       </div>
+      <button type="button" id="btnRunFusionTurnaround" onclick="startCharacterTurnaroundSheetGenerate()" style="padding:7px 11px;font-size:12px;font-weight:900;border-radius:8px;border:1.5px solid #38bdf8;background:linear-gradient(135deg,rgba(14,165,233,0.28),rgba(99,102,241,0.28));color:#bae6fd;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="AusBoss (3444714) 角色四视图设定集：一键直出同一角色『正面 + 3/4侧 + 90°正侧 + 背面』同框四视图定妆卡">
+        📐 四视图定妆卡
+      </button>
       <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="padding:7px 16px;font-size:13px;font-weight:900;border-radius:8px;border:none;background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 6px 18px -4px rgba(236,72,153,0.55);white-space:nowrap;flex-shrink:0;">
         🪄 一键开始合成
       </button>
@@ -2840,9 +2843,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     <!-- 框 1 (单独一行)：主体、构图、光影与风格描述 -->
     <div id="videoPromptBox1Wrap" style="margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
         <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
-        <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <label title="开启后：生成视频时自动将您的提示词编译为 MiniMax-H3 官方六段式结构 (subject_definitions + retention_analysis: fully_preserved + detailed_description)，显著增强跨帧锁脸与防变形能力" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.42);padding:2px 8px;border-radius:6px;cursor:pointer;user-select:none;">
+            <input type="checkbox" id="chkAutoH3SixSection" checked style="width:12.5px;height:12.5px;accent-color:#10b981;cursor:pointer;">
+            <span>📜 自动H3六段式锁脸防崩编译</span>
+          </label>
+          <button type="button" onclick="compileCurrentVideoPromptToH3SixSection(true)" style="padding:2px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;" title="立即将当前输入框内容转换为 MiniMax-H3 官方原生六段式结构并预览">🪄 一键转为H3六段式</button>
+          <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
+        </div>
       </div>
       <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this)" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;">Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.</textarea>
     </div>
@@ -2938,6 +2948,48 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <button type="button" class="batch-pill" data-batch="4" onclick="selectBatchCount(4)" style="padding:4px 0;border-radius:6px;border:none;background:transparent;color:#cbd5e1;font-size:12px;font-weight:600;cursor:pointer;">4条</button>
         </div>
       </div>
+    </div>
+
+    <!-- 新增排：🔌 H3 专属 LoRA 增强插件槽 (Sentinel7/h3 420+款云端直连 · 0本地硬盘占用 · 自动备份至 20TB Google Drive) -->
+    <div id="h3SentinelLoraBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(30,41,59,0.92),rgba(46,16,101,0.55));padding:6px 10px;border-radius:9px;border:1px solid rgba(192,132,252,0.45);margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:800;color:#e9d5ff;white-space:nowrap;">🔌 H3云端LoRA插件</span>
+      <select id="h3SentinelLoraSelect" onchange="onH3SentinelLoraChange(this.value)" style="flex:1;min-width:240px;padding:4px 8px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:#0f172a;color:#f8fafc;cursor:pointer;">
+        <option value="" selected>🚫 不挂载额外 LoRA (默认原生基座)</option>
+        <optgroup label="🔥 写实动态与成人交互 (18+ NSFW / Sensual · HearmemanAI)">
+          <option value="2834417/3446189/HMNSFW-Extreme-Realism.safetensors">🔥 HMNSFW V3 Extreme Realism (3446189 · 全能写实成人互动 V3 · 推荐 18步/Shift 12)</option>
+          <option value="2834417/3268303/HMNSFW-AIO-V2.5.safetensors">🔥 HMNSFW AIO V2.5 (3268303 · 全能成人动作 V2.5)</option>
+          <option value="2834417/3198686/hmmotion_minimax-h3_epoch12.safetensors">💃 Hearmeman Motion V1 (3198686 · 真实人体物理律动增强)</option>
+          <option value="3039167/3453951/minimax-sensual-v0.1.safetensors">💋 MiniMax Sensual v0.1 (3453951 · 性感写真动态与眼神律动)</option>
+          <option value="2985832/3406313/H3-nsfw-round-breasts-posing-V1.5.safetensors">👙 NSFW Posing V1.5 (3406313 · 写真姿态与身材曲线增强)</option>
+          <option value="3008596/3413917/MM-H3 - Gyrating Hips v1.2.safetensors">🍑 Gyrating Hips v1.2 (3413917 · 腰臀律动增强)</option>
+          <option value="1343431/3226280/bounceV03-000084.safetensors">🌊 Physics Bounce v0.3 (3226280 · 真实物理弹性律动)</option>
+          <option value="lora/mm-h3-r2v-nudification-os.safetensors">✨ REF2V Nudification OS (参考图写实解构 LoRA)</option>
+          <option value="2990026/3390424/DecensoreH3_000002500.safetensors">🔓 Decensor H3 (3390424 · 写实细节无码增强)</option>
+        </optgroup>
+        <optgroup label="⚔️ 动作大片 / 武术打斗 / 枪斗 / 热舞律动 (Action & Dance)">
+          <option value="2986532/3386042/wushu_h3_v8_final_fp16.safetensors">🥋 武术打斗 wushu_action v8 (3386042 · 自动加触发词 wushu_action · 权重 0.75)</option>
+          <option value="2941150/3329892/GunFu.safetensors">🔫 近身枪斗术 GUNFU (3329892 · 疾速追杀式枪战动作 · 自动加 BUNNY)</option>
+          <option value="3056222/3476635/DANCE-minimax-h3.safetensors">🕺 热舞律动 DANCE MiniMax-H3 (3476635 · 全身高动态舞蹈)</option>
+          <option value="3056235/3476658/Dance Beat-Sync Slider.safetensors">🎵 卡点街舞 Dance Beat-Sync (3476658 · 音乐节拍律动)</option>
+        </optgroup>
+        <optgroup label="🎭 视频锁脸与换人增强 (REF2VA Identity Lock)">
+          <option value="2027766/3412620/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors">🎭 BFS Character Swap v1.1 (3412620 · 视频全身换人与锁脸)</option>
+          <option value="2940916/3329609/SS_FaceSwap_MiniMax_H3_REF2VA.safetensors">🧑 SS FaceSwap REF2VA v1.0 (3329609 · 自动加 Faceswap 触发词)</option>
+          <option value="2027766/3352167/minimax_h3_head_swap_v1.0_r32.safetensors">👤 BFS Head Swap v1.0 (3352167 · 视频头部与发型替换)</option>
+        </optgroup>
+        <optgroup label="🛠️ 自定义 Sentinel7/h3 仓库任意 LoRA (420+款)">
+          <option value="CUSTOM">🛠️ 手动输入 Sentinel7/h3 仓库内任意 .safetensors 相对路径...</option>
+        </optgroup>
+      </select>
+      <input type="text" id="h3SentinelLoraCustomPath" placeholder="例如：2834417/3446189/HMNSFW-Extreme-Realism.safetensors" style="display:none;width:270px;padding:4px 8px;font-size:11.5px;border-radius:6px;border:1px solid #38bdf8;background:#020617;color:#bae6fd;">
+      <div style="display:flex;align-items:center;gap:5px;background:#0f172a;padding:3px 8px;border-radius:6px;border:1px solid #334155;">
+        <span style="font-size:11.5px;color:#94a3b8;font-weight:600;">权重</span>
+        <input type="number" id="h3SentinelLoraStrength" value="0.85" min="0.1" max="1.5" step="0.05" style="width:52px;padding:2px 4px;border-radius:4px;border:1px solid #475569;background:#020617;color:#fde68a;font-size:12px;font-weight:700;text-align:center;">
+      </div>
+      <label title="HearmemanAI 推荐黄金采样参数：Euler · Steps=18 · Shift=12.0 (选中 LoRA 时自动同步步数为 18 步并注入 Shift=12)" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#fde68a;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.4);padding:3px 8px;border-radius:6px;cursor:pointer;white-space:nowrap;user-select:none;">
+        <input type="checkbox" id="chkH3SentinelAutoGoldenSpec" checked style="width:12.5px;height:12.5px;accent-color:#f59e0b;cursor:pointer;">
+        <span>⚡ 黄金采样(18步·Shift 12)</span>
+      </label>
     </div>
 
     <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧双按钮「📸 仅生成 4K 图片」+「🎬 生成有声视频」 -->
@@ -6001,6 +6053,181 @@ async function startFusionStudioGenerate() {
   }
 }
 
+async function startCharacterTurnaroundSheetGenerate() {
+  if (fusionBatchRunning) return;
+  const btn = document.getElementById('btnRunFusionTurnaround');
+  const mainBtn = document.getElementById('btnRunFusionStudio');
+  const stopBtn = document.getElementById('btnStopFusionStudio');
+  const stEl = document.getElementById('fusionStudioStatusText');
+  const fWrap = document.getElementById('fusionProgressWrap');
+  const fBar = document.getElementById('fusionProgressBar');
+
+  if (!fusionSlotsB64[0]) {
+    alert('请先在【① 人脸照片】槽上传或从 CC0 脸库选择一位角色人脸！');
+    return;
+  }
+
+  const faceSrc = fusionFaceOrigB64 || fusionSlotsB64[0];
+  const outfitB64 = (Array.isArray(fusionTargetList) && fusionTargetList[0]) ? fusionTargetList[0] : '';
+  const extraTxt = (((document.getElementById('fusionPropsActionInput') || {}).value) || '').trim();
+  const detailTail = extraTxt
+    ? `Full-body head-to-toe framing including matching lower-body clothing and footwear (${extraTxt}).`
+    : 'Full-body head-to-toe framing showing complete matching lower-body outfit and footwear.';
+
+  let refs = [];
+  let prompt = '';
+  if (outfitB64) {
+    refs = [outfitB64, faceSrc];
+    prompt = [
+      'subject_definitions:',
+      '<Subject 1> is the person in <Picture 2> (exact face, facial bone structure, hairstyle, and natural expression) wearing the exact complete clothing outfit and accessories from <Picture 1>. ' + detailTail,
+      '',
+      'summary:',
+      '[reference generation] static image of a character turnaround sheet: four full-body photographs of <Subject 1> side by side, in a clean studio photographic style.',
+      '',
+      'retention_analysis:',
+      '<Subject 1>: fully_preserved - face and hairstyle from <Picture 2> and complete clothing outfit from <Picture 1> held 100% identical in all four views.',
+      '',
+      'detailed_description:',
+      'The target image is a character turnaround sheet of <Subject 1>, four full-body views in one horizontal row, each the same size, evenly separated, never overlapping, on one plain white studio backdrop with soft even light.',
+      '[Shot 1] static image. Live-action photograph. Sharp focus, natural skin texture, fine detail in the hair and fabric. ' + detailTail,
+      '1. On the far left: <Subject 1> straight from the front, facing the camera.',
+      '2. Second: <Subject 1> in a three-quarter view from their left side, the face turned toward the left edge of the picture.',
+      '3. Third: <Subject 1> in a strict side profile at 90 degrees from their left side, the nose pointing left.',
+      '4. On the far right: <Subject 1> straight from behind, showing the back of the hairstyle and the back of the outfit.',
+      '<Subject 1> holds the same relaxed standing pose in all four views, framed identically from the top of the head down to the shoes.',
+      '',
+      'overall_soundscape:',
+      'N/A',
+      '',
+      'non_diegetic_music:',
+      'N/A'
+    ].join('\n');
+  } else {
+    refs = [faceSrc];
+    prompt = [
+      'subject_definitions:',
+      '<Subject 1> is the person in <Picture 1>: the exact same face, hair, skin, body, clothing and accessories. ' + detailTail,
+      '',
+      'summary:',
+      '[reference generation] static image of a character turnaround sheet: four full-body photographs of <Subject 1> side by side, in the photographic style of <Picture 1>.',
+      '',
+      'retention_analysis:',
+      '<Subject 1>: fully_preserved - face, hair, skin, clothing and accessories exactly as in <Picture 1>, identical in all four views.',
+      '',
+      'detailed_description:',
+      'The target image is a character turnaround sheet of <Subject 1>, four full-body views in one horizontal row, each the same size, evenly separated, never overlapping, on one plain white studio backdrop with soft even light.',
+      '[Shot 1] static image. Live-action photograph. Sharp focus, natural skin texture, fine detail in the hair and fabric. ' + detailTail,
+      '1. On the far left: <Subject 1> straight from the front, facing the camera.',
+      '2. Second: <Subject 1> in a three-quarter view from their left side.',
+      '3. Third: <Subject 1> in a strict side profile at 90 degrees from their left side.',
+      '4. On the far right: <Subject 1> straight from behind: the back of the head and back of the outfit are visible.',
+      '<Subject 1> holds the same relaxed standing pose in all four views, framed identically from head to toe.',
+      '',
+      'overall_soundscape:',
+      'N/A',
+      '',
+      'non_diegetic_music:',
+      'N/A'
+    ].join('\n');
+  }
+
+  fusionBatchRunning = true;
+  fusionBatchCancelled = false;
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ 四视图生成中...'; }
+  if (mainBtn) mainBtn.disabled = true;
+  if (stopBtn) stopBtn.style.display = 'inline-block';
+  if (fWrap) fWrap.style.display = 'block';
+  if (fBar) fBar.style.width = '10%';
+  if (stEl) {
+    stEl.innerText = '📐 [AusBoss 3444714 四视图定妆卡] 正在调用 MiniMax-H3-Image 生成『正面 + 3/4侧 + 90°正侧 + 背面』同框四视图 (2048×1152)...';
+    stEl.style.color = '#38bdf8';
+  }
+
+  try {
+    let prevLatest = '';
+    try {
+      const r0 = await fetch('/api/video_status');
+      const d0 = await r0.json();
+      prevLatest = d0.latest_video || '';
+    } catch (e) {}
+
+    const payload = {
+      mode: 'image',
+      turnaround_sheet: true,
+      prompt,
+      resolution: '2048x1152',
+      width: 2048,
+      height: 1152,
+      steps: 6,
+      seed: -1,
+      randomize_seed: true,
+      batch_count: 1,
+      ref_images_b64: refs,
+      clean_matte: false,
+    };
+
+    const r = await fetch('/api/video_generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!d || !d.ok) {
+      throw new Error((d && d.error) || '启动四视图定妆卡生成失败');
+    }
+    let waitRes = await waitForSingleFusionJobCompletion(1, 1, prevLatest);
+    if (waitRes.need_resubmit && !fusionBatchCancelled) {
+      const rRetry = await fetch('/api/video_generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      const dRetry = await rRetry.json();
+      if (dRetry && dRetry.ok) {
+        waitRes = await waitForSingleFusionJobCompletion(1, 1, prevLatest);
+      }
+    }
+    if (waitRes && waitRes.ok && Array.isArray(waitRes.files) && waitRes.files.length > 0) {
+      if (stEl) {
+        stEl.innerText = '🧬 正在对四视图中的正面与 3/4 侧面执行 ArcFace 512维多脸同步锁脸与 H3-FaceFix 精修...';
+      }
+      try {
+        await fetch('/api/biometric_refine_file', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            face_b64: faceSrc,
+            filenames: waitRes.files,
+          }),
+        });
+      } catch (eRef) {}
+      waitRes.files.forEach(fn => {
+        if (fn) {
+          fusionBatchCompletedFiles = [fn, ...fusionBatchCompletedFiles.filter(x => x !== fn)].slice(0, 12);
+        }
+      });
+      renderFusionBatchGallery();
+      await loadLocalVideoHistory(true);
+      if (fBar) fBar.style.width = '100%';
+      if (stEl) {
+        stEl.innerText = '✅ 角色四视图定妆卡（正面 / 3/4侧 / 90°正侧 / 背面）生成完成！已置顶在下方完成画廊第 1 张！';
+        stEl.style.color = '#34d399';
+      }
+    }
+  } catch (e) {
+    if (stEl) {
+      stEl.innerText = '❌ 四视图定妆卡生成异常: ' + e;
+      stEl.style.color = '#ef4444';
+    }
+  } finally {
+    fusionBatchRunning = false;
+    if (btn) { btn.disabled = false; btn.innerText = '📐 四视图定妆卡'; }
+    if (mainBtn) mainBtn.disabled = false;
+    if (stopBtn) stopBtn.style.display = 'none';
+  }
+}
+
 async function sendCurrentPreviewToDramaRole() {
   const roleSel = document.getElementById('selFusionTargetRole');
   const roleId = (roleSel && roleSel.value) ? roleSel.value : 'A';
@@ -7015,6 +7242,127 @@ async function stopActiveVideoTask(targetMode = 'auto') {
   }
 }
 
+function getSelectedH3SentinelLoraPath() {
+  const sel = document.getElementById('h3SentinelLoraSelect');
+  if (!sel) return '';
+  if (sel.value === 'CUSTOM') {
+    const cust = document.getElementById('h3SentinelLoraCustomPath');
+    return (cust && cust.value ? cust.value.trim() : '');
+  }
+  return (sel.value || '').trim();
+}
+
+function onH3SentinelLoraChange(val) {
+  const custInp = document.getElementById('h3SentinelLoraCustomPath');
+  if (custInp) {
+    custInp.style.display = (val === 'CUSTOM') ? 'inline-block' : 'none';
+  }
+  const strInp = document.getElementById('h3SentinelLoraStrength');
+  if (strInp && val && val !== 'CUSTOM') {
+    if (val.includes('wushu_h3_v8')) {
+      strInp.value = '0.75';
+    } else if (val.includes('FaceSwap') || val.includes('character_swap')) {
+      strInp.value = '1.00';
+    } else {
+      strInp.value = '0.85';
+    }
+  }
+  const chkGolden = document.getElementById('chkH3SentinelAutoGoldenSpec');
+  if (val && chkGolden && chkGolden.checked) {
+    const stSlider = document.getElementById('videoSteps');
+    const stLbl = document.getElementById('stepsValLabel');
+    if (stSlider) stSlider.value = '18';
+    if (stLbl) stLbl.innerText = '18 步';
+  }
+}
+
+function compileVideoPromptToH3SixSection(rawPrompt, soundPrompt, musicPrompt, hasFirstFrame, loraPath) {
+  let cleanP = (rawPrompt || '').trim();
+  if (!cleanP) return '';
+  let triggerPref = '';
+  const lp = (loraPath || '').toLowerCase();
+  if (lp.includes('wushu_h3_v8') && !cleanP.toLowerCase().includes('wushu_action')) {
+    triggerPref = 'wushu_action, ';
+  } else if (lp.includes('gunfu') && !cleanP.includes('BUNNY')) {
+    triggerPref = 'BUNNY, ';
+  } else if (lp.includes('ss_faceswap') && !cleanP.toLowerCase().includes('faceswap')) {
+    triggerPref = 'Faceswap, ';
+  }
+
+  if (cleanP.includes('subject_definitions:') && cleanP.includes('retention_analysis:')) {
+    return triggerPref ? (triggerPref + cleanP) : cleanP;
+  }
+
+  // 清除容易引起 H3 反向注意力的否定式元说明，替换为正向物理运动描述
+  cleanP = cleanP
+    .replace(/不要慢动作|禁止慢动作|no slow[\s-]?motion/gi, 'rendered in raw 1.0x real-time speed')
+    .replace(/不要变形|禁止崩脸|do not deform/gi, 'preserving stable anatomical proportions and sharp facial clarity');
+
+  const sndTxt = (soundPrompt || '').trim() || 'Natural synchronized physical Foley, realistic clothing rustle, and clear ambient room tone.';
+  const musTxt = (musicPrompt || '').trim() || 'N/A';
+
+  if (hasFirstFrame) {
+    return [
+      'subject_definitions:',
+      '<Subject 1> is the main character in <Picture 1>: preserving the exact face, facial bone structure, hairstyle, skin tone, body proportions, and clothing outfit from <Picture 1>.',
+      '',
+      'summary:',
+      `[video generation + reference] Continuous live-action cinematic video in 1.0x real-time speed: ${triggerPref}${cleanP}`,
+      '',
+      'retention_analysis:',
+      '<Subject 1> (appears in [Shot 1]): fully_preserved - identity, facial structure, hairstyle, skin texture, and complete clothing appearance at frame 0 are taken from <Picture 1> and held strictly consistent across every frame without identity drift or clothing change.',
+      '',
+      'detailed_description:',
+      `[Shot 1] ${triggerPref}${cleanP} Rendered in raw 1.0x real-time speed with high shutter-speed clarity, continuous physical momentum, and natural skin/fabric texture.`,
+      '',
+      'overall_soundscape:',
+      sndTxt,
+      '',
+      'non_diegetic_music:',
+      musTxt
+    ].join('\n');
+  }
+
+  return [
+    'subject_definitions:',
+    `<Subject 1> is the primary subject described in the scene (${cleanP.slice(0, 140)}).`,
+    '',
+    'summary:',
+    `[Text-to-Video generation] Continuous cinematic sequence in 1.0x real-time speed: ${triggerPref}${cleanP}`,
+    '',
+    'retention_analysis:',
+    '<Subject 1> (appears in [Shot 1]): fully_preserved - consistent facial features, hairstyle, clothing, and spatial screen geography maintained throughout the entire shot.',
+    '',
+    'detailed_description:',
+    `[Shot 1] ${triggerPref}${cleanP} Rendered in raw 1.0x real-time speed with high shutter-speed clarity, continuous physical momentum, and photorealistic lighting.`,
+    '',
+    'overall_soundscape:',
+    sndTxt,
+    '',
+    'non_diegetic_music:',
+    musTxt
+  ].join('\n');
+}
+
+function compileCurrentVideoPromptToH3SixSection(showToast = true) {
+  const pEl = document.getElementById('videoPrompt');
+  if (!pEl) return;
+  const rawP = pEl.value.trim();
+  if (!rawP) {
+    alert('请先在画面描述框中输入您的创意或动作描述！');
+    return;
+  }
+  const sndP = ((document.getElementById('videoSoundPrompt') || {}).value || '').trim();
+  const musP = ((document.getElementById('videoMusicPrompt') || {}).value || '').trim();
+  const hasRef = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
+  const loraP = getSelectedH3SentinelLoraPath();
+  pEl.value = compileVideoPromptToH3SixSection(rawP, sndP, musP, hasRef, loraP);
+  pEl.rows = 10;
+  if (showToast) {
+    showGlobalCopyToast('📜 已编译为 MiniMax-H3 官方六段式结构 (含 subject_definitions + retention_analysis: fully_preserved)！');
+  }
+}
+
 async function startVideoGenerate(forceTarget = '') {
   const btnVid = document.getElementById('btnVideoGen');
   const btnImg = document.getElementById('btnImageOnlyGen');
@@ -7039,6 +7387,7 @@ async function startVideoGenerate(forceTarget = '') {
   }
   const prompt = document.getElementById('videoPrompt').value.trim();
   const isImgMode = (forceTarget === 'image') || (currentMiniMaxMode === 'image');
+  const isAvMode = currentMiniMaxMode === 'avatar';
   if (!prompt && !isImgMode) {
     alert('请输入画面提示词');
     return;
@@ -7047,21 +7396,38 @@ async function startVideoGenerate(forceTarget = '') {
   const [wStr, hStr] = resVal.split('x');
   const randSeed = document.getElementById('videoRandSeed').checked;
   const seedVal = randSeed ? -1 : (parseInt(document.getElementById('videoSeed').value || '42', 10) || 42);
+  const soundTxt = document.getElementById('videoSoundPrompt').value.trim();
+  const musicTxt = document.getElementById('videoMusicPrompt').value.trim();
+  const loraPath = (!isImgMode && !isAvMode) ? getSelectedH3SentinelLoraPath() : '';
+  const loraStrength = parseFloat(((document.getElementById('h3SentinelLoraStrength') || {}).value) || '0.85') || 0.85;
+  const autoGolden = Boolean(((document.getElementById('chkH3SentinelAutoGoldenSpec') || {}).checked));
+  const autoSixSec = Boolean(((document.getElementById('chkAutoH3SixSection') || {}).checked));
+  const hasRefFrame = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
+  const finalVideoPrompt = (!isImgMode && !isAvMode && autoSixSec)
+    ? compileVideoPromptToH3SixSection(prompt, soundTxt, musicTxt, hasRefFrame, loraPath)
+    : prompt;
+
   const payload = {
-    prompt,
-    soundscape: document.getElementById('videoSoundPrompt').value.trim(),
-    music: document.getElementById('videoMusicPrompt').value.trim(),
+    prompt: finalVideoPrompt,
+    soundscape: soundTxt,
+    music: musicTxt,
     negative_prompt: document.getElementById('videoNegPrompt').value.trim(),
     resolution: resVal,
     width: parseInt(wStr, 10) || 832,
     height: parseInt(hStr, 10) || 480,
     num_frames: parseInt(document.getElementById('videoFrames').value || '124', 10),
-    steps: isImgMode ? 6 : parseInt(document.getElementById('videoSteps').value || '30', 10),
+    steps: isImgMode ? 6 : ((loraPath && autoGolden) ? 18 : parseInt(document.getElementById('videoSteps').value || '30', 10)),
     fps: parseInt(document.getElementById('videoFps').value || '24', 10),
     seed: seedVal,
     randomize_seed: randSeed,
     batch_count: isImgMode ? 1 : selectedBatchCount,
+    auto_h3_six_section: autoSixSec,
   };
+  if (loraPath) {
+    payload.lora_path = loraPath;
+    payload.lora_strength = loraStrength;
+    if (autoGolden) payload.sigma_shift = 12.0;
+  }
   if (currentMiniMaxMode === 'fl2va' && firstFrameB64) {
     payload.first_frame_b64 = firstFrameB64;
     if (lastFrameB64) payload.last_frame_b64 = lastFrameB64;
@@ -7089,7 +7455,6 @@ async function startVideoGenerate(forceTarget = '') {
   const st = document.getElementById('videoGenStatus');
   const pWrap = document.getElementById('videoProgressWrap');
   const pBar = document.getElementById('videoProgressBar');
-  const isAvMode = currentMiniMaxMode === 'avatar';
   const runningBtnText = isImgMode
     ? '🛑 正在生成 4K 写真大图... (点击停止)'
     : (isAvMode ? '🛑 正在生成数字人视频... (点击停止)' : (selectedBatchCount > 1 ? `🛑 正在连抽 ${selectedBatchCount} 条... (点击停止)` : '🛑 正在合成有声视频... (点击停止)'));
@@ -9690,17 +10055,34 @@ def _run_local_biometric_faceswap(face_b64: str, target_img_bytes: bytes) -> Opt
         return None
 
     src_f = max(src_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-    tgt_f = max(tgt_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+    max_tgt_f = max(tgt_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+    max_area = float((max_tgt_f.bbox[2] - max_tgt_f.bbox[0]) * (max_tgt_f.bbox[3] - max_tgt_f.bbox[1]))
 
-    final_bgr = _blend_single_face_h3_fix(
-        tgt_bgr=tgt_bgr,
-        tgt_f=tgt_f,
-        src_f=src_f,
-        swapper=swapper,
-        gfpgan_sess=gfpgan_sess,
-        smoothed_kps=None,
-        blend_opacity=1.0,
-    )
+    # 支持单人写真及 AusBoss 角色四视图定妆卡（同步精修所有正面与 3/4 侧面人脸，跳过 90° 纯正侧脸防止侧脸拉扯）
+    eligible_faces = []
+    for tf in tgt_faces:
+        fw = float(max(1.0, tf.bbox[2] - tf.bbox[0]))
+        fh = float(max(1.0, tf.bbox[3] - tf.bbox[1]))
+        if (fw * fh) < max_area * 0.42:
+            continue
+        eye_dx = abs(float(tf.kps[1][0]) - float(tf.kps[0][0])) if getattr(tf, "kps", None) is not None else fw * 0.35
+        if len(tgt_faces) > 1 and (eye_dx / fw) < 0.21:
+            continue
+        eligible_faces.append(tf)
+    if not eligible_faces:
+        eligible_faces = [max_tgt_f]
+
+    final_bgr = tgt_bgr
+    for tf in eligible_faces:
+        final_bgr = _blend_single_face_h3_fix(
+            tgt_bgr=final_bgr,
+            tgt_f=tf,
+            src_f=src_f,
+            swapper=swapper,
+            gfpgan_sess=gfpgan_sess,
+            smoothed_kps=None,
+            blend_opacity=1.0,
+        )
 
     ok_enc, enc_buf = cv2.imencode(".jpg", final_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 96])
     if not ok_enc:
@@ -11288,12 +11670,62 @@ p.wait()
                     except Exception:
                         pass
                 payload["prompt"] = raw_p
+                sheet_tag = " · 📐AusBoss四视图定妆卡" if payload.get("turnaround_sheet") else ""
                 _append_panel_log(
-                    f"📸 [提交 4K 写真/换装任务] 分辨率 {payload.get('resolution', '3552x4736')} · 6步蒸馏直出 · 参考图 {len(payload.get('ref_images_b64') or [])}张"
+                    f"📸 [提交 4K 写真/换装任务{sheet_tag}] 分辨率 {payload.get('resolution', '3552x4736')} · 6步蒸馏直出 · 参考图 {len(payload.get('ref_images_b64') or [])}张"
                 )
             else:
+                if req_mode != "avatar":
+                    v_prompt = str(payload.get("prompt") or "").strip()
+                    v_sound = str(payload.get("soundscape") or "").strip() or "Natural synchronized physical Foley, realistic clothing rustle, and clear ambient room tone."
+                    v_music = str(payload.get("music") or "").strip() or "N/A"
+                    v_lora = str(payload.get("lora_path") or "").strip()
+                    trig = ""
+                    vl_low = v_lora.lower()
+                    if "wushu_h3_v8" in vl_low and "wushu_action" not in v_prompt.lower():
+                        trig = "wushu_action, "
+                    elif "gunfu" in vl_low and "bunny" not in v_prompt.lower():
+                        trig = "BUNNY, "
+                    elif "ss_faceswap" in vl_low and "faceswap" not in v_prompt.lower():
+                        trig = "Faceswap, "
+                    if payload.get("auto_h3_six_section", True) and v_prompt and "subject_definitions:" not in v_prompt:
+                        has_ref_f = bool(payload.get("first_frame_b64"))
+                        if has_ref_f:
+                            v_prompt = (
+                                "subject_definitions:\n"
+                                "<Subject 1> is the main character in <Picture 1>: preserving the exact face, facial bone structure, hairstyle, skin tone, body proportions, and clothing outfit from <Picture 1>.\n\n"
+                                "summary:\n"
+                                f"[video generation + reference] Continuous live-action cinematic video in 1.0x real-time speed: {trig}{v_prompt}\n\n"
+                                "retention_analysis:\n"
+                                "<Subject 1> (appears in [Shot 1]): fully_preserved - identity, facial structure, hairstyle, skin texture, and complete clothing appearance at frame 0 are taken from <Picture 1> and held strictly consistent across every frame without identity drift or clothing change.\n\n"
+                                "detailed_description:\n"
+                                f"[Shot 1] {trig}{v_prompt} Rendered in raw 1.0x real-time speed with high shutter-speed clarity, continuous physical momentum, and natural skin/fabric texture.\n\n"
+                                "overall_soundscape:\n"
+                                f"{v_sound}\n\n"
+                                "non_diegetic_music:\n"
+                                f"{v_music}"
+                            )
+                        else:
+                            v_prompt = (
+                                "subject_definitions:\n"
+                                f"<Subject 1> is the primary subject described in the scene ({v_prompt[:140]}).\n\n"
+                                "summary:\n"
+                                f"[Text-to-Video generation] Continuous cinematic sequence in 1.0x real-time speed: {trig}{v_prompt}\n\n"
+                                "retention_analysis:\n"
+                                "<Subject 1> (appears in [Shot 1]): fully_preserved - consistent facial features, hairstyle, clothing, and spatial screen geography maintained throughout the entire shot.\n\n"
+                                "detailed_description:\n"
+                                f"[Shot 1] {trig}{v_prompt} Rendered in raw 1.0x real-time speed with high shutter-speed clarity, continuous physical momentum, and photorealistic lighting.\n\n"
+                                "overall_soundscape:\n"
+                                f"{v_sound}\n\n"
+                                "non_diegetic_music:\n"
+                                f"{v_music}"
+                            )
+                    elif trig and not v_prompt.startswith(trig):
+                        v_prompt = trig + v_prompt
+                    payload["prompt"] = v_prompt
+                lora_log_s = f" · 🔌LoRA:{os.path.basename(str(payload.get('lora_path')))}" if payload.get("lora_path") else ""
                 _append_panel_log(
-                    f"🎬 [提交视频生成任务] 分辨率 {payload.get('resolution', '832x480')} · {payload.get('num_frames', 124)}帧 · {payload.get('steps', 30)}步 · 连抽 {payload.get('batch_count', 1)}条"
+                    f"🎬 [提交视频生成任务] 分辨率 {payload.get('resolution', '832x480')} · {payload.get('num_frames', 124)}帧 · {payload.get('steps', 30)}步 · 连抽 {payload.get('batch_count', 1)}条{lora_log_s}"
                 )
             engine_mismatch = (
                 (req_mode == "image" and active_folder != "MiniMax-H3-Image")
