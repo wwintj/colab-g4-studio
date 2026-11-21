@@ -5572,8 +5572,22 @@ function buildFusionRefsAndPrompt(targetListForJob) {
   if (hasFace && targets.length >= 2) {
     const isOutfitMode = (currentFusionSubMode === 'tryon') || (hairVal === 'keep_face_hair');
     const personRefB64 = (isOutfitMode && fusionFaceOrigB64) ? fusionFaceOrigB64 : faceB64;
-    const outfitHint = window._lastPosewearOutfitDesc ? ` (${window._lastPosewearOutfitDesc})` : '';
-    const poseHint = window._lastPosewearPoseDesc ? ` (${window._lastPosewearPoseDesc})` : '';
+    let outfitDescRaw = window._lastPosewearOutfitDesc || '';
+    let poseDescRaw = window._lastPosewearPoseDesc || '';
+    if (!outfitDescRaw && propsTxt) {
+      const mO = propsTxt.match(/【服饰】([^＋]+)/);
+      if (mO && mO[1]) outfitDescRaw = mO[1].trim();
+    }
+    if (!poseDescRaw && propsTxt) {
+      const mP = propsTxt.match(/【姿势】([^＋]+)/);
+      if (mP && mP[1]) poseDescRaw = mP[1].trim();
+    }
+    const outfitHint = outfitDescRaw ? ` (${outfitDescRaw})` : '';
+    const poseHint = poseDescRaw ? ` (${poseDescRaw})` : '';
+    const isHalfBodyPose = /半身|上半身|特写|upper[\s-]?body|half[\s-]?body|upper80/i.test(poseDescRaw || propsTxt || '');
+    const framingPhrase = isHalfBodyPose
+      ? 'Generate a half-body / upper-body photorealistic portrait (from waist/hips up, strictly matching the half-body camera framing of <Picture 3>)'
+      : 'Generate a full-body photorealistic portrait';
     const refs = [targets[0], personRefB64, ...targets.slice(1), ...(hasScene ? [sceneB64] : [])];
     if (hasScene) {
       const sceneIdx = targets.length + 2;
@@ -5582,7 +5596,7 @@ function buildFusionRefsAndPrompt(targetListForJob) {
         `The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. ` +
         `The body posture, limb positions, and camera angle${poseHint} in <Picture 3> is <Subject 3>. ` +
         `The real-world background environment, architecture, and ambient lighting in <Picture ${sceneIdx}> is <Subject ${sceneIdx}>. ` +
-        `Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>, placed naturally inside the background environment <Subject ${sceneIdx}> (<Picture ${sceneIdx}>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture ${sceneIdx}>. ` +
+        `${framingPhrase} of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), strictly posed in the exact body posture, arm/hand gesture, and camera angle <Subject 3> from <Picture 3>, placed naturally inside the background environment <Subject ${sceneIdx}> (<Picture ${sceneIdx}>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture ${sceneIdx}>. ` +
         `Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged.` +
         styleTail
       );
@@ -5592,7 +5606,7 @@ function buildFusionRefsAndPrompt(targetListForJob) {
       `Edit <Picture 1>. The complete clothing outfit and accessories${outfitHint} in <Picture 1> is <Subject 1>. ` +
       `The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. ` +
       `The body posture, limb positions, and camera angle${poseHint} in <Picture 3> is <Subject 3>. ` +
-      `Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>. ` +
+      `${framingPhrase} of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), strictly posed in the exact body posture, arm/hand gesture, and camera angle <Subject 3> from <Picture 3>. ` +
       `Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged in a clean studio background.` +
       styleTail
     );
@@ -11059,11 +11073,32 @@ p.wait()
                             white_ratio = float(np.mean((arr[:, :, 0] > 235) & (arr[:, :, 1] > 235) & (arr[:, :, 2] > 235)))
                             return color_diff < 4.5 and white_ratio > 0.68
 
+                        def _is_half_body_pose_im(im_pose, prompt_txt: str) -> bool:
+                            p_low = (prompt_txt or "").lower()
+                            if any(k in p_low for k in ("半身", "上半身", "特写", "upper body", "upper-body", "half-body", "half body", "upper80", "waist up", "chest up")):
+                                return True
+                            if im_pose is None or im_pose.size == 0:
+                                return False
+                            try:
+                                ph, pw = im_pose.shape[:2]
+                                gray = cv2.cvtColor(im_pose, cv2.COLOR_BGR2GRAY)
+                                ys, xs = np.where(gray < 220)
+                                if len(ys) < 50:
+                                    return False
+                                y_max = float(ys.max()) / float(ph)
+                                x_span = float(xs.max() - xs.min()) / float(pw)
+                                bot_mask = ys > (ph * 0.88)
+                                bot_x_span = (float(xs[bot_mask].max() - xs[bot_mask].min()) / float(pw)) if np.any(bot_mask) else 0.0
+                                return bool((y_max > 0.962 and bot_x_span > 0.46) or (x_span > 0.68 and bot_x_span > 0.48))
+                            except Exception:
+                                return False
+
+                        raw_p_orig = raw_p
                         m_add = re.search(r"Additional requirements:\s*([^.]+)", raw_p)
                         add_tail = ""
                         if m_add:
                             add_txt = m_add.group(1).strip()
-                            if not any(k in add_txt for k in ("全身·标准", "全身·性感", "正面视角", "俯拍视角", "仰拍视角")):
+                            if ("【姿势】" in add_txt or "【服饰】" in add_txt) or not any(k in add_txt for k in ("全身·标准", "全身·性感", "正面视角", "俯拍视角", "仰拍视角")):
                                 add_tail = f" Additional requirements: {add_txt}."
 
                         if len(refs_in) == 2:
@@ -11080,10 +11115,12 @@ p.wait()
                                     + add_tail
                                 )
                             elif _is_wireframe_pose_im(im0):
+                                is_hb_2 = _is_half_body_pose_im(im0, raw_p_orig)
+                                framing_2 = "Generate a half-body / upper-body photorealistic portrait (from waist/hips up, strictly matching the half-body camera framing of <Picture 1>)" if is_hb_2 else "Generate a full-body photorealistic portrait"
                                 raw_p = (
                                     "Edit <Picture 1>. The body posture, limb positions, and camera angle in the pose sketch <Picture 1> is <Subject 1>. "
                                     "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
-                                    "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> posed in the exact body posture and camera angle <Subject 1> from <Picture 1>. "
+                                    f"{framing_2} of <Subject 2> from <Picture 2> posed in the exact body posture, arm/hand gesture, and camera angle <Subject 1> from <Picture 1>. "
                                     "Render realistic human skin texture and natural clothing (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged in a clean studio background."
                                     + add_tail
                                 )
@@ -11098,21 +11135,22 @@ p.wait()
                                 im0, im2 = im2, im0
                                 w0, w2 = w2, w0
                             if w2:
-                                # 核心防干扰机制：如果 <Picture 1> (服装参考图 im0) 是用户自己上传的【带真人模特头脸与发型的照片】（而非 PoseWear 无头服装卡），
+                                # 核心防干扰机制 1：如果 <Picture 1> (服装参考图 im0) 是用户自己上传的【带真人模特头脸与发型的照片】（而非 PoseWear 无头服装卡），
                                 # 自动检测并擦除 <Picture 1> 中原模特的头脸与头发（还原为无头服装卡），彻底杜绝原模特的黑发/脸型或站姿抢占 <Picture 2> 的人脸与 <Picture 3> 的姿势！
+                                im0_work = im0.copy() if im0 is not None else None
+                                im0_modified = False
                                 try:
                                     app_det, _, _ = _ensure_biometric_swap_engine()
-                                    outfit_faces = app_det.get(im0) if im0 is not None else []
+                                    outfit_faces = app_det.get(im0_work) if im0_work is not None else []
                                     if outfit_faces:
                                         of = max(outfit_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
-                                        oh, ow = im0.shape[:2]
+                                        oh, ow = im0_work.shape[:2]
                                         ox1, oy1, ox2, oy2 = [float(v) for v in of.bbox]
                                         ofw, ofh = max(10.0, ox2 - ox1), max(10.0, oy2 - oy1)
                                         ocx = (ox1 + ox2) * 0.5
-                                        # 采样画面顶部两侧背景主色填充头部与发型区域
                                         corner_patch = np.concatenate([
-                                            im0[0:min(40, oh), 0:min(40, ow)].reshape(-1, 3),
-                                            im0[0:min(40, oh), max(0, ow - 40):ow].reshape(-1, 3),
+                                            im0_work[0:min(40, oh), 0:min(40, ow)].reshape(-1, 3),
+                                            im0_work[0:min(40, oh), max(0, ow - 40):ow].reshape(-1, 3),
                                         ], axis=0)
                                         bg_col = np.median(corner_patch, axis=0).astype(np.float32)
                                         head_mask = np.zeros((oh, ow), dtype=np.float32)
@@ -11122,30 +11160,71 @@ p.wait()
                                         hy2 = min(oh, int(round(oy2 + ofh * 0.12)))
                                         head_mask[hy1:hy2, hx1:hx2] = 1.0
                                         head_mask = cv2.GaussianBlur(head_mask, (45, 45), 16)[..., None]
-                                        im0_headless = (im0.astype(np.float32) * (1.0 - head_mask) + bg_col * head_mask).clip(0, 255).astype(np.uint8)
-                                        ok_e, buf_e = cv2.imencode(".jpg", im0_headless, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-                                        if ok_e:
-                                            refs_in[0] = "data:image/jpeg;base64," + base64.b64encode(buf_e.tobytes()).decode("ascii")
-                                            payload["ref_images_b64"] = refs_in
+                                        im0_work = (im0_work.astype(np.float32) * (1.0 - head_mask) + bg_col * head_mask).clip(0, 255).astype(np.uint8)
+                                        im0_modified = True
                                 except Exception:
                                     pass
 
+                                # 核心防干扰机制 2：当 <Picture 3> (姿势图 im2) 是【半身·80% / 特写】半身姿势，而 <Picture 1> (服装图 im0) 是【带长靴与垂手拎包的全身服装图】时，
+                                # 自动将 <Picture 1> 同步裁切到上半身/腰臀部比例 (62% 高度) 并擦除腰侧低垂手提包，消除全身服装卡对半身双手姿势的画幅与手臂拉扯冲突！
+                                is_half_body_pose = _is_half_body_pose_im(im2, raw_p_orig)
+                                if is_half_body_pose and im0_work is not None:
+                                    try:
+                                        oh, ow = im0_work.shape[:2]
+                                        if oh > ow * 1.15:
+                                            corner_patch = np.concatenate([
+                                                im0_work[0:min(40, oh), 0:min(40, ow)].reshape(-1, 3),
+                                                im0_work[0:min(40, oh), max(0, ow - 40):ow].reshape(-1, 3),
+                                            ], axis=0)
+                                            bg_col_u8 = np.median(corner_patch, axis=0).astype(np.uint8)
+                                            im0_half = im0_work[:int(oh * 0.62), :].copy()
+                                            hh, hw = im0_half.shape[:2]
+                                            # 若胸肩高度 (y=28% oh) 的左右外侧 (x<29% ow 或 x>71% ow) 为纯背景，则擦除下半段腰侧垂挂的手提包避免拉扯手臂
+                                            y_chest = int(oh * 0.28)
+                                            left_chest_diff = float(np.mean(np.abs(im0_half[max(0, y_chest-10):min(hh, y_chest+10), :int(hw*0.29)].astype(np.float32) - bg_col_u8.astype(np.float32))))
+                                            if left_chest_diff < 18.0:
+                                                im0_half[int(oh * 0.44):hh, :int(hw * 0.29)] = bg_col_u8
+                                            right_chest_diff = float(np.mean(np.abs(im0_half[max(0, y_chest-10):min(hh, y_chest+10), int(hw*0.71):].astype(np.float32) - bg_col_u8.astype(np.float32))))
+                                            if right_chest_diff < 18.0:
+                                                im0_half[int(oh * 0.44):hh, int(hw * 0.71):] = bg_col_u8
+                                            im0_work = im0_half
+                                            im0_modified = True
+                                    except Exception:
+                                        pass
+
+                                if im0_modified and im0_work is not None:
+                                    ok_e, buf_e = cv2.imencode(".jpg", im0_work, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                                    if ok_e:
+                                        refs_in[0] = "data:image/jpeg;base64," + base64.b64encode(buf_e.tobytes()).decode("ascii")
+                                        payload["ref_images_b64"] = refs_in
+
+                                m_o_hint = re.search(r"accessories\s*(\([^)]+\))\s*in <Picture 1>", raw_p_orig)
+                                m_p_hint = re.search(r"camera angle\s*(\([^)]+\))\s*in <Picture 3>", raw_p_orig)
+                                o_hint_s = f" {m_o_hint.group(1)}" if m_o_hint else ""
+                                p_hint_s = f" {m_p_hint.group(1)}" if m_p_hint else ""
+                                framing_phrase = (
+                                    "Generate a half-body / upper-body photorealistic portrait (from waist/hips up, strictly matching the half-body camera framing of <Picture 3>)"
+                                    if is_half_body_pose
+                                    else "Generate a full-body photorealistic portrait"
+                                )
+                                outfit_scope = "the upper-body clothing outfit" if is_half_body_pose else "ONLY the exact complete clothing outfit and accessories"
+
                                 if len(refs_in) == 4:
                                     raw_p = (
-                                        "Edit <Picture 1>. The complete clothing outfit and accessories in <Picture 1> is <Subject 1>. "
+                                        f"Edit <Picture 1>. The complete clothing outfit and accessories{o_hint_s} in <Picture 1> is <Subject 1>. "
                                         "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
-                                        "The body posture, limb positions, and camera angle in the pose sketch <Picture 3> is <Subject 3>. "
+                                        f"The body posture, limb positions, and camera angle{p_hint_s} in the pose sketch <Picture 3> is <Subject 3>. "
                                         "The real-world background environment, architecture, and ambient lighting in <Picture 4> is <Subject 4>. "
-                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>, and do NOT use the standing/sitting posture of <Picture 1>), strictly posed in the exact body posture, kneeling/sitting/standing position, and camera angle <Subject 3> from <Picture 3>, placed naturally inside the background environment <Subject 4> (<Picture 4>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture 4>. "
+                                        f"{framing_phrase} of <Subject 2> from <Picture 2> wearing {outfit_scope} <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>, and do NOT use the standing/sitting arm posture of <Picture 1>), strictly posed in the exact body posture, arm/hand gesture, and camera angle <Subject 3> from <Picture 3> (both hands and arms must strictly follow <Picture 3>), placed naturally inside the background environment <Subject 4> (<Picture 4>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture 4>. "
                                         "Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged."
                                         + add_tail
                                     )
                                 else:
                                     raw_p = (
-                                        "Edit <Picture 1>. The complete clothing outfit and accessories in <Picture 1> is <Subject 1>. "
+                                        f"Edit <Picture 1>. The complete clothing outfit and accessories{o_hint_s} in <Picture 1> is <Subject 1>. "
                                         "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
-                                        "The body posture, limb positions, and camera angle in the pose sketch <Picture 3> is <Subject 3>. "
-                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>, and do NOT use the standing/sitting posture of <Picture 1>), strictly posed in the exact body posture, kneeling/sitting/standing position, and camera angle <Subject 3> from <Picture 3>. "
+                                        f"The body posture, limb positions, and camera angle{p_hint_s} in the pose sketch <Picture 3> is <Subject 3>. "
+                                        f"{framing_phrase} of <Subject 2> from <Picture 2> wearing {outfit_scope} <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>, and do NOT use the standing/sitting arm posture of <Picture 1>), strictly posed in the exact body posture, arm/hand gesture, and camera angle <Subject 3> from <Picture 3> (both hands and arms must strictly follow <Picture 3>). "
                                         "Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged in a clean studio background."
                                         + add_tail
                                     )
