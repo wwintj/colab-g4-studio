@@ -5227,22 +5227,49 @@ function removeFusionTargetSlot(idx) {
 
 function clearAllFusionTargets() {
   window._lastPosewearOutfitDesc = '';
+  window._lastPosewearOutfitZh = '';
   window._lastPosewearPoseDesc = '';
+  window._lastPosewearPoseZh = '';
   window._isHeadlessCostumeTarget = false;
+  const propInp = document.getElementById('fusionPropsActionInput');
+  if (propInp) propInp.value = '';
   fusionTargetList = [''];
   fusionTargetSlotKinds = [''];
   renderFusionTargetCards();
 }
 
+function _clearStaleLibraryOutfitPromptOnUpload() {
+  window._lastPosewearOutfitDesc = '';
+  window._lastPosewearOutfitZh = '';
+  window._isHeadlessCostumeTarget = false;
+  const propInp = document.getElementById('fusionPropsActionInput');
+  if (propInp && propInp.value) {
+    if (window._lastPosewearPoseZh) {
+      propInp.value = `【姿势】${window._lastPosewearPoseZh}`;
+    } else if (propInp.value.includes('【服饰】')) {
+      propInp.value = propInp.value.replace(/【服饰】[^＋]+(\s*＋\s*)?/g, '').trim();
+    }
+  }
+}
+
 function onFusionTargetCardFileChange(slotIdx, inputEl) {
   const files = inputEl && inputEl.files ? Array.from(inputEl.files) : [];
   if (!files.length) return;
-  window._lastPosewearOutfitDesc = '';
-  window._isHeadlessCostumeTarget = false;
+  _clearStaleLibraryOutfitPromptOnUpload();
+  while (fusionTargetSlotKinds.length < fusionTargetList.length) {
+    fusionTargetSlotKinds.push('');
+  }
   if (files.length === 1) {
     const reader = new FileReader();
     reader.onload = ev => {
       fusionTargetList[slotIdx] = ev.target.result || '';
+      if (fusionTargetSlotKinds[slotIdx] !== 'pose') {
+        fusionTargetSlotKinds[slotIdx] = 'costume';
+      }
+      const multiSel = document.getElementById('fusionMultiActionMode');
+      if (multiSel && fusionTargetList.filter(Boolean).length >= 2 && currentFusionSubMode !== 'faceswap') {
+        multiSel.value = 'combine';
+      }
       renderFusionTargetCards();
     };
     reader.readAsDataURL(files[0]);
@@ -5257,16 +5284,16 @@ function onFusionTargetCardFileChange(slotIdx, inputEl) {
     const valid = dataUrls.filter(Boolean);
     if (!valid.length) return;
     fusionTargetList.splice(slotIdx, 1, ...valid);
+    fusionTargetSlotKinds.splice(slotIdx, 1, ...valid.map(() => 'costume'));
     renderFusionTargetCards();
-    showGlobalCopyToast(`📂 已一次性导入 ${valid.length} 张照片！点击「🪄 一键批量合成全部」即可一次全部生成`);
+    showGlobalCopyToast(`📂 已一次性导入 ${valid.length} 张照片！`);
   });
 }
 
 function onFusionMultiFilesSelect(inputEl) {
   const files = inputEl && inputEl.files ? Array.from(inputEl.files) : [];
   if (!files.length) return;
-  window._lastPosewearOutfitDesc = '';
-  window._isHeadlessCostumeTarget = false;
+  _clearStaleLibraryOutfitPromptOnUpload();
   Promise.all(files.map(f => new Promise(res => {
     const r = new FileReader();
     r.onload = e => res(e.target.result || '');
@@ -5754,11 +5781,15 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
     let sawAutoSwitching = false;
     let sawRemoteRunning = false;
     let pollTicks = 0;
+    let pollInFlight = false;
 
     const timer = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       pollTicks += 1;
       if (fusionBatchCancelled) {
         clearInterval(timer);
+        pollInFlight = false;
         resolve({ok: false, cancelled: true});
         return;
       }
@@ -5793,6 +5824,11 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
           return;
         }
 
+        // 若因隧道瞬时超时导致 engine_ready === false 且无新文件，继续等待下一次轮询，绝不提前退出！
+        if (d.engine_ready === false && pollTicks < 60) {
+          return;
+        }
+
         // d.running === false
         if (d.error) {
           clearInterval(timer);
@@ -5800,20 +5836,26 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
           return;
         }
 
-        const hasNewFile = d.latest_video && d.latest_video !== prevLatestFile;
+        const hasNewFile = Boolean(d.latest_video && d.latest_video !== prevLatestFile);
         if (sawAutoSwitching && !sawRemoteRunning && !hasNewFile) {
           clearInterval(timer);
           resolve({ok: false, need_resubmit: true});
           return;
         }
-        if (sawRemoteRunning || hasNewFile || pollTicks >= 3) {
+        // 必须真正拿到了新生成的图片文件 (hasNewFile) 或远端确实已完成运行且超过最小等待周期才结束，彻底杜绝提前退出或重复触发第2张！
+        if (hasNewFile || (sawRemoteRunning && pollTicks >= 4) || pollTicks >= 80) {
           clearInterval(timer);
-          const doneFiles = Array.isArray(d.completed_videos) && d.completed_videos.length
-            ? d.completed_videos
-            : (d.latest_video ? [d.latest_video] : []);
+          const doneFiles = hasNewFile
+            ? [d.latest_video]
+            : (Array.isArray(d.completed_videos) && d.completed_videos.length
+                ? [d.completed_videos[d.completed_videos.length - 1]]
+                : (d.latest_video ? [d.latest_video] : []));
           resolve({ok: true, files: doneFiles, latest: d.latest_video || ''});
         }
-      } catch (e) {}
+      } catch (e) {
+      } finally {
+        pollInFlight = false;
+      }
     }, 1500);
   });
 }
@@ -5843,19 +5885,19 @@ async function startFusionStudioGenerate() {
   const multiSelEl = document.getElementById('fusionMultiActionMode');
   const propTxtNow = (((document.getElementById('fusionPropsActionInput') || {}).value) || '').trim();
   const hasPoseSlot = fusionTargetSlotKinds.includes('pose') || /(站姿|坐姿|跪姿|躺姿|俯卧|仰卧|背影|正面视角|俯拍视角|仰拍视角)/.test(propTxtNow);
-  if (activeTargets.length >= 2 && hasPoseSlot && multiSelEl && multiSelEl.value === 'batch') {
+  // 在「1. 人脸+服装合成 (tryon)」下只要传了 2 张图（如 1张上传的服装 + 1张姿势），强制默认使用 combine 合成为 1 张，绝不拆成 2 张依次生成替换！
+  if (activeTargets.length >= 2 && (hasPoseSlot || currentFusionSubMode === 'tryon') && multiSelEl && multiSelEl.value === 'batch' && hasPoseSlot) {
     multiSelEl.value = 'combine';
     updateFusionRunBtnLabel();
   }
   const multiMode = ((multiSelEl || {}).value || 'combine');
   const resChoice = ((document.getElementById('fusionResSelect') || {}).value || 'auto');
-  const batchCnt = parseInt(((document.getElementById('fusionBatchSelect') || {}).value || '1'), 10) || 1;
+  const batchCnt = 1;
 
   // 构建任务队列：
-  // - 若选了“逐张批量生成 (batch)”且上传了 N 张目标图 -> 拆成 N 个独立合成任务依次执行
-  // - 若选了“多图合并为1张 (combine)”或只传了 0~1 张目标图 -> 作为 1 个任务执行
+  // - 若选了“多图合并为1张 (combine)”或包含姿势槽位 -> 必须把所有目标图合并为 1 个任务 (绝不连跑第 2 张替换第 1 张！)
   let jobTargetLists = [];
-  if (activeTargets.length >= 2 && multiMode === 'batch') {
+  if (activeTargets.length >= 2 && multiMode === 'batch' && !hasPoseSlot) {
     jobTargetLists = activeTargets.map(t => [t]);
   } else if (activeTargets.length >= 1) {
     jobTargetLists = [activeTargets];
@@ -5869,19 +5911,20 @@ async function startFusionStudioGenerate() {
   }
   fusionBatchRunning = true;
   fusionBatchCancelled = false;
-  fusionBatchCompletedFiles = [];
+  // 保留之前已生成的成片在画廊中（新生成的排在最前），绝不清空替换掉之前生成好的正确图片！
   renderFusionBatchGallery();
 
   if (btn) {
     btn.disabled = true;
-    btn.innerText = `⏳ 正在队列合成 (共 ${jobTargetLists.length} 组)...`;
+    btn.blur();
+    btn.innerText = `⏳ 正在合成 (${jobTargetLists.length === 1 ? '多图合1' : '共 ' + jobTargetLists.length + ' 张'})...`;
   }
   if (stopBtn) stopBtn.style.display = 'inline-block';
   if (fWrap) fWrap.style.display = 'block';
   if (fBar) fBar.style.width = '8%';
 
   try {
-    if (fusionFaceUseCrop && (fusionFaceOrigB64 || fusionSlotsB64[0])) {
+    if (fusionFaceUseCrop && !fusionFaceCroppedB64 && (fusionFaceOrigB64 || fusionSlotsB64[0])) {
       await autoDetectAndFocusFaceSlot0(fusionFaceOrigB64 || fusionSlotsB64[0]);
     }
     let prevLatest = '';
@@ -6015,8 +6058,8 @@ async function startFusionStudioGenerate() {
           });
         } catch (eRef) {}
         waitRes.files.forEach(fn => {
-          if (fn && !fusionBatchCompletedFiles.includes(fn)) {
-            fusionBatchCompletedFiles.push(fn);
+          if (fn) {
+            fusionBatchCompletedFiles = [fn, ...fusionBatchCompletedFiles.filter(x => x !== fn)].slice(0, 12);
           }
         });
       }
@@ -9459,6 +9502,7 @@ function saveUiWorkspaceStateDebounced() {
           fusion_face_cropped_b64: fusionFaceCroppedB64 || '',
           fusion_face_use_crop: Boolean(fusionFaceUseCrop),
           fusion_target_list: Array.isArray(fusionTargetList) ? fusionTargetList : [''],
+          fusion_target_slot_kinds: Array.isArray(fusionTargetSlotKinds) ? fusionTargetSlotKinds : [''],
           fusion_batch_completed_files: Array.isArray(fusionBatchCompletedFiles) ? fusionBatchCompletedFiles : [],
         }),
       }).catch(() => {});
@@ -9514,6 +9558,13 @@ async function restoreUiWorkspaceState() {
     }
     if (Array.isArray(st.fusion_target_list) && st.fusion_target_list.length > 0) {
       fusionTargetList = st.fusion_target_list;
+    }
+    if (Array.isArray(st.fusion_target_slot_kinds) && st.fusion_target_slot_kinds.length > 0) {
+      fusionTargetSlotKinds = st.fusion_target_slot_kinds;
+    }
+    const multiSel = document.getElementById('fusionMultiActionMode');
+    if (multiSel && fusionTargetList.filter(Boolean).length >= 2 && subToUse !== 'faceswap') {
+      multiSel.value = 'combine';
     }
     if (Array.isArray(st.fusion_batch_completed_files) && st.fusion_batch_completed_files.length > 0) {
       fusionBatchCompletedFiles = st.fusion_batch_completed_files;
@@ -11187,15 +11238,48 @@ p.wait()
                             if w0 and not w2:
                                 refs_in[0], refs_in[2] = refs_in[2], refs_in[0]
                                 payload["ref_images_b64"] = refs_in
+                                im0, im2 = im2, im0
                                 w0, w2 = w2, w0
                             if w2:
+                                # 核心防干扰机制：如果 <Picture 1> (服装参考图 im0) 是用户自己上传的【带真人模特头脸与发型的照片】（而非 PoseWear 无头服装卡），
+                                # 自动检测并擦除 <Picture 1> 中原模特的头脸与头发（还原为无头服装卡），彻底杜绝原模特的黑发/脸型或站姿抢占 <Picture 2> 的人脸与 <Picture 3> 的姿势！
+                                try:
+                                    app_det, _, _ = _ensure_biometric_swap_engine()
+                                    outfit_faces = app_det.get(im0) if im0 is not None else []
+                                    if outfit_faces:
+                                        of = max(outfit_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+                                        oh, ow = im0.shape[:2]
+                                        ox1, oy1, ox2, oy2 = [float(v) for v in of.bbox]
+                                        ofw, ofh = max(10.0, ox2 - ox1), max(10.0, oy2 - oy1)
+                                        ocx = (ox1 + ox2) * 0.5
+                                        # 采样画面顶部两侧背景主色填充头部与发型区域
+                                        corner_patch = np.concatenate([
+                                            im0[0:min(40, oh), 0:min(40, ow)].reshape(-1, 3),
+                                            im0[0:min(40, oh), max(0, ow - 40):ow].reshape(-1, 3),
+                                        ], axis=0)
+                                        bg_col = np.median(corner_patch, axis=0).astype(np.float32)
+                                        head_mask = np.zeros((oh, ow), dtype=np.float32)
+                                        hx1 = max(0, int(round(ocx - ofw * 1.35)))
+                                        hx2 = min(ow, int(round(ocx + ofw * 1.35)))
+                                        hy1 = 0
+                                        hy2 = min(oh, int(round(oy2 + ofh * 0.12)))
+                                        head_mask[hy1:hy2, hx1:hx2] = 1.0
+                                        head_mask = cv2.GaussianBlur(head_mask, (45, 45), 16)[..., None]
+                                        im0_headless = (im0.astype(np.float32) * (1.0 - head_mask) + bg_col * head_mask).clip(0, 255).astype(np.uint8)
+                                        ok_e, buf_e = cv2.imencode(".jpg", im0_headless, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                                        if ok_e:
+                                            refs_in[0] = "data:image/jpeg;base64," + base64.b64encode(buf_e.tobytes()).decode("ascii")
+                                            payload["ref_images_b64"] = refs_in
+                                except Exception:
+                                    pass
+
                                 if len(refs_in) == 4:
                                     raw_p = (
                                         "Edit <Picture 1>. The complete clothing outfit and accessories in <Picture 1> is <Subject 1>. "
                                         "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
                                         "The body posture, limb positions, and camera angle in the pose sketch <Picture 3> is <Subject 3>. "
                                         "The real-world background environment, architecture, and ambient lighting in <Picture 4> is <Subject 4>. "
-                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>, placed naturally inside the background environment <Subject 4> (<Picture 4>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture 4>. "
+                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>, and do NOT use the standing/sitting posture of <Picture 1>), strictly posed in the exact body posture, kneeling/sitting/standing position, and camera angle <Subject 3> from <Picture 3>, placed naturally inside the background environment <Subject 4> (<Picture 4>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture 4>. "
                                         "Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged."
                                         + add_tail
                                     )
@@ -11204,7 +11288,7 @@ p.wait()
                                         "Edit <Picture 1>. The complete clothing outfit and accessories in <Picture 1> is <Subject 1>. "
                                         "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
                                         "The body posture, limb positions, and camera angle in the pose sketch <Picture 3> is <Subject 3>. "
-                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>. "
+                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>, and do NOT use the standing/sitting posture of <Picture 1>), strictly posed in the exact body posture, kneeling/sitting/standing position, and camera angle <Subject 3> from <Picture 3>. "
                                         "Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged in a clean studio background."
                                         + add_tail
                                     )
