@@ -2490,32 +2490,33 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
   <!-- 通用多分镜短剧全自动导演流水线面板 (仅在选中第 5 个标签 drama 时显示 · 不限分镜数与总时长) -->
   <div id="autoDramaDirectorRow" style="display:none;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,27,75,0.92) 100%);border:1.5px solid #f59e0b;border-radius:12px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span id="dramaTitleHeader" style="font-size:14.5px;font-weight:800;color:#fde68a;">🎬 通用分镜短剧全自动工作流引擎</span>
-        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(245,158,11,0.2);color:#fbbf24;font-weight:700;">支持外部 AI 生成任意时长剧本直接粘贴 · 单镜独立重抽 · 0.1秒卡点合片</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <button type="button" id="btnCopyExtAiTop" onclick="copyExternalAiScriptPrompt(this)" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;transition:all 0.2s;" title="一键复制发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi 的分镜剧本生成指令">🤖 复制外部 AI 编剧指令</button>
-        <button type="button" onclick="toggleDramaWorkflowEditor()" style="padding:4px 11px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;">📜 展开/收起剧本与角色工作流工作台 ▾</button>
-        <select id="dramaAspectSelect" onchange="saveUiWorkspaceState()" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:600;">
-          <option value="16:9" selected>📺 16:9 横屏电影剧集 (推荐)</option>
-          <option value="9:16">📱 9:16 竖屏短剧</option>
-        </select>
-        <select id="dramaConfirmModeSelect" onchange="saveUiWorkspaceState()" style="padding:4px 10px;font-size:12px;border-radius:6px;border:1.5px solid #f472b6;background:rgba(244,114,182,0.16);color:#fbcfe8;font-weight:700;" title="设置是否在 AI 生成角色定妆照或全部分镜底图后暂停，等您确认或无限次二次/三次/多次抽卡后再继续">
-          <option value="auto" selected>⚡ 抽卡模式：默认全自动直出 (无需确认)</option>
-          <option value="confirm_cast">🎲 抽卡模式：角色定妆抽卡确认 (生完角色暂停·可无限重抽)</option>
-          <option value="confirm_images">🖼️ 抽卡模式：全底图抽卡确认 (定妆+分镜图均确认后再拍视频)</option>
-        </select>
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#cbd5e1;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.05);">
-          <input type="checkbox" id="chkDramaResume" checked style="accent-color:#10b981;">
-          <span>♻️ 断点续拍 (自动复用已生好的定妆照/分镜)</span>
-        </label>
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#c4b5fd;cursor:pointer;padding:3px 8px;border-radius:6px;background:rgba(139,92,246,0.12);">
-          <input type="checkbox" id="chkDramaAuto2K" style="accent-color:#8b5cf6;">
-          <span>✨ 成片后自动 ReCaVSR 2K 超分</span>
-        </label>
-      </div>
+    <!-- 第一排：标题 + 琥珀色特性胶囊 (严格单行对齐) -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:nowrap;margin-bottom:8px;overflow:hidden;">
+      <span id="dramaTitleHeader" style="font-size:14.5px;font-weight:800;color:#fde68a;white-space:nowrap;flex-shrink:0;">🎬 通用分镜短剧全自动工作流引擎</span>
+      <span style="font-size:11px;padding:3px 10px;border-radius:999px;background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.38);color:#fbbf24;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">支持外部 AI 生成任意时长剧本直接粘贴 · 单镜独立重抽 · 0.1秒卡点合片</span>
+    </div>
+
+    <!-- 第二排：6 项全局控制按钮与开关严格单行等高 (height: 28px · border-radius: 7px) -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:nowrap;margin-bottom:10px;width:100%;box-sizing:border-box;">
+      <button type="button" id="btnCopyExtAiTop" onclick="copyExternalAiScriptPrompt(this)" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(168,85,247,0.55);background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="一键复制发给 ChatGPT / Claude / DeepSeek / Gemini / Kimi 的分镜剧本生成指令">🤖 复制外部 AI 编剧指令</button>
+      <button type="button" onclick="toggleDramaWorkflowEditor()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(56,189,248,0.5);background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;white-space:nowrap;flex-shrink:0;">📜 展开/收起剧本工作台 ▾</button>
+      <select id="dramaAspectSelect" onchange="saveUiWorkspaceState()" style="height:28px;width:146px;padding:0 7px;font-size:11.5px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-weight:700;flex-shrink:0;">
+        <option value="16:9" selected>📺 16:9 横屏剧集(推荐)</option>
+        <option value="9:16">📱 9:16 竖屏短剧</option>
+      </select>
+      <select id="dramaConfirmModeSelect" onchange="saveUiWorkspaceState()" style="height:28px;flex:1;min-width:165px;padding:0 8px;font-size:11.5px;border-radius:7px;border:1px solid rgba(244,114,182,0.55);background:rgba(244,114,182,0.16);color:#fbcfe8;font-weight:700;" title="设置是否在 AI 生成角色定妆照或全部分镜底图后暂停，等您确认或无限次二次/三次/多次抽卡后再继续">
+        <option value="auto" selected>⚡ 抽卡模式：默认全自动直出 (无需确认)</option>
+        <option value="confirm_cast">🎲 抽卡模式：角色定妆抽卡确认 (可无限重抽)</option>
+        <option value="confirm_images">🖼️ 抽卡模式：全底图抽卡确认 (定妆+分镜图)</option>
+      </select>
+      <label title="开启后：自动复用已生好的定妆照与分镜视频，支持随时中断后继续拍摄" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 9px;font-size:11.5px;font-weight:700;color:#6ee7b7;cursor:pointer;border-radius:7px;border:1px solid rgba(16,185,129,0.45);background:rgba(16,185,129,0.14);white-space:nowrap;flex-shrink:0;user-select:none;">
+        <input type="checkbox" id="chkDramaResume" checked style="width:13px;height:13px;accent-color:#10b981;cursor:pointer;">
+        <span>♻️ 断点续拍 (复用已生素材)</span>
+      </label>
+      <label title="开启后：全剧合片完成后自动调用云端 ReCaVSR 单步流式超分至 2K 超清" style="display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 9px;font-size:11.5px;font-weight:700;color:#c4b5fd;cursor:pointer;border-radius:7px;border:1px solid rgba(139,92,246,0.45);background:rgba(139,92,246,0.14);white-space:nowrap;flex-shrink:0;user-select:none;">
+        <input type="checkbox" id="chkDramaAuto2K" style="width:13px;height:13px;accent-color:#8b5cf6;cursor:pointer;">
+        <span>✨ 成片自动 2K 超分</span>
+      </label>
     </div>
 
     <!-- 默认展开：通用剧本解析器 + 外部AI提示词生成器 + 可视化角色/分镜工作流节点编辑器 -->
@@ -2523,9 +2524,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <!-- 顶部：外部在线 AI (ChatGPT / Claude / DeepSeek / Gemini / Kimi) 编剧指令一键生成器 -->
       <div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(88,28,135,0.22);border:1px dashed #a855f7;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap;">
         <span style="font-size:12px;font-weight:800;color:#e9d5ff;white-space:nowrap;flex-shrink:0;">🤖 让外部 AI 帮写分镜剧本：</span>
-        <input type="text" id="inpAiIdeaTheme" placeholder="输入一句话剧情/题材（如：古装仙侠雪夜竹林定情 / 现代豪门雨夜重逢，留空也可）" style="flex:1;min-width:120px;padding:5px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
-        <select id="selAiTargetDur" style="padding:5px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;flex-shrink:0;">
-          <option value="不限总时长（由剧情节奏自然决定镜头数与秒数）" selected>⏱️ 不限总时长 (按剧情自由决定)</option>
+        <input type="text" id="inpAiIdeaTheme" placeholder="输入一句话剧情/题材（如：古装仙侠雪夜竹林定情 / 现代豪门雨夜重逢，留空也可）" style="flex:1;min-width:120px;height:28px;padding:0 8px;font-size:11.5px;border-radius:6px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
+        <select id="selAiTargetDur" style="height:28px;width:168px;padding:0 7px;font-size:11.5px;border-radius:6px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;flex-shrink:0;">
+          <option value="不限总时长（由剧情节奏自然决定镜头数与秒数）" selected>⏱️ 不限总时长 (按剧情决定)</option>
           <option value="约 15 秒（建议 4~6 个分镜）">⏱️ 约 15 秒 (4~6 镜)</option>
           <option value="约 30 秒（建议 8~12 个分镜）">⏱️ 约 30 秒 (8~12 镜)</option>
           <option value="约 45 秒（建议 12~16 个分镜）">⏱️ 约 45 秒 (12~16 镜)</option>
@@ -2533,7 +2534,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <option value="约 90 秒 1分半（建议 24~30 个分镜）">⏱️ 约 90 秒 (24~30 镜)</option>
           <option value="约 120 秒 2分钟（建议 32~40 个分镜）">⏱️ 约 120 秒 (32~40 镜)</option>
         </select>
-        <select id="selAiVisualStyle" style="padding:5px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;flex-shrink:0;">
+        <select id="selAiVisualStyle" style="height:28px;width:158px;padding:0 7px;font-size:11.5px;border-radius:6px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;flex-shrink:0;">
           <optgroup label="🎬 影视实拍质感">
             <option value="写实真人电影级质感，85mm f/1.4散景(Bokeh)，真实细腻皮肤纹理，自然柔和光影" selected>🎥 写实真人电影级</option>
             <option value="现代都市高质感影视剧，时尚精致妆造，电影级都市光影与85mm浅景深散景">🏙️ 现代都市影视剧</option>
@@ -2551,21 +2552,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <option value="唯美水彩画风格(Watercolor illustration)，柔和色彩晕染与纸纹留白质感">🎨 唯美水彩手绘插画</option>
           </optgroup>
         </select>
-        <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.2s;">📋 一键复制【发给外部 AI 的编剧指令】</button>
+        <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="height:28px;padding:0 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;flex-shrink:0;">📋 一键复制【发给外部 AI 的编剧指令】</button>
       </div>
 
       <!-- 中部：🎭 剧组多角色 (A / B / C / D / E...) 定妆照上传 + 5条黄金标准生图词复制 + 专属固定音色绑定 -->
       <div style="margin-bottom:10px;padding:9px 11px;border-radius:8px;background:rgba(15,23,42,0.9);border:1px solid rgba(244,114,182,0.4);">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span style="font-size:12.5px;font-weight:800;color:#fbcfe8;">🎭 剧组角色定妆与音色卡槽 (支持 A / B / C / D / E… 多角色)</span>
-            <span style="font-size:11px;color:#94a3b8;">点「🎲 抽卡」可随时让云端 AI 捏脸（哪怕不写提示词也可一键二次、三次、无限次抽卡并在 #1~#N 历史抽卡间自由切换），或点「📤 传照」上传锁死</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;">
+            <span style="font-size:12.5px;font-weight:800;color:#fbcfe8;white-space:nowrap;flex-shrink:0;">🎭 剧组角色定妆与音色卡槽</span>
+            <span style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="点「🎲 抽卡」可随时让云端 AI 捏脸（支持无限次抽卡并在 #1~#N 历史抽卡间切换），或点「📤 传照」上传锁死">支持 A/B/C/D/E 多角色 · 点「🎲抽卡」AI无限捏脸或点「📤传照」100%锁脸</span>
           </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <button type="button" onclick="openCc0PortraitGalleryModal((dramaCastState && dramaCastState[0] ? dramaCastState[0].id : 'A'), 'portrait')" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #c084fc;background:linear-gradient(135deg,rgba(147,51,234,0.28),rgba(236,72,153,0.22));color:#f3e8ff;cursor:pointer;" title="打开内置衣姿 PoseWear 四合一总库：1,499张CC0演员人像 + 1,407套真人服装 + 288×5多角度姿势 + 1,320套动漫服装（含 18+ 开关）">👩 演员脸库·服装·姿势总库 (5600+)</button>
-            <button type="button" onclick="copyCharacterGoldenPrompt('', this)" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #f472b6;background:rgba(244,114,182,0.15);color:#fbcfe8;cursor:pointer;">📋 复制【通用5条黄金标准·定妆照生图词】</button>
-            <button type="button" onclick="addDramaCastRole()" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;">+ 新增角色 (A/B/C...)</button>
-            <button type="button" onclick="clearAllDramaCastRoles()" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="一键清空当前所有角色卡槽（清空后发给外部 AI 时完全由您的故事自由决定角色）">🗑️ 清空全部角色</button>
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;flex-wrap:nowrap;">
+            <button type="button" onclick="openCc0PortraitGalleryModal((dramaCastState && dramaCastState[0] ? dramaCastState[0].id : 'A'), 'portrait')" style="height:26px;padding:0 9px;font-size:11px;font-weight:800;border-radius:6px;border:1px solid #c084fc;background:linear-gradient(135deg,rgba(147,51,234,0.28),rgba(236,72,153,0.22));color:#f3e8ff;cursor:pointer;white-space:nowrap;" title="打开内置衣姿 PoseWear 四合一总库：1,499张CC0演员人像 + 1,407套真人服装 + 288×5多角度姿势 + 1,320套动漫服装（含 18+ 开关）">👩 脸库·服装·姿势总库 (5600+)</button>
+            <button type="button" onclick="copyCharacterGoldenPrompt('', this)" style="height:26px;padding:0 9px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid rgba(244,114,182,0.5);background:rgba(244,114,182,0.16);color:#fbcfe8;cursor:pointer;white-space:nowrap;" title="复制通用5条黄金标准·定妆照生图词">📋 复制定妆生图词</button>
+            <button type="button" onclick="addDramaCastRole()" style="height:26px;padding:0 9px;font-size:11px;font-weight:800;border-radius:6px;border:1px solid rgba(16,185,129,0.5);background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;white-space:nowrap;">+ 新增角色</button>
+            <button type="button" onclick="clearAllDramaCastRoles()" style="height:26px;padding:0 9px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid rgba(239,68,68,0.48);background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;white-space:nowrap;" title="一键清空当前所有角色卡槽（清空后发给外部 AI 时完全由您的故事自由决定角色）">🗑️ 清空角色</button>
           </div>
         </div>
         <div id="dramaCastCardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(295px, 1fr));gap:8px;max-height:210px;overflow-y:auto;padding-right:2px;"></div>
