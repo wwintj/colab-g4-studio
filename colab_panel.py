@@ -2980,7 +2980,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this)" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;">Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.</textarea>
+      <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this)" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 2 (单独一行)：环境音效与台词对白（可选） -->
@@ -2989,7 +2989,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">2. 环境音效与台词对白（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoSoundPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoSoundPrompt" rows="2" placeholder="例如：雨滴敲击声、脚步踩水声、角色台词对白..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;">Metallic clacking of train wheels on railway tracks, rhythmic dinging of the railroad crossing warning bell, warm spring wind rustling through leaves, a soft gasp from the girl.</textarea>
+      <textarea id="videoSoundPrompt" rows="2" placeholder="例如：雨滴敲击声、脚步踩水声、角色台词对白..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 3 (单独一行)：背景音乐风格（可选） -->
@@ -2998,7 +2998,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">3. 背景音乐风格（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoMusicPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoMusicPrompt" rows="2" placeholder="例如：抒情独奏钢琴、赛博朋克合成器电子乐、恢弘管弦乐..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;">Emotional and nostalgic solo piano melody joined by warm acoustic guitar and soaring cinematic strings.</textarea>
+      <textarea id="videoMusicPrompt" rows="2" placeholder="例如：抒情独奏钢琴、赛博朋克合成器电子乐、恢弘管弦乐..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 4 (单独一行)：反向提示词 Negative Prompt（可选，排除低质或多余元素） -->
@@ -3012,7 +3012,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
       <div id="negPromptWrap">
         <label style="font-size:11.5px;color:#64748b;display:block;margin-bottom:5px;">反向排除项</label>
-        <textarea id="videoNegPrompt" rows="2" placeholder="例如：low quality, blurry, watermark, text, deformed, bad anatomy, extra limbs, static frame..." style="width:100%;min-height:62px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;">low quality, worst quality, blurry, watermark, text, signature, deformed, bad anatomy, extra limbs, distorted face, jittery motion</textarea>
+        <textarea id="videoNegPrompt" rows="2" placeholder="例如：low quality, blurry, watermark, text, deformed, bad anatomy, extra limbs, static frame..." style="width:100%;min-height:62px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
       </div>
     </div>
   </div>
@@ -5245,9 +5245,6 @@ function switchMiniMaxMode(mode) {
     if (pEl) {
       pEl.rows = 4;
       pEl.style.minHeight = '95px';
-      if (pEl.value.includes('Makoto Shinkai anime style') || pEl.value.includes('固定镜头，近景居中构图')) {
-        pEl.value = 'A high-resolution, real-life portrait photograph of an elegant 20-year-old Chinese young woman with a classic East Asian oval face, smooth fair skin, expressive dark brown almond eyes, and a serene, natural expression, standing beneath the carved wooden eaves of a traditional Suzhou courtyard at dusk. Her long, sleek black hair is styled in a graceful half-up bun secured with a carved white jade hairpin. She wears a pale moonlight-white silk Chinese stand-collar jacket with subtle woven floral patterns and holds a warm glowing bamboo paper lantern near her chest. Behind her, soft out-of-focus red lanterns and grey tiled roofs glow warmly in the evening twilight, captured on a Canon EOS R5 with an 85mm f/1.4 lens, clean natural lighting, and shallow depth of field.';
-      }
     }
   } else if (isAv) {
     if (loraBar) loraBar.style.display = 'none';
@@ -5283,9 +5280,6 @@ function switchMiniMaxMode(mode) {
     if (pEl) {
       pEl.rows = 3;
       pEl.style.minHeight = '76px';
-      if (pEl.value.includes('Makoto Shinkai anime style') || pEl.value.includes('Suzhou courtyard at dusk')) {
-        pEl.value = '固定镜头，近景居中构图。画面中的人物直视镜头自然说话，眼神温柔灵动，伴随说话节奏有轻微自然的眨眼、轻轻点头和呼吸起伏，嘴型与语音高度同步，面部柔和暖光，五官清晰稳定，过渡丝滑真实。';
-      }
       autoSplitAvatarPromptAndTts(pEl);
     }
   } else {
@@ -5327,9 +5321,6 @@ function switchMiniMaxMode(mode) {
     if (pEl) {
       pEl.rows = 4;
       pEl.style.minHeight = '110px';
-      if (pEl.value.includes('A western man stands on stage under dramatic lighting')) {
-        pEl.value = 'Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.';
-      }
     }
   }
 }
