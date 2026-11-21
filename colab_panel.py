@@ -2980,7 +2980,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this)" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;"></textarea>
+      <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this); if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 2 (单独一行)：环境音效与台词对白（可选） -->
@@ -2989,7 +2989,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">2. 环境音效与台词对白（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoSoundPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoSoundPrompt" rows="2" placeholder="例如：雨滴敲击声、脚步踩水声、角色台词对白..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+      <textarea id="videoSoundPrompt" rows="2" oninput="if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="例如：雨滴敲击声、脚步踩水声、角色台词对白..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 3 (单独一行)：背景音乐风格（可选） -->
@@ -2998,7 +2998,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">3. 背景音乐风格（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoMusicPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoMusicPrompt" rows="2" placeholder="例如：抒情独奏钢琴、赛博朋克合成器电子乐、恢弘管弦乐..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+      <textarea id="videoMusicPrompt" rows="2" oninput="if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="例如：抒情独奏钢琴、赛博朋克合成器电子乐、恢弘管弦乐..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 4 (单独一行)：反向提示词 Negative Prompt（可选，排除低质或多余元素） -->
@@ -3076,44 +3076,38 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 新增排：🔌 H3 专属 LoRA 增强插件槽 (Sentinel7/h3 420+款云端直连 · 0本地硬盘占用 · 自动备份至 20TB Google Drive) -->
-    <div id="h3SentinelLoraBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(30,41,59,0.92),rgba(46,16,101,0.55));padding:6px 10px;border-radius:9px;border:1px solid rgba(192,132,252,0.45);margin-bottom:10px;">
-      <span style="font-size:12px;font-weight:800;color:#e9d5ff;white-space:nowrap;">🔌 H3云端LoRA插件</span>
-      <select id="h3SentinelLoraSelect" onchange="onH3SentinelLoraChange(this.value)" style="flex:1;min-width:240px;padding:4px 8px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:#0f172a;color:#f8fafc;cursor:pointer;">
-        <option value="" selected>🚫 不挂载额外 LoRA (默认原生基座)</option>
-        <optgroup label="🔥 写实动态与成人交互 (18+ NSFW / Sensual · HearmemanAI)">
-          <option value="2834417/3446189/HMNSFW-Extreme-Realism.safetensors">🔥 HMNSFW V3 Extreme Realism (3446189 · 全能写实成人互动 V3 · 推荐 18步/Shift 12)</option>
-          <option value="2834417/3268303/HMNSFW-AIO-V2.5.safetensors">🔥 HMNSFW AIO V2.5 (3268303 · 全能成人动作 V2.5)</option>
-          <option value="2834417/3198686/hmmotion_minimax-h3_epoch12.safetensors">💃 Hearmeman Motion V1 (3198686 · 真实人体物理律动增强)</option>
-          <option value="3039167/3453951/minimax-sensual-v0.1.safetensors">💋 MiniMax Sensual v0.1 (3453951 · 性感写真动态与眼神律动)</option>
-          <option value="2985832/3406313/H3-nsfw-round-breasts-posing-V1.5.safetensors">👙 NSFW Posing V1.5 (3406313 · 写真姿态与身材曲线增强)</option>
-          <option value="3008596/3413917/MM-H3 - Gyrating Hips v1.2.safetensors">🍑 Gyrating Hips v1.2 (3413917 · 腰臀律动增强)</option>
-          <option value="1343431/3226280/bounceV03-000084.safetensors">🌊 Physics Bounce v0.3 (3226280 · 真实物理弹性律动)</option>
-          <option value="lora/mm-h3-r2v-nudification-os.safetensors">✨ REF2V Nudification OS (参考图写实解构 LoRA)</option>
-          <option value="2990026/3390424/DecensoreH3_000002500.safetensors">🔓 Decensor H3 (3390424 · 写实细节无码增强)</option>
-        </optgroup>
-        <optgroup label="⚔️ 动作大片 / 武术打斗 / 枪斗 / 热舞律动 (Action & Dance)">
-          <option value="2986532/3386042/wushu_h3_v8_final_fp16.safetensors">🥋 武术打斗 wushu_action v8 (3386042 · 自动加触发词 wushu_action · 权重 0.75)</option>
-          <option value="2941150/3329892/GunFu.safetensors">🔫 近身枪斗术 GUNFU (3329892 · 疾速追杀式枪战动作 · 自动加 BUNNY)</option>
-          <option value="3056222/3476635/DANCE-minimax-h3.safetensors">🕺 热舞律动 DANCE MiniMax-H3 (3476635 · 全身高动态舞蹈)</option>
-          <option value="3056235/3476658/Dance Beat-Sync Slider.safetensors">🎵 卡点街舞 Dance Beat-Sync (3476658 · 音乐节拍律动)</option>
-        </optgroup>
-        <optgroup label="🎭 视频锁脸与换人增强 (REF2VA Identity Lock)">
-          <option value="2027766/3412620/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors">🎭 BFS Character Swap v1.1 (3412620 · 视频全身换人与锁脸)</option>
-          <option value="2940916/3329609/SS_FaceSwap_MiniMax_H3_REF2VA.safetensors">🧑 SS FaceSwap REF2VA v1.0 (3329609 · 自动加 Faceswap 触发词)</option>
-          <option value="2027766/3352167/minimax_h3_head_swap_v1.0_r32.safetensors">👤 BFS Head Swap v1.0 (3352167 · 视频头部与发型替换)</option>
-        </optgroup>
-        <optgroup label="🛠️ 自定义 Sentinel7/h3 仓库任意 LoRA (420+款)">
-          <option value="CUSTOM">🛠️ 手动输入 Sentinel7/h3 仓库内任意 .safetensors 相对路径...</option>
-        </optgroup>
+    <!-- 新增排：✨ H3 专属 LoRA 增强插件槽 (Sentinel7/h3 420+款云端直连 · 支持根据提示词自动智能匹配 · 0本地硬盘占用) -->
+    <div id="h3SentinelLoraBar" style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;background:linear-gradient(135deg,rgba(30,41,59,0.96),rgba(59,7,100,0.68));padding:5px 10px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid rgba(192,132,252,0.65);margin-bottom:10px;min-width:0;">
+      <span style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:6px;background:linear-gradient(135deg,#9333ea,#4f46e5);color:#ffffff;font-size:12px;font-weight:800;white-space:nowrap;flex-shrink:0;box-shadow:0 2px 8px rgba(147,51,234,0.4);">✨ H3云端LoRA插件</span>
+      <select id="h3SentinelLoraSelect" onchange="onH3SentinelLoraChange(this.value)" style="flex:1;min-width:210px;height:26px;padding:0 8px;font-size:12.5px;font-weight:700;border-radius:6px;border:1px solid #c084fc;background:#0f172a;color:#ffffff;cursor:pointer;">
+        <option value="AUTO" selected>🤖 【智能自动匹配】根据提示词自动选择最优 LoRA 插件 (推荐)</option>
+        <option value="">🚫 【纯原生基座】不挂载额外 LoRA (通用风景 / 动漫 / 常规叙事)</option>
+        <option value="3039167/3453951/minimax-sensual-v0.1.safetensors">💋 【性感写真·纯欲眼神】MiniMax Sensual v0.1 (暧昧对视 / 网红自拍 / 呼吸感)</option>
+        <option value="2985832/3406313/H3-nsfw-round-breasts-posing-V1.5.safetensors">👙 【写真姿态·身材曲线】NSFW Posing V1.5 (模特凹造型 / 睡衣丝袜 / 曲线展示)</option>
+        <option value="3008596/3413917/MM-H3 - Gyrating Hips v1.2.safetensors">🍑 【腰臀律动·扭腰摆臀】Gyrating Hips v1.2 (腰臀摆动 / 扭胯 / 性感身材律动)</option>
+        <option value="1343431/3226280/bounceV03-000084.safetensors">🌊 【物理弹性·自然颤动】Physics Bounce v0.3 (呼吸起伏 / 走动真实物理弹性)</option>
+        <option value="2834417/3198686/hmmotion_minimax-h3_epoch12.safetensors">💃 【人体动态·物理防僵】Hearmeman Motion V1 (全身自然肢体动作 / 走秀 / 转身)</option>
+        <option value="2834417/3446189/HMNSFW-Extreme-Realism.safetensors">🔥 【18+成人互动·极度写实】HMNSFW V3 Extreme Realism (全能写实成人互动 V3)</option>
+        <option value="2834417/3268303/HMNSFW-AIO-V2.5.safetensors">🔥 【18+成人动作·全能合集】HMNSFW AIO V2.5 (高动态成人交互 V2.5)</option>
+        <option value="lora/mm-h3-r2v-nudification-os.safetensors">✨ 【参考图解构·写实褪衣】REF2V Nudification OS (首帧图生视频写实解构)</option>
+        <option value="2990026/3390424/DecensoreH3_000002500.safetensors">🔓 【写实细节·无码增强】Decensor H3 (局部真实皮肤纹理细节增强)</option>
+        <option value="3056222/3476635/DANCE-minimax-h3.safetensors">🕺 【全身热舞·高动态舞蹈】DANCE MiniMax-H3 (女团舞 / 韩舞 / 全身大幅度热舞)</option>
+        <option value="3056235/3476658/Dance Beat-Sync Slider.safetensors">🎵 【卡点街舞·音乐节拍】Dance Beat-Sync (强鼓点 / 音乐重拍卡点律动)</option>
+        <option value="2986532/3386042/wushu_h3_v8_final_fp16.safetensors">🥋 【武术格斗·近身打斗】wushu_action v8 (功夫拳脚 / 冷兵器过招 · 自动加触发词)</option>
+        <option value="2941150/3329892/GunFu.safetensors">🔫 【近身枪斗·特工枪战】GUNFU (疾速追杀式战术射击 · 自动加 BUNNY)</option>
+        <option value="2027766/3412620/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors">🎭 【视频锁脸·全身换人】BFS Character Swap v1.1 (首尾帧 / 参考图跨帧强锁脸)</option>
+        <option value="2940916/3329609/SS_FaceSwap_MiniMax_H3_REF2VA.safetensors">🧑 【面部锁脸·五官防崩】SS FaceSwap REF2VA v1.0 (参考图五官锁定 · 自动加触发词)</option>
+        <option value="2027766/3352167/minimax_h3_head_swap_v1.0_r32.safetensors">👤 【头部替换·发型保持】BFS Head Swap v1.0 (视频头部与发型整体锁定)</option>
+        <option value="CUSTOM">🛠️ 【自定义路径】手动输入 Sentinel7/h3 仓库内任意 .safetensors 相对路径...</option>
       </select>
-      <input type="text" id="h3SentinelLoraCustomPath" placeholder="例如：2834417/3446189/HMNSFW-Extreme-Realism.safetensors" style="display:none;width:270px;padding:4px 8px;font-size:11.5px;border-radius:6px;border:1px solid #38bdf8;background:#020617;color:#bae6fd;">
-      <div style="display:flex;align-items:center;gap:5px;background:#0f172a;padding:3px 8px;border-radius:6px;border:1px solid #334155;">
-        <span style="font-size:11.5px;color:#94a3b8;font-weight:600;">权重</span>
-        <input type="number" id="h3SentinelLoraStrength" value="0.85" min="0.1" max="1.5" step="0.05" style="width:52px;padding:2px 4px;border-radius:4px;border:1px solid #475569;background:#020617;color:#fde68a;font-size:12px;font-weight:700;text-align:center;">
+      <span id="h3AutoLoraMatchBadge" title="当前智能匹配到的云端 LoRA 插件（输入提示词时实时自动识别；也可在左侧下拉框手动指定）" style="display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:6px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.48);color:#6ee7b7;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;">🎯 待输入提示词自动匹配</span>
+      <input type="text" id="h3SentinelLoraCustomPath" placeholder="例如：2834417/3446189/HMNSFW-Extreme-Realism.safetensors" style="display:none;width:240px;height:26px;box-sizing:border-box;padding:0 8px;font-size:11.5px;border-radius:6px;border:1px solid #38bdf8;background:#020617;color:#bae6fd;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:5px;height:26px;box-sizing:border-box;background:#0f172a;padding:0 8px;border-radius:6px;border:1px solid #475569;flex-shrink:0;">
+        <span style="font-size:11.5px;color:#e2e8f0;font-weight:700;">权重</span>
+        <input type="number" id="h3SentinelLoraStrength" value="0.85" min="0.1" max="1.5" step="0.05" style="width:48px;height:20px;padding:0 3px;border-radius:4px;border:1px solid #64748b;background:#020617;color:#fde68a;font-size:12px;font-weight:700;text-align:center;">
       </div>
-      <label title="HearmemanAI 推荐黄金采样参数：Euler · Steps=18 · Shift=12.0 (选中 LoRA 时自动同步步数为 18 步并注入 Shift=12)" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#fde68a;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.4);padding:3px 8px;border-radius:6px;cursor:pointer;white-space:nowrap;user-select:none;">
-        <input type="checkbox" id="chkH3SentinelAutoGoldenSpec" checked style="width:12.5px;height:12.5px;accent-color:#f59e0b;cursor:pointer;">
+      <label title="HearmemanAI 推荐黄金采样参数：Euler · Steps=18 · Shift=12.0 (挂载 LoRA 时自动同步步数为 18 步并注入 Shift=12)" style="display:inline-flex;align-items:center;gap:4px;height:26px;box-sizing:border-box;font-size:11.5px;font-weight:700;color:#fde68a;background:rgba(245,158,11,0.16);border:1px solid rgba(245,158,11,0.48);padding:0 8px;border-radius:6px;cursor:pointer;white-space:nowrap;user-select:none;flex-shrink:0;">
+        <input type="checkbox" id="chkH3SentinelAutoGoldenSpec" checked style="width:12.5px;height:12.5px;accent-color:#f59e0b;cursor:pointer;margin:0;">
         <span>⚡ 黄金采样(18步·Shift 12)</span>
       </label>
     </div>
@@ -5015,6 +5009,7 @@ function applyStructured4ToBoxes(s) {
     st.innerText = '✅ 已将 Qwen3.8 生成的四项提示词全部填入左侧四个框！切换到 MiniMax-H3 后点击「🎬 开始生成音视频」即可。';
     st.style.color = '#10b981';
   }
+  if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
 }
 
 function copyChatToVideoPrompt() {
@@ -5029,6 +5024,7 @@ function copyChatToVideoPrompt() {
     return;
   }
   document.getElementById('videoPrompt').value = txt;
+  if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
   const st = document.getElementById('videoGenStatus');
   st.innerText = '✅ 已从上方 Qwen3.8 回复填入画面提示词！切换到 MiniMax-H3 后点击「🎬 开始生成音视频」即可。';
   st.style.color = '#10b981';
@@ -5041,6 +5037,7 @@ function clearSingleVideoPrompt(boxId) {
     el.value = '';
     el.focus();
   }
+  if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
 }
 
 function clearAllVideoPrompts() {
@@ -5048,6 +5045,7 @@ function clearAllVideoPrompts() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
   const st = document.getElementById('videoGenStatus');
   if (st) {
     st.innerText = '🗑️ 已一键清空全部四个提示词框';
@@ -7499,9 +7497,108 @@ async function stopActiveVideoTask(targetMode = 'auto') {
   }
 }
 
+function autoDetectBestH3SentinelLora() {
+  const p1 = ((document.getElementById('videoPrompt') || {}).value || '').trim();
+  const p2 = ((document.getElementById('videoSoundPrompt') || {}).value || '').trim();
+  const p3 = ((document.getElementById('videoMusicPrompt') || {}).value || '').trim();
+  const fullText = `${p1} ${p2} ${p3}`.trim();
+  const hasRef = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
+  if (!fullText) {
+    return { path: '', label: '🎯 待输入提示词自动匹配', weight: '0.85', empty: true };
+  }
+  // 1. 武术 / 格斗 / 冷兵器打斗
+  if (/武术|功夫|打斗|格斗|搏击|拳击|踢腿|回旋踢|剑术|刀客|武侠|过招|对打|wushu|martial\s*arts|kung\s*fu|sword\s*fight|hand-to-hand\s*combat/i.test(fullText)) {
+    return { path: '2986532/3386042/wushu_h3_v8_final_fp16.safetensors', label: '🎯 自动匹配: 🥋 武术格斗·近身打斗 (0.75)', weight: '0.75' };
+  }
+  // 2. 枪斗 / 射击 / 枪战
+  if (/枪战|枪斗|开枪|射击|手枪|步枪|特工枪|弹壳|火舌|gunfu|gun\s*fight|shootout|john\s*wick|firearm|tactical\s*shooting/i.test(fullText)) {
+    return { path: '2941150/3329892/GunFu.safetensors', label: '🎯 自动匹配: 🔫 近身枪斗·特工枪战 (0.85)', weight: '0.85' };
+  }
+  // 3. 热舞 / 街舞 / 跳舞 / 卡点舞
+  if (/跳舞|热舞|街舞|舞蹈|舞步|女团舞|韩舞|编舞|宅舞|律动舞|卡点舞|dancing|choreography|hip-hop\s*dance|k-pop\s*dance|dancer/i.test(fullText)) {
+    if (/卡点|节拍|鼓点对齐|重拍|beat[\s-]*sync|BPM/i.test(fullText)) {
+      return { path: '3056235/3476658/Dance Beat-Sync Slider.safetensors', label: '🎯 自动匹配: 🎵 卡点街舞·音乐节拍 (0.85)', weight: '0.85' };
+    }
+    return { path: '3056222/3476635/DANCE-minimax-h3.safetensors', label: '🎯 自动匹配: 🕺 全身热舞·高动态舞蹈 (0.85)', weight: '0.85' };
+  }
+  // 4. 腰臀摆动 / 扭腰 / 扭胯
+  if (/扭腰|扭胯|摆臀|顶胯|腰臀|扭动腰肢|摇臀|gyrating|hips?\s*sway|twerk|waist\s*roll/i.test(fullText)) {
+    return { path: '3008596/3413917/MM-H3 - Gyrating Hips v1.2.safetensors', label: '🎯 自动匹配: 🍑 腰臀律动·扭腰摆臀 (0.85)', weight: '0.85' };
+  }
+  // 5. 物理弹性 / 剧烈呼吸胸臀颤动
+  if (/乳摇|颤动|弹性律动|剧烈起伏|胸部起伏|胸波|jiggle|physics\s*bounce|bouncing\s*breasts|cleavage\s*bounce/i.test(fullText)) {
+    return { path: '1343431/3226280/bounceV03-000084.safetensors', label: '🎯 自动匹配: 🌊 物理弹性·自然颤动 (0.80)', weight: '0.80' };
+  }
+  // 6. 18+ 成人交互 / 裸露 / 褪衣
+  if (/全裸|赤裸|裸体|裸身|无码|私密部位|做爱|性爱|交合|口交|后入|骑乘|抽插|高潮|呻吟|脱光|一丝不挂|nsfw|nude|naked|explicit|sex\b|erotic|intercourse|blowjob|uncensored|topless/i.test(fullText)) {
+    if (hasRef && /脱衣|褪去衣物|解开衣服|nudif|undress|strip/i.test(fullText)) {
+      return { path: 'lora/mm-h3-r2v-nudification-os.safetensors', label: '🎯 自动匹配: ✨ 参考图解构·写实褪衣 (0.85)', weight: '0.85' };
+    }
+    return { path: '2834417/3446189/HMNSFW-Extreme-Realism.safetensors', label: '🎯 自动匹配: 🔥 18+成人互动·极度写实 (0.85)', weight: '0.85' };
+  }
+  // 7. 性感写真 / 纯欲眼神 / 网红自拍 / 暧昧撩人 / 睡衣丝袜内衣
+  if (/性感|暧昧|撩人|纯欲|魅惑|诱惑|妩媚|吊带|睡衣|丝袜|黑丝|蕾丝|内衣|比基尼|泳装|深V|低胸|锁骨|美腿|拨发|咬唇|媚眼|哼唱|气声|sensual|seductive|lingerie|bikini|stockings|flirty|glamour|boudoir/i.test(fullText)) {
+    if (/摆姿|凹造型|写真姿态|展示身材|身材曲线|posing|body\s*curve|model\s*pose/i.test(fullText)) {
+      return { path: '2985832/3406313/H3-nsfw-round-breasts-posing-V1.5.safetensors', label: '🎯 自动匹配: 👙 写真姿态·身材曲线 (0.80)', weight: '0.80' };
+    }
+    return { path: '3039167/3453951/minimax-sensual-v0.1.safetensors', label: '🎯 自动匹配: 💋 性感写真·纯欲眼神 (0.85)', weight: '0.85' };
+  }
+  // 8. 首尾帧模式显式要求强锁脸 / 换脸
+  if (hasRef && /换脸|锁脸|保持五官|faceswap|character\s*swap/i.test(fullText)) {
+    return { path: '2027766/3412620/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors', label: '🎯 自动匹配: 🎭 视频锁脸·全身换人 (0.90)', weight: '0.90' };
+  }
+  // 9. 真人大幅度全身肢体动作 / 走秀 / 奔跑转身
+  if (/全身动作|奔跑|跳跃|走秀|猫步|转身|肢体律动|体操|瑜伽|健身|runway\s*walk|catwalk|dynamic\s*motion|full\s*body\s*movement/i.test(fullText)) {
+    return { path: '2834417/3198686/hmmotion_minimax-h3_epoch12.safetensors', label: '🎯 自动匹配: 💃 人体动态·物理防僵 (0.75)', weight: '0.75' };
+  }
+  // 10. 常规叙事 / 风景 / 动漫 -> 原生基座直出
+  return { path: '', label: '🎯 自动匹配: 🚫 原生基座直出 (无需额外LoRA)', weight: '0.85' };
+}
+
+function updateH3AutoLoraPreview() {
+  const sel = document.getElementById('h3SentinelLoraSelect');
+  const badge = document.getElementById('h3AutoLoraMatchBadge');
+  if (!sel || !badge) return;
+  if (sel.value !== 'AUTO') {
+    badge.style.display = 'none';
+    return;
+  }
+  badge.style.display = 'inline-flex';
+  const matched = autoDetectBestH3SentinelLora();
+  badge.innerText = matched.label;
+  if (matched.empty) {
+    badge.style.background = 'rgba(148,163,184,0.14)';
+    badge.style.borderColor = 'rgba(148,163,184,0.4)';
+    badge.style.color = '#cbd5e1';
+  } else if (matched.path) {
+    badge.style.background = 'rgba(16,185,129,0.18)';
+    badge.style.borderColor = 'rgba(16,185,129,0.55)';
+    badge.style.color = '#6ee7b7';
+    const strInp = document.getElementById('h3SentinelLoraStrength');
+    if (strInp) strInp.value = matched.weight;
+    const chkGolden = document.getElementById('chkH3SentinelAutoGoldenSpec');
+    if (chkGolden && chkGolden.checked) {
+      const stSlider = document.getElementById('videoSteps');
+      const stLbl = document.getElementById('stepsValLabel');
+      if (stSlider) stSlider.value = '18';
+      if (stLbl) stLbl.innerText = '18 步';
+    }
+  } else {
+    badge.style.background = 'rgba(59,130,246,0.16)';
+    badge.style.borderColor = 'rgba(59,130,246,0.45)';
+    badge.style.color = '#93c5fd';
+  }
+}
+
 function getSelectedH3SentinelLoraPath() {
   const sel = document.getElementById('h3SentinelLoraSelect');
   if (!sel) return '';
+  if (sel.value === 'AUTO') {
+    const matched = autoDetectBestH3SentinelLora();
+    const strInp = document.getElementById('h3SentinelLoraStrength');
+    if (strInp && matched.path) strInp.value = matched.weight;
+    return matched.path || '';
+  }
   if (sel.value === 'CUSTOM') {
     const cust = document.getElementById('h3SentinelLoraCustomPath');
     return (cust && cust.value ? cust.value.trim() : '');
@@ -7514,6 +7611,11 @@ function onH3SentinelLoraChange(val) {
   if (custInp) {
     custInp.style.display = (val === 'CUSTOM') ? 'inline-block' : 'none';
   }
+  if (val === 'AUTO') {
+    updateH3AutoLoraPreview();
+    return;
+  }
+  updateH3AutoLoraPreview();
   const strInp = document.getElementById('h3SentinelLoraStrength');
   if (strInp && val && val !== 'CUSTOM') {
     if (val.includes('wushu_h3_v8')) {
