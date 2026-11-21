@@ -2238,7 +2238,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 </div>
 
 <!-- 单独一行：EasyColab 宽屏全高布局 · MiniMax-H3 (33B · 原生BF16 · 无审查) 多模态有声视频创作工作台 -->
-<div class="card" id="minimaxVideoBox" style="margin-bottom:16px;border:1px solid rgba(59,130,246,0.35);background:linear-gradient(180deg, rgba(30,41,59,0.98) 0%, rgba(15,23,42,0.98) 100%);">
+<div class="card" id="minimaxVideoBox" style="padding:16px 18px 13px 18px;margin-bottom:16px;border:1px solid rgba(59,130,246,0.35);background:linear-gradient(180deg, rgba(30,41,59,0.98) 0%, rgba(15,23,42,0.98) 100%);">
   <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:nowrap;overflow:hidden;">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;min-width:0;width:100%;">
@@ -3158,14 +3158,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <!-- ==================== 第 3 行 (单独一行 100% 宽度，1:1 复刻原版 EasyColab 预览图)：▶️ 生成结果预览 (左大屏) + 🕒 本地历史 (右列表) ==================== -->
   <div style="display:grid;grid-template-columns: minmax(0, 2.55fr) minmax(300px, 1.05fr);gap:16px;align-items:stretch;width:100%;box-sizing:border-box;">
     <!-- 左卡片：▶️ 生成结果预览 (超大屏 16:9 画面) -->
-    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;">
+    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:13px 15px 10px 15px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;">
       <!-- 顶部标题栏：左「▶️ 生成结果预览」，右「⏱ 生成耗时 8分31.9秒」蓝色胶囊 -->
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:800;color:#f8fafc;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:#f8fafc;">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;border:1.8px solid #3b82f6;border-radius:5px;color:#3b82f6;font-size:10px;">▶</span>
           <span>生成结果预览</span>
         </div>
-        <span id="previewElapsedBadge" style="display:none;background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.35);padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;">
+        <span id="previewElapsedBadge" style="display:none;background:rgba(59,130,246,0.18);color:#60a5fa;border:1px solid rgba(59,130,246,0.35);padding:3px 11px;border-radius:999px;font-size:11.5px;font-weight:700;">
           ⏱ 生成耗时 --
         </span>
       </div>
@@ -3182,8 +3182,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <img id="mmImagePreview" alt="Generated Image" style="display:none;width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;">
       </div>
 
-      <!-- 底部文件信息栏：单行两端对齐，左侧标题完整显示不截断 -->
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:8px;margin-top:12px;padding-top:4px;">
+      <!-- 底部文件信息栏：单行两端对齐，紧贴卡片底边 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:8px;margin-top:9px;padding-top:0;">
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           <span style="color:#94a3b8;font-size:14px;flex-shrink:0;">🎞️</span>
           <span id="mmVideoMeta" title="" style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;flex-shrink:0;">尚未选择视频</span>
@@ -3216,35 +3216,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
 
     <!-- 右卡片：🕒 本地历史 (支持自定义默认保存目录) -->
-    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:18px 14px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;">
+    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:13px 12px 8px 12px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;">
       <style>
         #mmHistoryList::-webkit-scrollbar { width: 5px; }
         #mmHistoryList::-webkit-scrollbar-track { background: transparent; }
         #mmHistoryList::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
         #mmHistoryList::-webkit-scrollbar-thumb:hover { background: #475569; }
       </style>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:nowrap;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:nowrap;">
         <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
           <span style="color:#3b82f6;font-size:15px;">🕒</span>
           <span style="font-size:14.5px;font-weight:800;color:#f8fafc;">本地历史</span>
           <span id="localHistoryCount" style="font-size:11.5px;color:#94a3b8;">(0)</span>
         </div>
         <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-          <button type="button" title="导入本机其他视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="height:26px;padding:0 9px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#93c5fd;font-size:11px;font-weight:700;cursor:pointer;border-radius:6px;white-space:nowrap;">＋ 导入视频</button>
-          <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="height:26px;width:26px;padding:0;background:#1e293b;border:1px solid #475569;color:#cbd5e1;font-size:13px;cursor:pointer;border-radius:6px;">↻</button>
+          <button type="button" title="导入本机其他视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="height:24px;padding:0 8px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#93c5fd;font-size:11px;font-weight:700;cursor:pointer;border-radius:6px;white-space:nowrap;">＋ 导入视频</button>
+          <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="height:24px;width:24px;padding:0;background:#1e293b;border:1px solid #475569;color:#cbd5e1;font-size:12.5px;cursor:pointer;border-radius:6px;">↻</button>
         </div>
       </div>
 
-      <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:6px;max-height:520px;overflow-y:auto;padding-right:4px;flex:1;scrollbar-width:thin;scrollbar-color:#334155 transparent;">
+      <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:5px;max-height:524px;overflow-y:auto;padding-right:4px;flex:1;scrollbar-width:thin;scrollbar-color:#334155 transparent;">
         <div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">正在扫描...</div>
       </div>
 
-      <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:11px;color:#94a3b8;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;height:28px;">
+      <div style="margin-top:auto;padding-top:7px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:5px;font-size:11px;color:#94a3b8;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:5px;flex-wrap:nowrap;height:24px;">
           <span id="localSaveDirDisplay" onclick="toggleLocalSaveDirEditor()" title="点击修改默认保存文件夹（支持外置移动硬盘 / 自定义目录）" style="font-family:'SF Mono',Menlo,monospace;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:1;min-width:0;">📂 ~/Movies/EasyColab</span>
-          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;">
-            <button type="button" onclick="toggleLocalSaveDirEditor()" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;" title="自定义或更换默认保存文件夹（可改为外置移动硬盘路径）">⚙️ 改目录</button>
-            <button type="button" onclick="revealInFinder(true)" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid rgba(59,130,246,0.5);background:rgba(59,130,246,0.16);color:#93c5fd;cursor:pointer;" title="在 Finder 中打开当前默认保存文件夹">📂 打开 ↗</button>
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;white-space:nowrap;">
+            <button type="button" onclick="toggleLocalSaveDirEditor()" style="height:22px;padding:0 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;" title="自定义或更换默认保存文件夹（可改为外置移动硬盘路径）">⚙️ 改目录</button>
+            <button type="button" onclick="revealInFinder(true)" style="height:22px;padding:0 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(59,130,246,0.5);background:rgba(59,130,246,0.16);color:#93c5fd;cursor:pointer;" title="在 Finder 中打开当前默认保存文件夹">📂 打开 ↗</button>
           </div>
         </div>
         <div id="localSaveDirEditBox" style="display:none;flex-direction:column;gap:5px;padding:7px 8px;border-radius:7px;background:#020617;border:1px solid #3b82f6;">
@@ -7063,18 +7063,18 @@ function renderLocalHistoryList() {
     const thumbBorder = active ? '1.5px solid #60a5fa' : '1px solid rgba(148,163,184,0.28)';
     const thumbUrl = `/api/local_video_thumb?name=${encodeURIComponent(it.name)}&v=${encodeURIComponent(it.size_mb || '')}`;
     return `
-      <div onclick="selectLocalHistoryItem(${idx})" style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 8px;border-radius:10px;background:${rowBg};border:${rowBorder};cursor:pointer;transition:all 0.12s;">
-        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-          <div style="width:38px;height:46px;border-radius:7px;overflow:hidden;border:${thumbBorder};background:#020617;position:relative;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,0.45);">
+      <div onclick="selectLocalHistoryItem(${idx})" style="display:flex;justify-content:space-between;align-items:center;gap:5px;padding:4px 7px;border-radius:9px;background:${rowBg};border:${rowBorder};cursor:pointer;transition:all 0.12s;">
+        <div style="display:flex;align-items:center;gap:7px;min-width:0;flex:1;">
+          <div style="width:34px;height:42px;border-radius:6px;overflow:hidden;border:${thumbBorder};background:#020617;position:relative;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,0.45);">
             <img loading="lazy" src="${thumbUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">
-            <span style="position:absolute;bottom:1px;right:1px;font-size:9px;line-height:1;padding:1px 2px;border-radius:3px;background:rgba(2,6,23,0.78);color:${iconColor};">${isImgFile ? '🖼️' : '▶️'}</span>
+            <span style="position:absolute;bottom:1px;right:1px;font-size:8.5px;line-height:1;padding:1px 2px;border-radius:3px;background:rgba(2,6,23,0.78);color:${iconColor};">${isImgFile ? '🖼️' : '▶️'}</span>
           </div>
           <div style="min-width:0;flex:1;">
             <div style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}">${escapeHtml(it.short_name || it.name)}</div>
-            <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.date_str || '')}</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.date_str || '')}</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
           ${srAction}
           ${shortBadge}
         </div>
