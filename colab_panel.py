@@ -357,24 +357,15 @@ def _append_panel_log(msg_text: str):
             m_dl = re.match(r"^\[(视频回传|图片回传)\]\s+([^:]+):", clean)
             for idx in range(len(logs) - 1, max(-1, len(logs) - 7), -1):
                 cand_ln = logs[idx]
-                if m_dl and f"[{m_dl.group(1)}] {m_dl.group(2)}:" in cand_ln:
-                    logs[idx] = line
-                    replaced = True
-                    break
-                if "正在扩散采样生成有声视频:" in clean and "正在扩散采样生成有声视频:" in cand_ln:
-                    logs[idx] = line
-                    replaced = True
-                    break
-                if "采样完成，正在合成音视频画面:" in clean and "采样完成，正在合成音视频画面:" in cand_ln:
-                    logs[idx] = line
-                    replaced = True
-                    break
-                if "[视频超分]" in clean and "[视频超分]" in cand_ln:
-                    logs[idx] = line
-                    replaced = True
-                    break
-                if "[显存装载]" in clean and "[显存装载]" in cand_ln:
-                    logs[idx] = line
+                if (
+                    (m_dl and f"[{m_dl.group(1)}] {m_dl.group(2)}:" in cand_ln)
+                    or ("正在扩散采样生成有声视频:" in clean and "正在扩散采样生成有声视频:" in cand_ln)
+                    or ("采样完成，正在合成音视频画面:" in clean and "采样完成，正在合成音视频画面:" in cand_ln)
+                    or ("[视频超分]" in clean and "[视频超分]" in cand_ln)
+                    or ("[显存装载]" in clean and "[显存装载]" in cand_ln)
+                ):
+                    logs.pop(idx)
+                    logs.append(line)
                     replaced = True
                     break
         if not replaced:
@@ -7373,10 +7364,10 @@ function renderLiveVideoTimingText() {
   const etaStr = (liveVideoEtaSec && liveVideoEtaSec > 0) ? ` · 预计剩余 ≈ ${formatCnDur(liveVideoEtaSec)}` : '';
   const pctVal = liveVideoPct !== null ? liveVideoPct : 0;
   if (tLabel) {
-    tLabel.innerText = `⏳ 当前任务总进度：${pctVal}%`;
+    tLabel.innerText = liveVideoBaseMsg ? `⏳ ${liveVideoBaseMsg}` : `⏳ 当前任务总进度：${pctVal}%`;
   }
   if (tSpeed) {
-    tSpeed.innerText = `总进度 ${pctVal}%`;
+    tSpeed.innerText = `${elStr}${etaStr}`;
   }
   if (st && liveVideoBaseMsg) {
     st.innerText = `⏳ ${liveVideoBaseMsg} · ${elStr}${etaStr}`;
@@ -7900,10 +7891,10 @@ async function pollVideoStatus() {
         st.innerText = `${d.message}`;
         st.style.color = '#10b981';
         if (tLabel) {
-          tLabel.innerText = `✅ 当前任务总进度：100%`;
+          tLabel.innerText = d.message.startsWith('✅') ? d.message : `✅ ${d.message}`;
         }
         if (tSpeed) {
-          tSpeed.innerText = `总进度 100%`;
+          tSpeed.innerText = `总进度 100%${doneDur}`;
         }
       }
       if (dState) {
