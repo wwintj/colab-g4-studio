@@ -2113,10 +2113,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <!-- 单独一行：EasyColab 宽屏全高布局 · MiniMax-H3 (33B · 原生BF16 · 无审查) 多模态有声视频创作工作台 -->
 <div class="card" id="minimaxVideoBox" style="margin-bottom:16px;border:1px solid rgba(59,130,246,0.35);background:linear-gradient(180deg, rgba(30,41,59,0.98) 0%, rgba(15,23,42,0.98) 100%);">
   <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <span id="videoStudioTitle" style="font-size:16.5px;font-weight:900;color:#f8fafc;">🎬 MiniMax-H3 & LongCat-Avatar 全流程影视与视觉创作中心</span>
-        <span id="videoStudioBadge" style="font-size:11.5px;background:rgba(16,185,129,0.16);color:#34d399;padding:3px 10px;border-radius:999px;font-weight:700;">①生图定妆 ➔ ②换脸换装融景 ➔ ③④⑤单镜视频 ➔ ⑥全剧自动导演</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:nowrap;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:nowrap;min-width:0;width:100%;">
+        <span id="videoStudioTitle" style="font-size:16px;font-weight:900;color:#f8fafc;white-space:nowrap;flex-shrink:0;">📸 MiniMax-H3-Image (33B) 原生 4K 无审查写真生图工作台</span>
+        <span id="videoStudioBadge" style="font-size:11.5px;background:rgba(16,185,129,0.16);color:#34d399;padding:3px 10px;border-radius:999px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">1680万像素4K直出 + Heretic 32B无审查编码器 + 6步极速扩散</span>
       </div>
     </div>
 
@@ -5009,8 +5009,8 @@ function switchMiniMaxMode(mode) {
   const titleEl = document.getElementById('videoStudioTitle');
   const badgeEl = document.getElementById('videoStudioBadge');
   if (isDrama) {
-    if (titleEl) titleEl.innerText = '🎬 通用分镜短剧全自动工作流导演台 (H3-Image 锁脸 + LongCat-Avatar 对白 + H3-FL2VA 动作)';
-    if (badgeEl) badgeEl.innerText = '任意剧本智能拆解 + 可视化分镜节点编辑 + 单步独立重抽 + 0.1秒卡点混音合片';
+    if (titleEl) titleEl.innerText = '🎬 通用分镜短剧全自动工作流导演台 (H3锁脸 + LongCat对白)';
+    if (badgeEl) badgeEl.innerText = '任意剧本智能拆解 + 可视化分镜节点编辑 + 单步独立重抽 + 自动混音合片';
     const drawer = document.getElementById('dramaWorkflowEditorDrawer');
     if (drawer) drawer.style.display = 'block';
     loadDramaWorkflowEditor();
@@ -5018,8 +5018,8 @@ function switchMiniMaxMode(mode) {
     return;
   }
   if (isFusion) {
-    if (titleEl) titleEl.innerText = '🪄 AI 智能换脸 · 试衣换装 · 实景光影融合工坊 (MiniMax-H3-Image 33B 多图空间主语解耦)';
-    if (badgeEl) badgeEl.innerText = '免涂 Mask 像素级骨相锁脸 + 服装纹理剥离 + 实景环境光重打光';
+    if (titleEl) titleEl.innerText = '🪄 AI 智能换脸 · 试衣换装 · 姿势 · 实景四合一自由组装工坊';
+    if (badgeEl) badgeEl.innerText = '免涂 Mask 像素级骨相锁脸 + 服装姿势空间解耦 + 实景环境光重打光';
     syncFusionRoleDropdown();
     renderFusionTargetCards();
     return;
@@ -5053,8 +5053,8 @@ function switchMiniMaxMode(mode) {
   const loraBar = document.getElementById('h3SentinelLoraBar');
   if (isImg) {
     if (loraBar) loraBar.style.display = 'none';
-    if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 原生 4K 无审查写真 & 免Mask锁脸换装工作台';
-    if (badgeEl) badgeEl.innerText = '11.6秒原生1680万像素4K直出 + Heretic 32B无审查编码器 + Picture+Subject免Mask锁脸换装';
+    if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 原生 4K 无审查写真生图工作台';
+    if (badgeEl) badgeEl.innerText = '1680万像素4K直出 + Heretic 32B无审查编码器 + 6步极速扩散';
     if (pSecTitle) pSecTitle.innerText = '3. 4K 写真画面提示词 / Picture + Subject 免Mask锁脸换装指令';
     if (fourBtns) fourBtns.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
@@ -5126,8 +5126,16 @@ function switchMiniMaxMode(mode) {
     }
   } else {
     if (loraBar) loraBar.style.display = 'flex';
-    if (titleEl) titleEl.innerText = '🎬 MiniMax-H3 多模态有声视频创作工作台';
-    if (badgeEl) badgeEl.innerText = '32kHz 原生立体声音轨 + 32B 视觉编码器';
+    if (titleEl) {
+      titleEl.innerText = isFl
+        ? '🖼️ MiniMax-H3 (FL2VA) 首尾帧精准运镜有声视频创作工作台'
+        : '🎬 MiniMax-H3 (T2VA) 纯文本直出有声视频创作工作台';
+    }
+    if (badgeEl) {
+      badgeEl.innerText = isFl
+        ? '首尾双帧锁脸运镜 + 32kHz 原生立体声音效 + H3六段式防崩编译'
+        : '32kHz 原生立体声音轨 + 32B 视觉编码器 + Sentinel7/h3 云端LoRA';
+    }
     if (pSecTitle) pSecTitle.innerText = '镜头与多模态提示词';
     if (fourBtns) fourBtns.style.display = 'flex';
     if (box1Wrap) box1Wrap.style.marginBottom = '14px';
