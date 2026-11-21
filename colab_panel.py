@@ -3186,7 +3186,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px;margin-top:12px;padding-top:4px;">
         <div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1;overflow:hidden;">
           <span style="color:#94a3b8;font-size:14px;flex-shrink:0;">🎞️</span>
-          <span id="mmVideoMeta" title="" style="font-size:12.5px;color:#cbd5e1;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">尚未选择视频</span>
+          <span id="mmVideoMeta" title="" style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">尚未选择视频</span>
           <span id="previewBottomShortBadge" style="display:none;height:24px;align-items:center;background:#1e293b;color:#94a3b8;border:1px solid var(--border);padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;flex-shrink:0;">--</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
@@ -7260,8 +7260,8 @@ function selectLocalHistoryItem(idx) {
   dl.style.display = 'inline-flex';
   const metaEl = document.getElementById('mmVideoMeta');
   if (metaEl) {
-    metaEl.innerText = it.name;
-    metaEl.title = it.name;
+    metaEl.innerText = it.short_name || it.name;
+    metaEl.title = `${it.name}${it.date_str ? ' · ' + it.date_str : ''}`;
   }
   if (topBadge) {
     if (it.elapsed_long) {
@@ -7272,9 +7272,9 @@ function selectLocalHistoryItem(idx) {
     }
   }
   if (botBadge) {
-    if (it.elapsed_short) {
-      botBadge.innerText = it.elapsed_short;
-      botBadge.style.display = 'inline-block';
+    if (it.size_mb) {
+      botBadge.innerText = `${it.size_mb} MB`;
+      botBadge.style.display = 'inline-flex';
     } else {
       botBadge.style.display = 'none';
     }
