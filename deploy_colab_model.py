@@ -438,6 +438,7 @@ def _pull_from_rclone_drive_if_exists(remote_folder: str, local_dir: str) -> boo
 
 
 MINIMAX_SERVER_CODE = r'''#!/usr/bin/env python3
+import base64
 import gc
 import glob
 import json
@@ -449,6 +450,9 @@ import sys
 import threading
 import time
 import types
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -1354,7 +1358,7 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/upscale"):
             try:
                 req2 = urllib.request.Request(
-                    "http://127.0.0.1:30002/v1/video/upscale",
+                    f"http://127.0.0.1:30002{self.path}",
                     data=json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
@@ -1996,7 +2000,7 @@ class _MiniMaxT4Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/upscale"):
             try:
                 req2 = urllib.request.Request(
-                    "http://127.0.0.1:30002/v1/video/upscale",
+                    f"http://127.0.0.1:30002{self.path}",
                     data=json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
@@ -3532,7 +3536,7 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/upscale"):
             try:
                 req2 = urllib.request.Request(
-                    "http://127.0.0.1:30002/v1/video/upscale",
+                    f"http://127.0.0.1:30002{self.path}",
                     data=json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
@@ -4634,7 +4638,7 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/upscale"):
             try:
                 req2 = urllib.request.Request(
-                    "http://127.0.0.1:30002/v1/video/upscale",
+                    f"http://127.0.0.1:30002{self.path}",
                     data=json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",

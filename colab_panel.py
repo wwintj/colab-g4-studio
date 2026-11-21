@@ -773,6 +773,59 @@ def _get_recavsr_base_url() -> str:
     return "http://127.0.0.1:30000"
 
 
+def _call_recavsr_api(path: str, method: str = "GET", payload: Optional[Dict[str, Any]] = None, timeout: int = 30) -> Dict[str, Any]:
+    cfg = _load_endpoint_cfg()
+    base_url = _get_recavsr_base_url()
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+        "User-Agent": "ColabPanel/1.0",
+    }
+    data_bytes = json.dumps(payload or {}).encode("utf-8") if method.upper() == "POST" else None
+    req = urllib.request.Request(f"{base_url}{path}", data=data_bytes, headers=headers, method=method.upper())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as he:
+        try:
+            err_json = json.loads(he.read().decode("utf-8"))
+            if "urllib" not in str(err_json.get("error", "")):
+                return err_json
+        except Exception:
+            pass
+    except Exception:
+        pass
+    # Fallback via /v1/shell -> 127.0.0.1:30002 on remote Colab VM (zero downtime for live session)
+    if method.upper() == "POST":
+        small_payload = dict(payload or {})
+        if len(str(small_payload.get("video_b64", ""))) > 65536:
+            small_payload.pop("video_b64", None)
+        b64_body = base64.b64encode(json.dumps(small_payload).encode("utf-8")).decode("ascii")
+        shell_cmd = (
+            f"python3 -c \"import base64, urllib.request, urllib.error\n"
+            f"req=urllib.request.Request('http://127.0.0.1:30002{path}', data=base64.b64decode('{b64_body}'), headers={{'Content-Type':'application/json'}}, method='POST')\n"
+            f"try:\n"
+            f"    print(urllib.request.urlopen(req, timeout={timeout}).read().decode('utf-8'))\n"
+            f"except urllib.error.HTTPError as e:\n"
+            f"    print(e.read().decode('utf-8'))\n\""
+        )
+    else:
+        shell_cmd = f"curl -s -m {timeout} http://127.0.0.1:30002{path}"
+    sh_req = urllib.request.Request(
+        f"{base_url}/v1/shell",
+        data=json.dumps({"cmd": shell_cmd, "timeout": timeout + 5}).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(sh_req, timeout=timeout + 8) as sh_resp:
+        sh_data = json.loads(sh_resp.read().decode("utf-8"))
+        out_txt = str(sh_data.get("stdout") or "").strip()
+        if not out_txt:
+            err_txt = str(sh_data.get("stderr") or "云端 ReCaVSR 超分副引擎未响应").strip()
+            return {"ok": False, "running": False, "error": err_txt}
+        return json.loads(out_txt.splitlines()[-1])
+
+
 def _load_custom_models() -> List[Dict[str, Any]]:
     if CUSTOM_MODELS_FILE.exists():
         try:
@@ -7948,6 +8001,10 @@ async function upscaleVideoByName(fname, presetOverride) {
     await pollLogs();
     if (!d.ok) {
       const errTxt = d.error || '超分启动失败';
+      liveVideoElapsedSec = null;
+      liveVideoEtaSec = null;
+      liveVideoPct = null;
+      liveVideoBaseMsg = '';
       if (st) {
         st.innerText = '❌ ' + errTxt;
         st.style.color = '#ef4444';
@@ -7958,8 +8015,6 @@ async function upscaleVideoByName(fname, presetOverride) {
         dState.innerText = '❌ ReCaVSR 超分启动失败';
         dState.style.color = '#ef4444';
       }
-      liveVideoElapsedSec = null;
-      liveVideoEtaSec = null;
       setUpscaleBtnRunningState(false);
       return;
     }
@@ -7967,6 +8022,10 @@ async function upscaleVideoByName(fname, presetOverride) {
     pollUpscaleStatus();
     upscalePollTimer = setInterval(pollUpscaleStatus, 1500);
   } catch (e) {
+    liveVideoElapsedSec = null;
+    liveVideoEtaSec = null;
+    liveVideoPct = null;
+    liveVideoBaseMsg = '';
     if (st) {
       st.innerText = '❌ 超分请求异常: ' + e;
       st.style.color = '#ef4444';
@@ -7976,7 +8035,6 @@ async function upscaleVideoByName(fname, presetOverride) {
       dState.innerText = '❌ ReCaVSR 超分请求异常';
       dState.style.color = '#ef4444';
     }
-    liveVideoElapsedSec = null;
     setUpscaleBtnRunningState(false);
   }
 }
@@ -10925,18 +10983,9 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/api/video_upscale_status"):
             cfg = _load_endpoint_cfg()
-            base_url = _get_recavsr_base_url()
-            req = urllib.request.Request(
-                f"{base_url}/v1/video/upscale_status",
-                headers={
-                    "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
-                    "User-Agent": "ColabPanel/1.0",
-                },
-                method="GET",
-            )
             try:
-                with urllib.request.urlopen(req, timeout=12) as resp:
-                    d = json.loads(resp.read().decode("utf-8"))
+                if True:
+                    d = _call_recavsr_api("/v1/video/upscale_status", method="GET", timeout=12)
                     if d.get("running"):
                         try:
                             cfg["last_activity_ts"] = time.time()
@@ -12142,22 +12191,23 @@ p.wait()
                 if fname not in remote_hist and local_p.is_file() and local_p.stat().st_size < 80 * 1024 * 1024:
                     req_payload["video_b64"] = base64.b64encode(local_p.read_bytes()).decode("ascii")
 
-                req = urllib.request.Request(
-                    f"{base_url}/v1/video/upscale",
-                    data=json.dumps(req_payload).encode("utf-8"),
-                    headers=headers,
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    self._send_json(json.loads(resp.read().decode("utf-8")))
-                    return
+                resp_data = _call_recavsr_api("/v1/video/upscale", method="POST", payload=req_payload, timeout=30)
+                if not resp_data.get("ok"):
+                    err_msg = str(resp_data.get("error") or "超分启动失败")
+                    _append_panel_log(f"❌ [视频超分失败] {err_msg}")
+                self._send_json(resp_data)
+                return
             except urllib.error.HTTPError as he:
                 try:
-                    self._send_json(json.loads(he.read().decode("utf-8")))
+                    err_d = json.loads(he.read().decode("utf-8"))
+                    _append_panel_log(f"❌ [视频超分失败] {err_d.get('error') or he}")
+                    self._send_json(err_d)
                 except Exception:
+                    _append_panel_log(f"❌ [视频超分失败] HTTP {he.code}: {he}")
                     self._send_json({"ok": False, "error": f"HTTP {he.code}: {he}"})
                 return
             except Exception as e:
+                _append_panel_log(f"❌ [视频超分失败] 连接云端 ReCaVSR 超分服务失败: {e}")
                 self._send_json({"ok": False, "error": f"连接云端 ReCaVSR 超分服务失败: {e}"})
                 return
 
@@ -12467,21 +12517,8 @@ p.wait()
             return
 
         if self.path == "/api/video_upscale_cancel":
-            cfg = _load_endpoint_cfg()
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
-                "User-Agent": "ColabPanel/1.0",
-            }
             try:
-                req = urllib.request.Request(
-                    f"{_get_recavsr_base_url()}/v1/video/upscale_cancel",
-                    data=b"{}",
-                    headers=headers,
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=8) as _:
-                    pass
+                _call_recavsr_api("/v1/video/upscale_cancel", method="POST", payload={}, timeout=8)
             except Exception:
                 pass
             _append_panel_log("🛑 [手动停止] 已发送中断信号停止当前 ReCaVSR 超分任务")
