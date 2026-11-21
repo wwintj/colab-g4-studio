@@ -94,7 +94,7 @@ ELAPSED_META_FILE = LOCAL_MOVIES_DIR / ".elapsed_meta.json"
 
 
 def _set_local_movies_dir(new_dir_str: str) -> Path:
-    global LOCAL_MOVIES_DIR, ELAPSED_META_FILE
+    global LOCAL_MOVIES_DIR, ELAPSED_META_FILE, DRAMA_WORK_DIR, DRAMA_WORKFLOW_FILE
     clean_s = (new_dir_str or "").strip() or "~/Movies/EasyColab"
     cand = Path(os.path.expanduser(clean_s)).resolve()
     cand.mkdir(parents=True, exist_ok=True)
@@ -107,6 +107,8 @@ def _set_local_movies_dir(new_dir_str: str) -> Path:
             pass
     LOCAL_MOVIES_DIR = cand
     ELAPSED_META_FILE = LOCAL_MOVIES_DIR / ".elapsed_meta.json"
+    DRAMA_WORK_DIR = LOCAL_MOVIES_DIR / ".drama_workspace"
+    DRAMA_WORKFLOW_FILE = DRAMA_WORK_DIR / "workflow.json"
     try:
         cfg = json.loads(ENDPOINT_FILE.read_text(encoding="utf-8")) if ENDPOINT_FILE.is_file() else {}
         cfg["local_save_dir"] = str(cand)
@@ -13221,8 +13223,19 @@ p.wait()
         self.send_error(404)
 
 
-DRAMA_WORK_DIR = LOCAL_MOVIES_DIR / "drama_30s_ancient"
+DRAMA_WORK_DIR = LOCAL_MOVIES_DIR / ".drama_workspace"
 DRAMA_WORKFLOW_FILE = DRAMA_WORK_DIR / "workflow.json"
+_LEGACY_DRAMA_DIR = LOCAL_MOVIES_DIR / "drama_30s_ancient"
+if _LEGACY_DRAMA_DIR.is_dir():
+    try:
+        DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+        for _lp in _LEGACY_DRAMA_DIR.iterdir():
+            _dst_p = DRAMA_WORK_DIR / _lp.name
+            if _lp.is_file() and not _dst_p.exists():
+                shutil.move(str(_lp), str(_dst_p))
+        shutil.rmtree(_LEGACY_DRAMA_DIR, ignore_errors=True)
+    except Exception:
+        pass
 _DRAMA_CONFIRM_EVENT = threading.Event()
 
 _DRAMA_STATE: Dict[str, Any] = {
