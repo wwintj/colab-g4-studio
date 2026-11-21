@@ -3074,40 +3074,40 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </label>
     </div>
 
-    <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧双按钮「📸 仅生成 4K 图片」+「🎬 生成有声视频」 -->
-    <div id="specRow2ActionGrid" style="display:grid;grid-template-columns: 1fr 430px;gap:12px;align-items:center;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1e293b;padding:6px 12px;border-radius:9px;border:1px solid var(--border);flex-wrap:wrap;">
-        <div id="framesSliderInner" style="display:flex;align-items:center;gap:10px;flex:1;flex-wrap:wrap;">
-          <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">时长/帧数</span>
-          <input type="range" id="videoFrames" min="90" max="481" step="17" value="124" oninput="onFramesSliderChange(this.value)" style="width:115px;accent-color:#3b82f6;cursor:pointer;">
-          <span id="framesValLabel" style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:102px;">124 帧 · 约 5.2 秒</span>
-          <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;flex:1;min-width:235px;" id="durationPills">
-            <button type="button" class="dur-pill" data-frames="90" onclick="selectDurationFrames(90)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">4s</button>
-            <button type="button" class="dur-pill" data-frames="124" onclick="selectDurationFrames(124)" style="padding:4px 0;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#60a5fa;font-size:11.5px;font-weight:700;cursor:pointer;">5s</button>
-            <button type="button" class="dur-pill" data-frames="192" onclick="selectDurationFrames(192)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">8s</button>
-            <button type="button" class="dur-pill" data-frames="243" onclick="selectDurationFrames(243)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">10s</button>
-            <button type="button" class="dur-pill" data-frames="294" onclick="selectDurationFrames(294)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">12s</button>
-            <button type="button" class="dur-pill" data-frames="362" onclick="selectDurationFrames(362)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">15s</button>
-            <button type="button" class="dur-pill" data-frames="481" title="单次 20 秒实验档位 (建议在 832×480 / 480×832 分辨率下使用；若需 30s~60s 满血画质推荐用下方「🔗 尾帧续写」)" onclick="selectDurationFrames(481)" style="padding:4px 0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">20s</button>
+    <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧当前模式专属生成主按钮 -->
+    <div id="specRow2ActionGrid" style="display:grid;grid-template-columns: 1fr 220px;gap:10px;align-items:center;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1e293b;padding:0 12px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);flex-wrap:nowrap;min-width:0;overflow:hidden;">
+        <div id="framesSliderInner" style="display:flex;align-items:center;gap:8px;flex:1;flex-wrap:nowrap;min-width:0;">
+          <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;flex-shrink:0;">时长/帧数</span>
+          <input type="range" id="videoFrames" min="90" max="481" step="17" value="124" oninput="onFramesSliderChange(this.value)" style="width:105px;accent-color:#3b82f6;cursor:pointer;flex-shrink:0;">
+          <span id="framesValLabel" style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:98px;flex-shrink:0;">124 帧 · 约 5.2 秒</span>
+          <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;flex:1;min-width:210px;max-width:280px;" id="durationPills">
+            <button type="button" class="dur-pill" data-frames="90" onclick="selectDurationFrames(90)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">4s</button>
+            <button type="button" class="dur-pill" data-frames="124" onclick="selectDurationFrames(124)" style="height:24px;padding:0;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#60a5fa;font-size:11.5px;font-weight:700;cursor:pointer;">5s</button>
+            <button type="button" class="dur-pill" data-frames="192" onclick="selectDurationFrames(192)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">8s</button>
+            <button type="button" class="dur-pill" data-frames="243" onclick="selectDurationFrames(243)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">10s</button>
+            <button type="button" class="dur-pill" data-frames="294" onclick="selectDurationFrames(294)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">12s</button>
+            <button type="button" class="dur-pill" data-frames="362" onclick="selectDurationFrames(362)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">15s</button>
+            <button type="button" class="dur-pill" data-frames="481" title="单次 20 秒实验档位 (建议在 832×480 / 480×832 分辨率下使用；若需 30s~60s 满血画质推荐用下方「🔗 尾帧续写」)" onclick="selectDurationFrames(481)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">20s</button>
           </div>
         </div>
-        <div id="avatarSpecHint" style="display:none;font-size:12px;font-weight:600;color:#34d399;">
+        <div id="avatarSpecHint" style="display:none;font-size:12px;font-weight:600;color:#34d399;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           ⚡ LongCat-Avatar-1.6：固定 8 步双蒸馏 (DMD + OPSD) · 声音与口型由上方驱动音频决定 · 视频时长由上方「生成段数」控制
         </div>
-        <label id="autoUpscale2kLabel" title="勾选后：生成完 480p 视频后，自动接力调用 ReCaVSR (Wan2.2-5B) 单步流式超分至 2K 超清并保留原生音轨" style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.42);color:#c4b5fd;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;user-select:none;">
-          <input id="autoUpscale2kChk" type="checkbox" style="width:13.5px;height:13.5px;accent-color:#8b5cf6;cursor:pointer;">
+        <label id="autoUpscale2kLabel" title="勾选后：生成完 480p 视频后，自动接力调用 ReCaVSR (Wan2.2-5B) 单步流式超分至 2K 超清并保留原生音轨" style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;box-sizing:border-box;border-radius:7px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.42);color:#c4b5fd;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;user-select:none;flex-shrink:0;">
+          <input id="autoUpscale2kChk" type="checkbox" style="width:13px;height:13px;accent-color:#8b5cf6;cursor:pointer;margin:0;">
           <span>✨ 生成后自动 2K 超分</span>
         </label>
-        <span id="h3ImagePureTag" style="display:none;align-items:center;gap:5px;padding:3px 9px;border-radius:7px;background:rgba(244,114,182,0.15);border:1px solid rgba(244,114,182,0.42);color:#f9a8d4;font-size:11.5px;font-weight:700;white-space:nowrap;">
-          🖼️ 纯图片直出 (不生成视频 · 满意后可在右侧点「🎭 送入数字人说话」)
+        <span id="h3ImagePureTag" style="display:none;align-items:center;gap:5px;height:26px;padding:0 9px;box-sizing:border-box;border-radius:7px;background:rgba(244,114,182,0.15);border:1px solid rgba(244,114,182,0.42);color:#f9a8d4;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;">
+          🖼️ 纯图片直出 (满意后可在右侧点「🎭 送入数字人说话」)
         </span>
       </div>
 
-      <div style="display:flex;gap:8px;width:100%;height:100%;">
-        <button type="button" id="btnImageOnlyGen" onclick="startVideoGenerate('image')" title="仅生成原生 4K 高清写真/换装 PNG 图片（约 11~17 秒，不生成视频）" style="flex:1;min-height:38px;display:inline-flex;align-items:center;justify-content:center;padding:8px 10px;font-size:13.5px;font-weight:800;border-radius:9px;border:1px solid rgba(244,114,182,0.55);background:linear-gradient(135deg, #ec4899, #9333ea);color:#ffffff;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.45);white-space:nowrap;">
-          📸 仅生成 4K 图片
+      <div style="display:flex;gap:8px;width:100%;height:38px;">
+        <button type="button" id="btnImageOnlyGen" onclick="startVideoGenerate('image')" title="生成原生 4K 高清写真 PNG/JPG 大图（约 11~17 秒）" style="flex:1;height:38px;box-sizing:border-box;display:none;align-items:center;justify-content:center;padding:0 12px;font-size:13.5px;font-weight:800;border-radius:9px;border:1px solid rgba(244,114,182,0.55);background:linear-gradient(135deg, #ec4899, #9333ea);color:#ffffff;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.45);white-space:nowrap;">
+          📸 立即生成 4K 写真图片
         </button>
-        <button class="btn-primary" style="flex:1.15;min-height:38px;justify-content:center;padding:8px 12px;font-size:13.5px;font-weight:800;border-radius:9px;box-shadow:0 6px 16px -4px rgba(59,130,246,0.5);white-space:nowrap;" onclick="startVideoGenerate('video')" id="btnVideoGen">
+        <button class="btn-primary" style="flex:1;height:38px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 12px;font-size:13.5px;font-weight:800;border-radius:9px;box-shadow:0 6px 16px -4px rgba(59,130,246,0.5);white-space:nowrap;" onclick="startVideoGenerate('video')" id="btnVideoGen">
           🎬 生成有声视频
         </button>
       </div>
@@ -5188,13 +5188,15 @@ function switchMiniMaxMode(mode) {
       avSpecHint.style.display = 'block';
       avSpecHint.innerText = '⚡ MiniMax-H3-Image：固定 6 步蒸馏 (CFG=1.0 · 免负面词)';
     }
-    if (btnImgGen && btnImgGen.getAttribute('data-running') !== '1') {
-      btnImgGen.innerText = '📸 仅生成 4K 写真图片';
-      btnImgGen.style.flex = '1.35';
+    if (btnImgGen) {
+      btnImgGen.style.display = 'inline-flex';
+      if (btnImgGen.getAttribute('data-running') !== '1') {
+        btnImgGen.innerText = '📸 立即生成 4K 写真图片';
+        btnImgGen.style.flex = '1';
+      }
     }
-    if (btnGen && btnGen.getAttribute('data-running') !== '1') {
-      btnGen.innerText = '🎬 生成有声视频';
-      btnGen.style.flex = '0.95';
+    if (btnGen) {
+      btnGen.style.display = 'none';
     }
     if (pEl) {
       pEl.rows = 4;
@@ -5224,13 +5226,15 @@ function switchMiniMaxMode(mode) {
       avSpecHint.style.display = 'block';
       avSpecHint.innerText = '⚡ LongCat-Avatar-1.6：固定 8 步双蒸馏 (DMD + OPSD) · 声音与口型由上方驱动音频决定 · 视频时长由上方「生成段数」控制';
     }
-    if (btnImgGen && btnImgGen.getAttribute('data-running') !== '1') {
-      btnImgGen.innerText = '📸 仅生成 4K 图片';
-      btnImgGen.style.flex = '1';
+    if (btnImgGen) {
+      btnImgGen.style.display = 'none';
     }
-    if (btnGen && btnGen.getAttribute('data-running') !== '1') {
-      btnGen.innerText = '🎬 生成数字人视频';
-      btnGen.style.flex = '1.2';
+    if (btnGen) {
+      btnGen.style.display = 'inline-flex';
+      if (btnGen.getAttribute('data-running') !== '1') {
+        btnGen.innerText = '🎬 生成数字人视频';
+        btnGen.style.flex = '1';
+      }
     }
     if (pEl) {
       pEl.rows = 3;
@@ -5266,13 +5270,15 @@ function switchMiniMaxMode(mode) {
     if (sr2kLbl) sr2kLbl.style.display = 'inline-flex';
     if (pureImgTag) pureImgTag.style.display = 'none';
     if (avSpecHint) avSpecHint.style.display = 'none';
-    if (btnImgGen && btnImgGen.getAttribute('data-running') !== '1') {
-      btnImgGen.innerText = '📸 仅生成 4K 图片';
-      btnImgGen.style.flex = '1';
+    if (btnImgGen) {
+      btnImgGen.style.display = 'none';
     }
-    if (btnGen && btnGen.getAttribute('data-running') !== '1') {
-      btnGen.innerText = '🎬 生成有声视频';
-      btnGen.style.flex = '1.2';
+    if (btnGen) {
+      btnGen.style.display = 'inline-flex';
+      if (btnGen.getAttribute('data-running') !== '1') {
+        btnGen.innerText = isFl ? '🎬 生成首尾帧有声视频' : '🎬 生成有声视频';
+        btnGen.style.flex = '1';
+      }
     }
     if (pEl) {
       pEl.rows = 4;
@@ -7383,7 +7389,7 @@ function setVideoBtnRunningState(running, customLabel) {
       btnImg.style.opacity = '1';
       btnImg.style.background = 'linear-gradient(135deg, #ec4899, #9333ea)';
       btnImg.style.boxShadow = '0 6px 16px -4px rgba(236,72,153,0.45)';
-      btnImg.innerText = currentMiniMaxMode === 'image' ? '📸 仅生成 4K 写真图片' : '📸 仅生成 4K 图片';
+      btnImg.innerText = '📸 立即生成 4K 写真图片';
     }
     if (btnFus) {
       btnFus.disabled = false;
@@ -7398,7 +7404,7 @@ function setVideoBtnRunningState(running, customLabel) {
       btnVid.style.opacity = '1';
       btnVid.style.background = '';
       btnVid.style.boxShadow = '0 6px 16px -4px rgba(59,130,246,0.5)';
-      btnVid.innerText = currentMiniMaxMode === 'avatar' ? '🎬 生成数字人视频' : '🎬 生成有声视频';
+      btnVid.innerText = currentMiniMaxMode === 'avatar' ? '🎬 生成数字人视频' : (currentMiniMaxMode === 'fl2va' ? '🎬 生成首尾帧有声视频' : '🎬 生成有声视频');
     }
     if (!upscalePollTimer) setStopButtonsVisible(false);
   }
