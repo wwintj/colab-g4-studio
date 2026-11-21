@@ -2286,36 +2286,36 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <select id="fusionMultiActionMode" style="display:none;"><option value="combine" selected>combine</option></select>
     <div id="fusionTargetCardsGrid" style="display:none;"></div>
 
-    <!-- 底部单行紧凑控制栏：补充要求 + 发型模式 + 比例 + 角色定妆 + 一键合成 (全部一行对齐，不换行) -->
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
-      <input type="text" id="fusionPropsActionInput" placeholder="💬 补充要求 (选填，不填即自动按上方槽位合成)..." style="flex:1;min-width:140px;padding:7px 10px;font-size:12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-      <select id="fusionHairModeSelect" style="padding:7px 8px;font-size:12px;font-weight:700;border-radius:8px;border:1px solid #ec4899;background:#0f172a;color:#fbcfe8;flex-shrink:0;" title="选择合成后使用哪张图的发型">
-        <option value="keep_face_hair" selected>💇 用①人脸照发型 (连头发一起换)</option>
-        <option value="keep_target_hair">👑 用②目标图发型 (只换脸保原发型)</option>
+    <!-- 底部单行紧凑控制栏：补充要求 + 发型模式 + 比例 + 角色定妆 + 四视图 + 一键合成 (全部严格在容器宽度内一行对齐，绝不溢出) -->
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;width:100%;box-sizing:border-box;">
+      <input type="text" id="fusionPropsActionInput" placeholder="💬 补充要求 (选填，不填即自动按上方槽位合成)..." style="flex:1;min-width:100px;padding:7px 10px;font-size:12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+      <select id="fusionHairModeSelect" style="width:156px;padding:7px 6px;font-size:11.5px;font-weight:700;border-radius:8px;border:1px solid #ec4899;background:#0f172a;color:#fbcfe8;flex-shrink:0;" title="选择合成后使用哪张图的发型">
+        <option value="keep_face_hair" selected>💇 用①人脸发型(连发换)</option>
+        <option value="keep_target_hair">👑 用②目标发型(只换脸)</option>
       </select>
-      <select id="fusionResSelect" style="padding:7px 8px;font-size:12px;font-weight:700;border-radius:8px;border:1px solid #c084fc;background:#0f172a;color:#f8fafc;flex-shrink:0;">
+      <select id="fusionResSelect" style="width:104px;padding:7px 6px;font-size:11.5px;font-weight:700;border-radius:8px;border:1px solid #c084fc;background:#0f172a;color:#f8fafc;flex-shrink:0;" title="输出画幅比例">
         <option value="auto" selected>📐 自动比例</option>
         <option value="1152x2048">📱 9:16 竖屏 (1152×2048)</option>
         <option value="2048x1152">📺 16:9 横屏 (2048×1152)</option>
         <option value="3552x4736">🖼️ 3:4 4K超清 (3552×4736)</option>
       </select>
-      <div style="display:flex;align-items:center;gap:4px;background:rgba(15,23,42,0.9);padding:4px 7px;border-radius:8px;border:1px solid rgba(16,185,129,0.4);flex-shrink:0;">
-        <select id="selFusionTargetRole" style="padding:3px 4px;font-size:11.5px;font-weight:700;border-radius:5px;border:1px solid #10b981;background:#020617;color:#a7f3d0;">
-          <option value="A">角色A</option>
-          <option value="B">角色B</option>
-          <option value="C">角色C</option>
-          <option value="D">角色D</option>
-          <option value="E">角色E</option>
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(15,23,42,0.9);padding:4px 6px;border-radius:8px;border:1px solid rgba(16,185,129,0.4);flex-shrink:0;">
+        <select id="selFusionTargetRole" style="max-width:96px;padding:3px 4px;font-size:11.5px;font-weight:700;border-radius:5px;border:1px solid #10b981;background:#020617;color:#a7f3d0;">
+          <option value="A">🎭 角色A</option>
+          <option value="B">🎭 角色B</option>
+          <option value="C">🎭 角色C</option>
+          <option value="D">🎭 角色D</option>
+          <option value="E">🎭 角色E</option>
         </select>
-        <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:3px 7px;font-size:11.5px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把生成好的图直接设为短剧对应角色定妆照">📌设为定妆</button>
+        <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:3px 6px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把生成好的图直接设为短剧对应角色定妆照">📌定妆</button>
       </div>
-      <button type="button" id="btnRunFusionTurnaround" onclick="startCharacterTurnaroundSheetGenerate()" style="padding:7px 11px;font-size:12px;font-weight:900;border-radius:8px;border:1.5px solid #38bdf8;background:linear-gradient(135deg,rgba(14,165,233,0.28),rgba(99,102,241,0.28));color:#bae6fd;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="AusBoss (3444714) 角色四视图设定集：一键直出同一角色『正面 + 3/4侧 + 90°正侧 + 背面』同框四视图定妆卡">
+      <button type="button" id="btnRunFusionTurnaround" onclick="startCharacterTurnaroundSheetGenerate()" style="padding:7px 10px;font-size:11.5px;font-weight:900;border-radius:8px;border:1.5px solid #38bdf8;background:linear-gradient(135deg,rgba(14,165,233,0.28),rgba(99,102,241,0.28));color:#bae6fd;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="AusBoss (3444714) 角色四视图设定集：一键直出同一角色『正面 + 3/4侧 + 90°正侧 + 背面』同框四视图定妆卡">
         📐 四视图定妆卡
       </button>
-      <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="padding:7px 16px;font-size:13px;font-weight:900;border-radius:8px;border:none;background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 6px 18px -4px rgba(236,72,153,0.55);white-space:nowrap;flex-shrink:0;">
+      <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="padding:7px 13px;font-size:12.5px;font-weight:900;border-radius:8px;border:none;background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 6px 18px -4px rgba(236,72,153,0.55);white-space:nowrap;flex-shrink:0;">
         🪄 一键开始合成
       </button>
-      <button type="button" id="btnStopFusionStudio" onclick="stopFusionBatchGenerate()" style="display:none;padding:7px 12px;font-size:12px;font-weight:800;border-radius:8px;border:1px solid #ef4444;background:rgba(239,68,68,0.22);color:#fca5a5;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+      <button type="button" id="btnStopFusionStudio" onclick="stopFusionBatchGenerate()" style="display:none;padding:7px 10px;font-size:12px;font-weight:800;border-radius:8px;border:1px solid #ef4444;background:rgba(239,68,68,0.22);color:#fca5a5;cursor:pointer;white-space:nowrap;flex-shrink:0;">
         🛑 停止
       </button>
     </div>
@@ -5052,7 +5052,9 @@ function switchMiniMaxMode(mode) {
       if (isAv) resSel.value = '480x832';
     }
   }
+  const loraBar = document.getElementById('h3SentinelLoraBar');
   if (isImg) {
+    if (loraBar) loraBar.style.display = 'none';
     if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 原生 4K 无审查写真 & 免Mask锁脸换装工作台';
     if (badgeEl) badgeEl.innerText = '11.6秒原生1680万像素4K直出 + Heretic 32B无审查编码器 + Picture+Subject免Mask锁脸换装';
     if (pSecTitle) pSecTitle.innerText = '3. 4K 写真画面提示词 / Picture + Subject 免Mask锁脸换装指令';
@@ -5088,6 +5090,7 @@ function switchMiniMaxMode(mode) {
       }
     }
   } else if (isAv) {
+    if (loraBar) loraBar.style.display = 'none';
     if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
     if (badgeEl) badgeEl.innerText = 'Whisper-v3 唇形同步 + DMD/OPSD 8步双LoRA蒸馏 + Kim_Vocal_2 人声分离';
     if (pSecTitle) pSecTitle.innerText = '3. 纯画面与人物神态描述 Prompt（仅写镜头/表情/眼神/光影，不要把台词写在这里）';
@@ -5124,6 +5127,7 @@ function switchMiniMaxMode(mode) {
       autoSplitAvatarPromptAndTts(pEl);
     }
   } else {
+    if (loraBar) loraBar.style.display = 'flex';
     if (titleEl) titleEl.innerText = '🎬 MiniMax-H3 多模态有声视频创作工作台';
     if (badgeEl) badgeEl.innerText = '32kHz 原生立体声音轨 + 32B 视觉编码器';
     if (pSecTitle) pSecTitle.innerText = '镜头与多模态提示词';
@@ -5176,7 +5180,7 @@ function syncFusionRoleDropdown() {
   sel.innerHTML = roles.map(r => {
     const cleanName = (r.name || '').trim();
     const showSuffix = cleanName && cleanName !== `角色${r.id}` && cleanName !== r.id;
-    return `<option value="${escapeHtmlAttr(r.id)}" ${r.id === curVal ? 'selected' : ''}>🎭 短剧角色${escapeHtmlAttr(r.id)}${showSuffix ? ' (' + escapeHtmlAttr(cleanName) + ')' : ''}</option>`;
+    return `<option value="${escapeHtmlAttr(r.id)}" ${r.id === curVal ? 'selected' : ''}>🎭 角色${escapeHtmlAttr(r.id)}${showSuffix ? '(' + escapeHtmlAttr(cleanName) + ')' : ''}</option>`;
   }).join('');
 }
 
@@ -5200,13 +5204,17 @@ function updateFusionRunBtnLabel() {
   if (hasPose) labels.push('姿势');
   if (hasScene) labels.push('场景');
   if (labels.length === 4) {
-    btn.innerText = '🪄 一键四合一合成 (人脸+服饰+姿势+场景)';
+    btn.innerText = '🪄 一键四合一合成';
+    btn.title = '一键四合一合成 (人脸+服饰+姿势+场景)';
   } else if (labels.length === 3) {
-    btn.innerText = `🪄 一键三合一合成 (${labels.join('+')})`;
+    btn.innerText = '🪄 一键三合一合成';
+    btn.title = `一键三合一合成 (${labels.join('+')})`;
   } else if (labels.length === 2) {
-    btn.innerText = `🪄 一键二合一合成 (${labels.join('+')})`;
+    btn.innerText = '🪄 一键二合一合成';
+    btn.title = `一键二合一合成 (${labels.join('+')})`;
   } else {
     btn.innerText = '🪄 一键开始合成';
+    btn.title = '一键开始合成';
   }
 }
 
