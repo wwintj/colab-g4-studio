@@ -11276,23 +11276,14 @@ p.wait()
                 self._send_json({"ok": False, "error": "缺少素材 ID 或路径"})
                 return
             try:
-                local_asset_cache = LOCAL_MOVIES_DIR / "posewear_cache" / full_rel.replace("/", "_")
-                if local_asset_cache.is_file() and local_asset_cache.stat().st_size > 4096:
-                    raw_bytes = local_asset_cache.read_bytes()
+                if full_rel.startswith("http"):
+                    img_url = full_rel
+                elif full_rel.startswith("img/"):
+                    img_url = f"https://ai-portrait-gallery.pages.dev/{full_rel}"
                 else:
-                    if full_rel.startswith("http"):
-                        img_url = full_rel
-                    elif full_rel.startswith("img/"):
-                        img_url = f"https://ai-portrait-gallery.pages.dev/{full_rel}"
-                    else:
-                        img_url = f"https://posewear-assets-96b.pages.dev/{full_rel}"
-                    req_im = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
-                    raw_bytes = urllib.request.urlopen(req_im, timeout=25).read()
-                    try:
-                        local_asset_cache.parent.mkdir(parents=True, exist_ok=True)
-                        local_asset_cache.write_bytes(raw_bytes)
-                    except Exception:
-                        pass
+                    img_url = f"https://posewear-assets-96b.pages.dev/{full_rel}"
+                req_im = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
+                raw_bytes = urllib.request.urlopen(req_im, timeout=25).read()
 
                 if target in ("FUSION_SLOT_0", "FUSION_TARGET"):
                     from PIL import Image
