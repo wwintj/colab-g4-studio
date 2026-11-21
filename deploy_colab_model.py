@@ -1460,69 +1460,76 @@ def _start_minimax_h3_server_on_30000(target_dir: str):
         )
 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    already_loading_remote = False
     try:
-        with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
+        with opener.open("http://127.0.0.1:30000/health", timeout=3) as resp:
             if resp.status == 200:
                 h_data = json.loads(resp.read().decode("utf-8"))
                 if h_data.get("engine") == "minimax-h3":
                     log("✅ 检测到 MiniMax-H3 (33B · 无审查) 视频推理引擎已在 GPU 显存中运行，直接复用！")
                     return
+    except urllib.error.HTTPError as he:
+        if he.code == 503 and subprocess.getoutput("pgrep -f '[m]inimax_server\\.py'").strip():
+            log("⏳ 检测到 MiniMax-H3 正在后台装载显存中，直接接力等待完成 (不重复重启)...")
+            already_loading_remote = True
     except Exception:
         pass
 
-    log("正在释放旧模型显存 (保留内存盘/NVMe 中的权重以便随时极速切回)...")
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
-    time.sleep(2)
+    proc = None
+    if not already_loading_remote:
+        log("正在释放旧模型显存 (保留内存盘/NVMe 中的权重以便随时极速切回)...")
+        subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+        time.sleep(2)
 
-    if not os.path.isdir("/content/DiffSynth-Studio/.git"):
-        shutil.rmtree("/content/DiffSynth-Studio", ignore_errors=True)
-        log("正在安装 DiffSynth-Studio 音视频管线依赖 (首次约需 25 秒)...")
-        for _clone_try in range(3):
-            r_cl = subprocess.run(
-                ["git", "clone", "--depth", "1", "https://github.com/modelscope/DiffSynth-Studio.git", "/content/DiffSynth-Studio"],
-                check=False,
-            )
-            if r_cl.returncode == 0 and os.path.isdir("/content/DiffSynth-Studio/.git"):
-                break
+        if not os.path.isdir("/content/DiffSynth-Studio/.git"):
             shutil.rmtree("/content/DiffSynth-Studio", ignore_errors=True)
-            time.sleep(2)
-    missing_pkgs = []
-    for pkg, mod in [
-        ("av", "av"),
-        ("soundfile", "soundfile"),
-        ("librosa", "librosa"),
-        ("einops", "einops"),
-        ("qwen_vl_utils", "qwen_vl_utils"),
-        ("imageio", "imageio"),
-        ("imageio_ffmpeg", "imageio_ffmpeg"),
-        ("modelscope", "modelscope"),
-        ("sageattention", "sageattention"),
-    ]:
-        try:
-            __import__(mod)
-        except ImportError:
-            missing_pkgs.append(pkg.replace("_", "-"))
-    if missing_pkgs:
-        log(f"正在补齐音视频合成依赖 ({', '.join(missing_pkgs)})...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_pkgs, check=True)
+            log("正在安装 DiffSynth-Studio 音视频管线依赖 (首次约需 25 秒)...")
+            for _clone_try in range(3):
+                r_cl = subprocess.run(
+                    ["git", "clone", "--depth", "1", "https://github.com/modelscope/DiffSynth-Studio.git", "/content/DiffSynth-Studio"],
+                    check=False,
+                )
+                if r_cl.returncode == 0 and os.path.isdir("/content/DiffSynth-Studio/.git"):
+                    break
+                shutil.rmtree("/content/DiffSynth-Studio", ignore_errors=True)
+                time.sleep(2)
+        missing_pkgs = []
+        for pkg, mod in [
+            ("av", "av"),
+            ("soundfile", "soundfile"),
+            ("librosa", "librosa"),
+            ("einops", "einops"),
+            ("qwen_vl_utils", "qwen_vl_utils"),
+            ("imageio", "imageio"),
+            ("imageio_ffmpeg", "imageio_ffmpeg"),
+            ("modelscope", "modelscope"),
+            ("sageattention", "sageattention"),
+        ]:
+            try:
+                __import__(mod)
+            except ImportError:
+                missing_pkgs.append(pkg.replace("_", "-"))
+        if missing_pkgs:
+            log(f"正在补齐音视频合成依赖 ({', '.join(missing_pkgs)})...")
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q"] + missing_pkgs, check=True)
 
-    server_py = "/content/minimax_server.py"
-    with open(server_py, "w", encoding="utf-8") as wf:
-        wf.write(MINIMAX_SERVER_CODE)
+        server_py = "/content/minimax_server.py"
+        with open(server_py, "w", encoding="utf-8") as wf:
+            wf.write(MINIMAX_SERVER_CODE)
 
-    env = os.environ.copy()
-    env["MINIMAX_MODEL_DIR"] = target_dir
-    log("🚀 正在启动 MiniMax-H3 (33B · 原生BF16 + 无审查编码器) 视频引擎并预热至 96GB GPU 显存...")
-    with open("/content/minimax_server.log", "w") as lf:
-        proc = subprocess.Popen(
-            [sys.executable, "-u", server_py],
-            env=env,
-            stdout=lf,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-            start_new_session=True,
-        )
+        env = os.environ.copy()
+        env["MINIMAX_MODEL_DIR"] = target_dir
+        log("🚀 正在启动 MiniMax-H3 (33B · 原生BF16 + 无审查编码器) 视频引擎并预热至 96GB GPU 显存...")
+        with open("/content/minimax_server.log", "w") as lf:
+            proc = subprocess.Popen(
+                [sys.executable, "-u", server_py],
+                env=env,
+                stdout=lf,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
 
     t0 = time.time()
     expected_vram_gb = 72.4
@@ -1536,7 +1543,7 @@ def _start_minimax_h3_server_on_30000(target_dir: str):
             return 0.0
 
     while time.time() - t0 < 600:
-        if proc.poll() is not None:
+        if (proc is not None and proc.poll() is not None) or (proc is None and not subprocess.getoutput("pgrep -f '[m]inimax_server\\.py'").strip()):
             tail = subprocess.getoutput("tail -n 30 /content/minimax_server.log")
             raise RuntimeError(f"MiniMax-H3 引擎异常退出:\n{tail}")
         used_vram_gb = _read_gpu_used_gb()
@@ -6816,6 +6823,41 @@ def run_local_wizard():
     saved_cfg = load_local_endpoint_config()
     api_key = os.environ.get("COLAB_API_KEY") or saved_cfg.get("api_key") or f"sk-colab-{secrets.token_hex(8)}"
     hf_tok = os.environ.get("HF_TOKEN") or saved_cfg.get("hf_token") or ""
+
+    if not args.download_only and saved_cfg.get("tunnel_url"):
+        expected_eng = (
+            "minimax-h3-image" if model_folder == "MiniMax-H3-Image" else (
+                "longcat-avatar" if model_folder.startswith("LongCat-Video-Avatar") else (
+                    "minimax-h3-t4" if model_folder == "MiniMax-H3-T4-GGUF" else (
+                        "minimax-h3" if model_folder == "MiniMax-H3" else ""
+                    )
+                )
+            )
+        )
+        if expected_eng:
+            try:
+                op_fast = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                with op_fast.open(f"http://127.0.0.1:{args.proxy_port}/health", timeout=4) as h_resp:
+                    if h_resp.status == 200:
+                        hd_fast = json.loads(h_resp.read().decode("utf-8"))
+                        if hd_fast.get("engine") == expected_eng:
+                            tun_u = str(saved_cfg.get("tunnel_url") or "").rstrip("/")
+                            print(f"\n[ColabDeploy] ✅ 检测到 {model_folder} 已在云端 GPU 显存中常驻就绪，直接零等待复用！")
+                            print(f"TUNNEL_BASE_URL={tun_u}/v1")
+                            print(f"API_KEY={api_key}")
+                            print(f"MODEL_ID={hf_repo or model_folder}")
+                            save_local_endpoint_config({
+                                "api_key": api_key,
+                                "tunnel_url": tun_u,
+                                "model_id": hf_repo or model_folder,
+                                "model_folder": model_folder,
+                                "last_activity_ts": time.time(),
+                                "deploying": False,
+                            })
+                            return
+            except Exception:
+                pass
+
     save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": True})
 
     def _allocate_colab_session(sess_id: str) -> None:

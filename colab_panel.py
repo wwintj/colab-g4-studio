@@ -12107,43 +12107,102 @@ p.wait()
                 method="POST",
             )
             need_auto_switch = bool(engine_mismatch)
+            remote_already_loading = False
             if not need_auto_switch:
-                try:
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        resp_obj = json.loads(resp.read().decode("utf-8"))
-                        if resp_obj.get("ok"):
-                            self._send_json(resp_obj)
-                            return
+                for _try_idx in range(4):
+                    try:
+                        req_try = urllib.request.Request(
+                            "http://127.0.0.1:30000/v1/video/generations",
+                            data=req_data,
+                            headers={
+                                "Content-Type": "application/json",
+                                "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                            },
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req_try, timeout=25) as resp:
+                            resp_obj = json.loads(resp.read().decode("utf-8"))
+                            if resp_obj.get("ok"):
+                                self._send_json(resp_obj)
+                                return
+                            if "尚未完成显存加载" in str(resp_obj.get("error", "")):
+                                remote_already_loading = True
+                                need_auto_switch = True
+                                break
+                            if "正在生成中" in str(resp_obj.get("error", "")):
+                                self._send_json(resp_obj)
+                                return
+                            need_auto_switch = True
+                            break
+                    except urllib.error.HTTPError as he:
+                        if he.code in (400, 409):
+                            try:
+                                err_obj = json.loads(he.read().decode("utf-8"))
+                                self._send_json(err_obj)
+                                return
+                            except Exception:
+                                pass
+                        if he.code == 503:
+                            try:
+                                err_obj = json.loads(he.read().decode("utf-8"))
+                                err_txt = str(err_obj.get("error", ""))
+                                if "尚未完成显存加载" in err_txt:
+                                    remote_already_loading = True
+                                    need_auto_switch = True
+                                    break
+                                if "Engine mismatch" in err_txt:
+                                    need_auto_switch = True
+                                    break
+                            except Exception:
+                                pass
+                        if _try_idx < 3:
+                            time.sleep(1.2)
+                            continue
                         need_auto_switch = True
-                except urllib.error.HTTPError as he:
-                    if he.code in (400, 409):
-                        try:
-                            err_obj = json.loads(he.read().decode("utf-8"))
-                            self._send_json(err_obj)
-                            return
-                        except Exception:
-                            pass
-                    need_auto_switch = True
-                except Exception:
-                    need_auto_switch = True
+                    except Exception:
+                        if _try_idx < 3:
+                            time.sleep(1.2)
+                            continue
+                        need_auto_switch = True
 
             if need_auto_switch:
+                want_image = (req_mode == "image")
+                want_avatar = (req_mode == "avatar") or (not want_image and active_folder.startswith("LongCat-Video-Avatar") and req_mode not in ("t2va", "fl2va"))
+                want_eng = "minimax-h3-image" if want_image else ("longcat-avatar" if want_avatar else "minimax-h3")
+                if not remote_already_loading and not engine_mismatch:
+                    try:
+                        with urllib.request.urlopen("http://127.0.0.1:30000/health", timeout=6) as hr:
+                            hd = json.loads(hr.read().decode("utf-8"))
+                            cur_eng = str(hd.get("engine") or "")
+                            if cur_eng == want_eng or (want_eng == "minimax-h3" and cur_eng in ("minimax-h3", "minimax-h3-t4")):
+                                # 引擎已在显存中就绪，直接再提交一次无需重部署
+                                with urllib.request.urlopen(req, timeout=25) as resp2:
+                                    self._send_json(json.loads(resp2.read().decode("utf-8")))
+                                    return
+                    except urllib.error.HTTPError as h_err:
+                        if h_err.code == 503:
+                            remote_already_loading = True
+                    except Exception:
+                        pass
+
                 _PENDING_VIDEO_JOB["active"] = True
                 _PENDING_VIDEO_JOB["payload"] = payload
                 _PENDING_VIDEO_JOB["error"] = ""
                 _PENDING_VIDEO_JOB["started_at"] = time.time()
-                want_image = (req_mode == "image")
-                want_avatar = (req_mode == "avatar") or (not want_image and active_folder.startswith("LongCat-Video-Avatar") and req_mode not in ("t2va", "fl2va"))
                 if want_image:
                     target_label = "MiniMax-H3-Image (4K无审查黄金铁三角)"
                 elif want_avatar:
                     target_label = "LongCat-Avatar-1.6 (INT8版)" if is_t4_account else "LongCat-Video-Avatar-1.6"
                 else:
                     target_label = "MiniMax-H3 (T4 量化版)" if is_t4_account else "MiniMax-H3"
-                _append_panel_log(f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即执行任务...")
+                _append_panel_log(
+                    f"⏳ [等待引擎就绪] {target_label} 正在完成显存预热，就绪后将立即执行任务..."
+                    if remote_already_loading
+                    else f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即执行任务..."
+                )
                 with _DEPLOY_LOCK:
                     already_deploying = bool(_DEPLOY_STATE.get("running"))
-                if not already_deploying:
+                if not already_deploying and not remote_already_loading:
                     if want_image:
                         _start_deploy_background(
                             repo="Comfy-Org/MiniMax-H3-Image",
