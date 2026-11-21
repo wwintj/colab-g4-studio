@@ -2424,10 +2424,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <option value="约 120 秒 2分钟（建议 32~40 个分镜）">⏱️ 约 120 秒 (32~40 镜)</option>
           </select>
           <select id="selAiVisualStyle" style="padding:4px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
-            <option value="写实真人电影级质感，85mm浅景深，真实细腻皮肤纹理，自然柔和光影" selected>🎥 写实真人电影级</option>
-            <option value="唯美中国古装仙侠剧质感，精致古装汉服与发髻配饰，电影级逆光氛围">🏮 中国古装/仙侠剧</option>
-            <option value="现代都市高质感影视剧，时尚精致妆造，电影级都市光影与景深">🏙️ 现代都市影视剧</option>
-            <option value="新海诚高画质唯美2D动漫电影风格，绚丽光影与细腻人物表情">🌸 唯美2D动漫电影</option>
+            <option value="写实真人电影级质感，85mm f/1.4散景(Bokeh)，真实细腻皮肤纹理，自然柔和光影" selected>🎥 写实真人电影级 (#105 f/1.4散景)</option>
+            <option value="写实真人电影级质感，电影青橙色调(Teal and orange, 阴影偏青、肤色与高光偏暖橙)，85mm f/1.4大光圈散景，轻微胶片颗粒(Film grain)">🎬 电影青橙色调 (#117 Teal & Orange)</option>
+            <option value="写实真人电影级质感，伦勃朗戏剧布光(Rembrandt lighting, 侧上方45度主光，背光脸颊留三角亮区)，低调暗调光影(Low-key lighting)，高对比度电影叙事">🕯️ 伦勃朗暗调悬疑/情感 (#101+#114)</option>
+            <option value="写实真人电影级质感，黄金时刻低角度暖阳逆光(Golden hour backlighting, 发丝边缘发亮轮廓光 Rim light)，温暖镜头眩光与柔美散景">🌅 黄金时刻唯美逆光 (#097+#103)</option>
+            <option value="写实真人电影级质感，蓝调时刻(Blue hour, 日落后深蓝天空与室内暖黄灯光冷暖交织)，大光圈夜景圆润散景光斑">🌃 蓝调时刻都市冷暖 (#104+#105)</option>
+            <option value="唯美中国古装仙侠剧质感，精致古装汉服与发髻配饰，电影级逆光发丝轮廓光(Backlighting & Rim light)与柔美浅景深">🏮 中国古装/仙侠剧 (#097逆光轮廓)</option>
+            <option value="现代都市高质感影视剧，时尚精致妆造，电影级都市光影与85mm浅景深散景">🏙️ 现代都市影视剧</option>
+            <option value="新海诚高画质唯美2D动漫电影风格，绚丽黄金时刻光影与细腻人物表情">🌸 唯美2D动漫电影</option>
+            <option value="东方传统水墨画风格(Ink wash painting / sumi-e)，浓淡墨色晕染与宣纸留白意境">[#195] 东方水墨画风 (Ink Wash)</option>
+            <option value="唯美水彩画风格(Watercolor illustration)，柔和色彩晕染与纸纹留白质感">[#193] 唯美水彩手绘 (Watercolor)</option>
           </select>
         </div>
         <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;transition:all 0.2s;">📋 一键复制【发给外部 AI 的编剧指令】</button>
@@ -7946,6 +7952,14 @@ ${storySection}
 【目标总时长与分镜规模】：${targetDur}（单镜时长可在 1.5秒 ~ 10.0秒 之间根据戏剧节奏自由设定，总时长不限死）
 【全局视觉画风】：${visStyle}
 ${castSectionTxt}
+【🎥 Motion-Prompt 电影级运镜、构图与光影铁律（杜绝画面重复与口型串音！）】：
+1. 相邻镜头的【运镜】与景别绝对禁止连续雷同！请从以下 Motion-Prompt 标准影视术语库中交替选用：
+   - 镜头运动：#027 推镜头 (Dolly in, 相机物理推进靠近主体，不要变焦) / #025 水平摇镜头 (Pan) / #026 垂直摇镜头 (Tilt) / #029 跟拍 (Tracking shot) / #030 环绕镜头 (Orbit / Arc shot) / #031 升镜头 (Crane up) / #033 焦点转移 (Rack focus, 前后景虚实切换) / #173 斯坦尼康平稳跟拍 (Steadicam) / #175 固定镜头 (Locked-off shot)
+   - 角度与景别：#183 定场远景 (Establishing shot) / #180 过肩镜头 (Over-the-shoulder, 前景肩膀虚化) / #177 低角度仰拍 (Low angle) / #178 高角度俯拍 (High angle) / #179 第一人称视角 (POV shot) / #184 局部大特写 (Extreme close-up, 放大眼神、嘴唇或指尖) / #185 细节插入镜头 (Insert shot)
+   - 布光与影调：#097 逆光发丝光 (Backlighting) / #098 轮廓光 (Rim light) / #100 分割光 (Split lighting, 半明半暗) / #101 伦勃朗光 (Rembrandt lighting, 侧上方45°打光背光颊留亮三角) / #102 蝴蝶光 (Butterfly lighting) / #105 f/1.4大光圈散景 (Bokeh)
+2. 凡是带有角色开口说【对白】的镜头（且非接吻/奔跑等双人大动作），该镜的【出场角色】与【画面】必须设计为「当前说话角色的单人近景或面部特写」（或前景仅留虚化肩背的 #180 过肩单人特写），画面中只允许露出说话人一张嘴，严禁在说话镜头里同时露出两个人的嘴巴（否则数字人引擎会让旁听者的嘴也跟着动）！
+3. 凡是需要 #033 焦点转移 (Rack focus) 或明显连续动作变化的无对白/大动作镜头，请在【画面】中用「起幅为...；随后...」描述，系统会自动生成首尾双关键帧驱动 MiniMax-H3 FL2VA。
+
 请严格按照以下结构化格式输出（不要省略标签，以便工作流引擎 100% 自动拆解为多角色锁脸定妆卡、首尾关键帧、数字人配音与环境音视频节点）：
 
 【剧名】《在此填写剧名》
@@ -7956,9 +7970,9 @@ ${castSectionTxt}
 
 【分镜】
 镜头01【时长】2.5秒
-【出场角色】A（请填该镜头画面中实际出现的角色代号，如 A 或 A, B 或 B, C, D；纯空镜填“无”；注意单镜头同框人物尽量控制在 1~3 人以内以保证最高锁脸精度）
-【运镜】固定镜头 / 缓慢推镜 / 倒退跟拍 / 越肩正反打（写清机位与景别，如全景/中近景/面部特写）
-【画面】（详细描述画面中人物的位置、动作起止、表情神态变化、光影与环境细节；若该镜需要明显的前后焦点转移或大跨度连续动作，可用“起幅...；随后...”描述，系统会自动生成首尾双关键帧）
+【出场角色】A（请填该镜头画面中实际出现的角色代号，如 A 或 A, B；注意：有对白的说话镜头请只填当前说话的那 1 位角色代号，纯空镜或手部局部特写填“无”）
+【运镜】（优先采用 Motion-Prompt 标准术语，如：#180 过肩镜头 Over-the-shoulder / #027 缓慢推镜头 Dolly in / #033 焦点转移 Rack focus / #184 眼部大特写 Extreme close-up / #177 低角度镜头 Low angle + #101 伦勃朗光 Rembrandt lighting）
+【画面】（详细描述画面中人物的位置、动作起止、表情神态变化、光影与环境细节；若该镜需要明显的前后焦点转移或大跨度连续动作，请用“起幅为...；随后...”描述，系统会自动生成首尾双关键帧）
 【环境音】（描述该镜头的纯自然环境音效，如雨声、溪水声、市集人群声、脚步声等）
 【对白】无（若有角色开口说话，请严格保留用户原稿台词，写如 A："台词内容" 或 B："台词内容" 或 C："台词内容"；支持在台词开头或中间加入 [Dissatisfaction-hnn] 傲娇哼声、[Sigh] 叹气、[Laughter] 轻笑、[Breathing] 呼吸、[Surprise-ah] 惊呼 等真人气口标签）
 【音色】（若有对白，请优先使用该角色上方绑定的音色，或从以下官方音色中选填：ming:灵小柔 / ming:灵雨汐_中性 / ming:灵黛嗔_生气 / ming:灵采薇_悲伤 / ming:灵梦 / ming:妩媚妲己 / ming:灵信远_中性 / ming:灵朗 / ming:灵宇 / ming:灵楷 / ming:灵孤影_厌恶 / ming:灵孤影_悲伤 / ming:灵孤影_生气 / ming:甄嬛传_四郎）
@@ -11183,6 +11197,75 @@ def _save_drama_workflow(wf: Dict[str, Any]):
     DRAMA_WORKFLOW_FILE.write_text(json.dumps(wf, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+# showheyohtaki/motion-prompt 影视运镜、构图与光影双语词库 (#025-#048, #097-#120, #169-#216)
+_MOTION_PROMPT_CAMERA_PHOTO_SPECS = [
+    ("#025", ("水平摇镜头", "横摇", "pan "), "Pan shot (相机机位固定，平滑向左或向右水平摇摄)"),
+    ("#026", ("垂直摇镜头", "上下摇", "tilt "), "Tilt shot (相机机位固定，垂直向上或向下缓慢摇镜头)"),
+    ("#027", ("推镜头", "缓慢推镜", "dolly in"), "Dolly in (相机整体向主体物理推进靠近，产生真实空间透视变化，不要变焦)"),
+    ("#028", ("变焦推近", "zoom in"), "Zoom in (机位固定不动，通过镜头焦距变焦放大主体)"),
+    ("#029", ("跟拍", "侧方跟拍", "tracking shot"), "Tracking shot (相机随运动主体以相同速度平滑移动跟拍)"),
+    ("#030", ("环绕镜头", "环绕运镜", "orbit", "arc shot"), "Orbit / Arc shot (相机围绕主体沿圆弧轨迹平稳环绕移动，始终保持主体居中)"),
+    ("#031", ("升镜头", "摇臂升起", "crane up"), "Crane up (相机从主体高度整体缓缓升起，展现更开阔的空间环境)"),
+    ("#032", ("滑动变焦", "希区柯克变焦", "眩晕变焦", "dolly zoom", "vertigo"), "Dolly zoom / Vertigo effect (主体在画面中大小保持不变，背景发生强烈纵深透视拉伸)"),
+    ("#033", ("焦点转移", "转焦", "移焦", "rack focus"), "Rack focus (在前景与后景主体之间平滑切换焦点，焦点外区域柔和虚化)"),
+    ("#034", ("手持镜头", "手持呼吸感", "handheld"), "Handheld camera (带有真实自然的极轻微手持呼吸晃动感)"),
+    ("#035", ("fpv", "穿越机"), "FPV drone shot (第一人称高速流线型穿越场景空间)"),
+    ("#036", ("荷兰角", "倾斜构图", "dutch angle"), "Dutch angle (相机倾斜约15度，使地平线呈戏剧性对角线以营造心理张力)"),
+    ("#037", ("慢动作", "升格慢镜", "slow motion"), "Slow motion (高帧率升格慢动作，细腻展现发丝、衣摆或水滴的微小动态)"),
+    ("#038", ("速度渐变", "变速", "speed ramp"), "Speed ramp (先常速运动，在戏剧高潮点骤然放慢，再恢复常速)"),
+    ("#040", ("定格", "freeze frame"), "Freeze frame (动作在戏剧瞬间骤然凝固定格)"),
+    ("#043", ("甩镜头", "whip pan"), "Whip pan (极速横向甩动镜头产生动态模糊转场)"),
+    ("#097", ("逆光", "发丝光", "backlighting"), "Backlighting (主光源位于人物后方，发丝与肩部边缘泛起柔和明亮的金边光晕)"),
+    ("#098", ("轮廓光", "边缘光", "rim light"), "Rim light (后侧方轮廓光精准勾勒人物头肩与侧脸立体边缘)"),
+    ("#099", ("剪影", "silhouette"), "Silhouette (明亮背景前的深色人物戏剧性轮廓剪影)"),
+    ("#100", ("分割光", "阴阳脸", "split lighting"), "Split lighting (侧面90度主光，以鼻梁为界让脸部一半明亮、一半隐入戏剧性暗部阴影)"),
+    ("#101", ("伦勃朗光", "rembrandt"), "Rembrandt lighting (侧上方45度经典电影布光，在背光侧脸颊形成标志性的三角形高光区)"),
+    ("#102", ("蝴蝶光", "派拉蒙光", "butterfly lighting"), "Butterfly lighting (正面高位柔光，立体勾勒颧骨并在鼻下形成精致浅影)"),
+    ("#103", ("黄金时刻", "夕阳暖光", "golden hour"), "Golden hour lighting (日落前低角度暖橙色斜阳，柔和修长光影)"),
+    ("#104", ("蓝调时刻", "blue hour"), "Blue hour lighting (日落后深邃静谧的冷蓝天光与室内暖光形成冷暖对比)"),
+    ("#105", ("散景", "光斑", "bokeh"), "Bokeh f/1.4 (大光圈浅景深，背景失焦光源化作柔美圆润的电影散景光斑)"),
+    ("#106", ("移轴", "tilt-shift"), "Tilt-shift (选择性景深模糊，突出画面焦点带)"),
+    ("#108", ("追随拍摄", "追拍", "panning shot"), "Panning shot (镜头追随运动主体，主体清晰而背景形成横向动态拖影)"),
+    ("#109", ("镜头眩光", "光晕", "lens flare"), "Anamorphic lens flare (强光在变形宽银幕镜头内产生柔和电影感眩光光束)"),
+    ("#112", ("暗角", "vignette"), "Subtle optical vignette (画面四角柔和微暗，将视觉焦点凝聚于中央人物)"),
+    ("#113", ("高调", "high-key"), "High-key lighting (整体明亮通透、柔和浅阴影的高调光影)"),
+    ("#114", ("低调", "暗调", "low-key"), "Low-key lighting (深沉暗调为主，仅以精准光束照亮人物面部关键轮廓)"),
+    ("#117", ("青橙色调", "teal and orange"), "Teal and orange color grading (电影级青橙色调，暗部与环境偏冷青，人物肤色与高光偏暖橙)"),
+    ("#118", ("胶片颗粒", "film grain"), "35mm film grain (细腻真实的35毫米电影胶片颗粒质感)"),
+    ("#119", ("漏光", "light leak"), "Warm film light leak (画面边缘带有柔和复古的暖橙色胶片漏光)"),
+    ("#169", ("垂直升降", "pedestal"), "Pedestal shot (保持镜头朝向水平不变，相机整体垂直上下平移升降)"),
+    ("#172", ("长镜头", "一镜到底", "long take"), "Continuous long take (连贯流畅的一镜到底跟拍，不切镜头)"),
+    ("#173", ("斯坦尼康", "steadicam"), "Steadicam shot (斯坦尼康稳定器跟拍，消除一切抖动，如丝般顺滑移动)"),
+    ("#174", ("背后跟拍", "背影跟拍", "follow shot"), "Follow shot (从人物身后半步距离平稳跟拍背影与肩颈动态)"),
+    ("#175", ("固定镜头", "机位固定", "locked-off"), "Locked-off tripod shot (三脚架固定机位，画面构图沉稳静止，聚焦人物微表情与动作)"),
+    ("#176", ("穿越镜头", "穿窗而入", "fly-through"), "Fly-through shot (镜头平滑穿过门框或前景缝隙进入核心空间)"),
+    ("#177", ("低角度", "仰拍", "low angle"), "Low angle shot (低机位向上微仰拍，增强人物气场与空间纵深张力)"),
+    ("#178", ("高角度", "俯拍", "high angle"), "High angle shot (高机位向下俯拍，凸显人物所处的空间环境与脆弱或孤寂感)"),
+    ("#179", ("pov", "第一人称", "主观视角"), "POV shot (第一人称角色主观视线镜头)"),
+    ("#180", ("过肩镜头", "越肩", "正反打", "over-the-shoulder"), "Over-the-shoulder shot (经典电影过肩镜头，前景一侧保留对方柔和虚化的肩背轮廓以建立空间关系)"),
+    ("#181", ("鸟瞰", "垂直俯视", "bird's-eye"), "Bird's-eye view (从正上方垂直向下俯拍全局空间)"),
+    ("#182", ("深焦", "前后皆清", "deep focus"), "Deep focus (大景深镜头，前景道具与后景人物同时保持锐利清晰)"),
+    ("#183", ("定场镜头", "大远景", "establishing shot"), "Establishing wide shot (交代故事所处完整建筑空间与氛围的电影定场远景)"),
+    ("#184", ("大特写", "局部特写", "extreme close-up"), "Extreme close-up / ECU (极具冲击力的局部大特写，仅聚焦放大眼眸、唇角或指尖细节)"),
+    ("#185", ("插入镜头", "细节特写", "insert shot"), "Insert detail shot (特写聚焦场景中的关键互动道具或手部细节动作)"),
+    ("#191", ("子弹时间", "bullet time"), "Bullet time (时间凝滞，镜头围绕瞬间定格的主体空间旋转)"),
+]
+
+
+def _enhance_cam_with_motion_prompt(cam_txt: str, vis_txt: str) -> str:
+    """识别剧本中的 showheyohtaki/motion-prompt 编号 (#025~#216) 或中文影视运镜/布光术语，自动补齐精准双语摄影机指令"""
+    combined_low = f"{cam_txt} {vis_txt}".lower()
+    matched_specs: List[str] = []
+    for code, kw_tuple, spec_desc in _MOTION_PROMPT_CAMERA_PHOTO_SPECS:
+        if code in combined_low or any(k in combined_low for k in kw_tuple):
+            if spec_desc not in cam_txt and spec_desc not in matched_specs:
+                matched_specs.append(spec_desc)
+    if not matched_specs:
+        return cam_txt
+    return f"{cam_txt}（{'；'.join(matched_specs[:3])}）"
+
+
+
 def _parse_raw_script_to_workflow(
     raw_script: str,
     title: str = "",
@@ -11466,6 +11549,7 @@ def _parse_raw_script_to_workflow(
             cleaned_blk = re.sub(r"^(?:【?(?:镜头|分镜|镜|Shot\s*)\s*\d+】?|第\s*\d+\s*镜)\s*(?:【时长】[^\n]+)?", "", blk, flags=re.IGNORECASE)
             cleaned_blk = re.sub(r"【(?:时长|运镜|对白|台词|音色|环境音|音效|首帧|尾帧|引擎|出场角色)】[^\n【]*", "", cleaned_blk)
             vis_txt = cleaned_blk.strip().replace("\n", " ") or "电影级精致画面，光影自然柔和。"
+        cam_txt = _enhance_cam_with_motion_prompt(cam_txt, vis_txt)
 
         m_dlg = re.search(r"(?:【对白】|【台词】|对白\s*[:：]|台词\s*[:：])\s*([^\n【]+)", blk)
         dlg_raw = m_dlg.group(1).strip() if m_dlg else ""
