@@ -2197,8 +2197,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button type="button" onclick="toggleFusionAdvancedDrawer()" id="btnToggleFusionAdv" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:rgba(15,23,42,0.8);color:#cbd5e1;cursor:pointer;">⚙️ 高级微调 (默认自动最优) ▾</button>
     </div>
 
-    <!-- 第 2 步：上传图片框 (左侧固定人脸主照；右侧支持 1~N 张自由新增/删除/批量上传/双联图一键拆分) -->
-    <div id="fusionSlotsGrid" style="display:grid;grid-template-columns:1fr 1.65fr;gap:12px;margin-bottom:12px;">
+    <!-- 第 2 步：上传图片框 (左侧固定人脸主照；中间支持服装+姿势 1~N 张；右侧支持可选场景图实现 4合1) -->
+    <div id="fusionSlotsGrid" style="display:grid;grid-template-columns:0.95fr 1.45fr 0.9fr;gap:12px;margin-bottom:12px;">
       <!-- 框 1：🧑 上传人脸照片 (上传全身/半身照自动识别人脸并聚焦裁切脸部特写) -->
       <div style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #a855f7;display:flex;flex-direction:column;gap:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
@@ -2223,43 +2223,44 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </label>
       </div>
 
-      <!-- 框 2 (支持动态 1~N 张自由增删)：👗 上传服装图 / 🖼️ 上传被换脸照片列表 -->
+      <!-- 框 2 (支持动态 1~N 张自由增删)：👗 上传服装图 + 💃 姿势图 / 🖼️ 上传被换脸照片列表 -->
       <div id="fusionSlot2Card" style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #ec4899;display:flex;flex-direction:column;gap:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span id="fusionSlot2Title" style="font-size:13px;font-weight:800;color:#fbcfe8;">👗 第二步：上传服装/穿搭参考图</span>
+            <span id="fusionSlot2Title" style="font-size:13px;font-weight:800;color:#fbcfe8;">👗 第二步：选服装 + 选姿势 (可同时叠加)</span>
             <span id="fusionTargetCountBadge" style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(236,72,153,0.2);color:#f9a8d4;font-weight:700;">1 个槽位</span>
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_TARGET', 'costume')" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #f472b6;background:linear-gradient(135deg,rgba(236,72,153,0.25),rgba(168,85,247,0.22));color:#fbcfe8;cursor:pointer;" title="从内置衣姿 PoseWear 库中直接点选 1,407 套真人服装、1,320 套动漫服装或 288×5 多角度姿势图（含 18+ 开关）">👗 服装与姿势库(4160+)</button>
-            <select id="fusionMultiActionMode" onchange="updateFusionRunBtnLabel()" style="display:none;padding:2px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #c084fc;background:#0f172a;color:#e9d5ff;" title="当上传了 2 张以上照片时的合成方式">
-              <option value="batch" selected>🗂️ 逐张批量生成 (每张图各出1张成片)</option>
-              <option value="combine">🧩 多图合并为1张 (如:上衣+下装合为1张)</option>
+            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_TARGET', 'costume')" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #f472b6;background:linear-gradient(135deg,rgba(236,72,153,0.28),rgba(168,85,247,0.22));color:#fbcfe8;cursor:pointer;" title="从衣姿库点选 1,407 套真人服装或 1,320 套动漫服装（含 18+ 开关）">👗 选服装(2727套)</button>
+            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_TARGET', 'pose')" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #38bdf8;background:linear-gradient(135deg,rgba(56,189,248,0.25),rgba(99,102,241,0.22));color:#bae6fd;cursor:pointer;" title="从衣姿库点选 288组×5机位=1,440张 姿势动作图，自动与服装合并为 1 张！">💃 选姿势(1440式)</button>
+            <select id="fusionMultiActionMode" onchange="updateFusionRunBtnLabel()" style="display:none;padding:2px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #c084fc;background:#0f172a;color:#e9d5ff;" title="当上传了 2 张以上参考图时的合成方式">
+              <option value="combine" selected>🧩 多图合并为1张 (服装+姿势合为1张)</option>
+              <option value="batch">🗂️ 逐张批量生成 (每张图各出1张成片)</option>
             </select>
-            <button type="button" onclick="addFusionTargetSlot()" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="增加一个新的照片槽位（支持 2张、3张或任意多张）">➕ 新增照片槽位</button>
+            <button type="button" onclick="addFusionTargetSlot()" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="增加一个新的照片槽位（支持 2张、3张或任意多张）">➕ 新增槽位</button>
             <label style="padding:2px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="在文件选择器中一次按住 Command/Shift 勾选多张照片批量导入">
-              📂 批量多选导入
+              📂 批量导入
               <input type="file" accept="image/*" multiple style="display:none;" onchange="onFusionMultiFilesSelect(this)">
             </label>
-            <button type="button" onclick="clearAllFusionTargets()" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空全部</button>
+            <button type="button" onclick="clearAllFusionTargets()" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空</button>
           </div>
         </div>
         <!-- 动态照片槽位容器：1张时占满，2~N张时自动并排网格展示，每张均可独立上传、左右拆双图或点 ✕ 删除 -->
         <div id="fusionTargetCardsGrid" style="display:grid;grid-template-columns:1fr;gap:8px;max-height:190px;overflow-y:auto;padding-right:2px;"></div>
       </div>
 
-      <!-- 框 3：🏞️ 上传场景照片 (仅在选“3. 融入场景照片”时自动显示！) -->
-      <div id="fusionSlot3Card" style="display:none;padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #38bdf8;flex-direction:column;gap:6px;">
+      <!-- 框 3：🏞️ 上传场景照片 (在“1. 人脸+服装”与“3. 融入场景”模式下均显示，支持 人脸+服饰+姿势+场景 4合1！) -->
+      <div id="fusionSlot3Card" style="display:flex;padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #38bdf8;flex-direction:column;gap:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span id="fusionSlot3Title" style="font-size:13px;font-weight:800;color:#bae6fd;">🏞️ 第三步：上传场景照片</span>
+          <span id="fusionSlot3Title" style="font-size:13px;font-weight:800;color:#bae6fd;">🏞️ 第三步：场景环境图 (选填·4合1)</span>
           <button type="button" onclick="clearFusionSlot(2)" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空</button>
         </div>
         <label style="position:relative;height:165px;border-radius:8px;border:1.5px dashed #0284c7;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
           <img id="fusionSlot3Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
           <div id="fusionSlot3Empty" style="text-align:center;color:#94a3b8;font-size:12px;padding:10px;">
-            <div style="font-size:28px;margin-bottom:4px;">🏞️</div>
-            <div id="fusionSlot3MainHint" style="color:#bae6fd;font-weight:700;">点击上传【场景环境照片】</div>
-            <div id="fusionSlot3SubHint" style="font-size:11px;color:#64748b;margin-top:2px;">自动把人物融入该实景并匹配光线</div>
+            <div style="font-size:26px;margin-bottom:4px;">🏞️</div>
+            <div id="fusionSlot3MainHint" style="color:#bae6fd;font-weight:700;">点击上传【场景环境图】(选填)</div>
+            <div id="fusionSlot3SubHint" style="font-size:10.5px;color:#64748b;margin-top:2px;">不传=纯净背景；传图=人脸+服饰+姿势+场景 4合1</div>
           </div>
           <input type="file" id="inpFusionSlot3" accept="image/*" style="display:none;" onchange="onFusionSlotFileChange(2, this)">
         </label>
@@ -5088,6 +5089,7 @@ function switchMiniMaxMode(mode) {
 let currentFusionSubMode = 'tryon';
 let fusionSlotsB64 = ['', '', ''];
 let fusionTargetList = [''];
+let fusionTargetSlotKinds = [''];
 let fusionBatchRunning = false;
 let fusionBatchCancelled = false;
 let fusionBatchCompletedFiles = [];
@@ -5115,11 +5117,18 @@ function updateFusionRunBtnLabel() {
   const btn = document.getElementById('btnRunFusionStudio');
   if (!btn || fusionBatchRunning) return;
   const filledCnt = fusionTargetList.filter(Boolean).length;
-  const multiMode = ((document.getElementById('fusionMultiActionMode') || {}).value || 'batch');
+  const hasScene = Boolean(fusionSlotsB64[2]);
+  const multiMode = ((document.getElementById('fusionMultiActionMode') || {}).value || 'combine');
   if (filledCnt >= 2 && multiMode === 'batch') {
     btn.innerText = `🪄 一键批量合成全部 (共 ${filledCnt} 张)`;
   } else if (filledCnt >= 2 && multiMode === 'combine') {
-    btn.innerText = `🪄 一键多图融合合成 (${filledCnt} 图合 1)`;
+    if (hasScene) {
+      btn.innerText = `🪄 一键四合一合成 (人脸+服饰+姿势+场景 ➔ 1张)`;
+    } else {
+      btn.innerText = `🪄 一键三合一合成 (人脸+服饰+姿势 ➔ 1张)`;
+    }
+  } else if (filledCnt === 1 && hasScene) {
+    btn.innerText = '🪄 一键三合一合成 (人脸+服饰+场景 ➔ 1张)';
   } else {
     btn.innerText = '🪄 一键开始合成';
   }
@@ -5132,6 +5141,9 @@ function renderFusionTargetCards() {
   if (!grid) return;
   if (!Array.isArray(fusionTargetList) || fusionTargetList.length === 0) {
     fusionTargetList = [''];
+  }
+  while (fusionTargetSlotKinds.length < fusionTargetList.length) {
+    fusionTargetSlotKinds.push('');
   }
   const totalSlots = fusionTargetList.length;
   const filledCnt = fusionTargetList.filter(Boolean).length;
@@ -5151,21 +5163,25 @@ function renderFusionTargetCards() {
   const isSwap = currentFusionSubMode === 'faceswap';
   const isScene = currentFusionSubMode === 'scenefuse';
   const cardIcon = isSwap ? '🖼️' : '👗';
-  const cardTitlePrefix = isSwap ? '被换脸图' : '服装/穿搭图';
+  const cardTitlePrefix = isSwap ? '被换脸图' : '服装/姿势图';
   const emptyHint = isSwap
     ? '点击上传【被替换的目标照片】'
-    : (isScene ? '点击上传【服装照片】(可选)' : '点击上传【服装/模特穿搭照】');
+    : (isScene ? '点击上传【服装或姿势图】(可选)' : '点击上传【服装或姿势参考图】');
   const subHint = totalSlots === 1
-    ? '可点右上角「➕ 新增照片槽位」或「📂 批量多选导入」一次合成多张；若上传了左右拼图可点「✂️拆2张」'
-    : '支持独立替换或点右上角 ✕ 删除此槽位';
+    ? '可点上方「👗 选服装」+「💃 选姿势」自动并排叠加合并为 1 张成片！'
+    : '支持服装+姿势多图合并为 1 张，或点右上角 ✕ 删除此槽位';
 
   grid.innerHTML = fusionTargetList.map((b64, idx) => {
     const hasImg = Boolean(b64);
+    const kind = fusionTargetSlotKinds[idx] || '';
+    const slotLabel = kind === 'pose'
+      ? `💃 姿势动作图 #${idx + 1}`
+      : (kind === 'costume' ? `👗 服饰穿搭图 #${idx + 1}` : `${cardIcon} ${cardTitlePrefix} #${idx + 1}`);
     const cardHeight = totalSlots === 1 ? '165px' : '136px';
     return `
-      <div style="padding:6px 8px;border-radius:8px;background:#0f172a;border:1.5px ${hasImg ? 'solid #ec4899' : 'dashed #be185d'};display:flex;flex-direction:column;gap:4px;">
+      <div style="padding:6px 8px;border-radius:8px;background:#0f172a;border:1.5px ${hasImg ? (kind === 'pose' ? 'solid #38bdf8' : 'solid #ec4899') : 'dashed #be185d'};display:flex;flex-direction:column;gap:4px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
-          <span style="font-size:11px;font-weight:800;color:#fbcfe8;">${cardIcon} ${cardTitlePrefix} #${idx + 1}</span>
+          <span style="font-size:11px;font-weight:800;color:${kind === 'pose' ? '#bae6fd' : '#fbcfe8'};">${slotLabel}</span>
           <div style="display:flex;align-items:center;gap:3px;">
             ${hasImg ? `<button type="button" onclick="splitFusionTargetCardLeftRight(${idx})" style="padding:1px 6px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="如果这张图是左右并排的两张照片截图（如推特/小红书双图），点击即可自动左、右一分为二拆成 2 个槽位！">✂️左右拆2张</button>` : ''}
             <button type="button" onclick="removeFusionTargetSlot(${idx})" style="padding:1px 6px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid rgba(239,68,68,0.5);background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="${totalSlots > 1 ? '删除此照片槽位' : '清空此槽位照片'}">✕</button>
@@ -5192,23 +5208,28 @@ function renderFusionTargetCards() {
 
 function addFusionTargetSlot() {
   fusionTargetList.push('');
+  fusionTargetSlotKinds.push('');
   renderFusionTargetCards();
-  showGlobalCopyToast(`➕ 已新增「槽位 #${fusionTargetList.length}」！您现在可以上传多张照片一次性批量生成`);
+  showGlobalCopyToast(`➕ 已新增「槽位 #${fusionTargetList.length}」！可放入姿势图或配饰图合并生成，也可批量生成`);
 }
 
 function removeFusionTargetSlot(idx) {
   if (fusionTargetList.length <= 1) {
     fusionTargetList = [''];
+    fusionTargetSlotKinds = [''];
   } else {
     fusionTargetList.splice(idx, 1);
+    fusionTargetSlotKinds.splice(idx, 1);
   }
   renderFusionTargetCards();
 }
 
 function clearAllFusionTargets() {
   window._lastPosewearOutfitDesc = '';
+  window._lastPosewearPoseDesc = '';
   window._isHeadlessCostumeTarget = false;
   fusionTargetList = [''];
+  fusionTargetSlotKinds = [''];
   renderFusionTargetCards();
 }
 
@@ -5350,23 +5371,25 @@ function switchFusionSubMode(subMode) {
     if (lightSel) lightSel.value = 'keep_target_light';
     if (hairSel) hairSel.value = 'keep_target_hair';
   } else if (subMode === 'scenefuse') {
-    if (grid) grid.style.gridTemplateColumns = '1fr 1.35fr 1fr';
+    if (grid) grid.style.gridTemplateColumns = '0.95fr 1.45fr 0.9fr';
     if (s3Card) s3Card.style.display = 'flex';
     if (s1Title) s1Title.innerText = '🧑 第一步：上传人物/人脸照片';
-    if (s2Title) s2Title.innerText = '👗 第二步：换套服装 (可选，支持多张)';
+    if (s2Title) s2Title.innerText = '👗 第二步：选服装 + 选姿势 (可选)';
     if (s3Title) s3Title.innerText = '🏞️ 第三步：上传场景照片';
     if (s3Main) s3Main.innerText = '点击上传【场景环境照片】';
     if (framingSel) framingSel.value = 'keep_target_frame';
     if (lightSel) lightSel.value = 'clear_35mm_scene';
-    if (hairSel) hairSel.value = 'keep_target_hair';
+    if (hairSel) hairSel.value = 'keep_face_hair';
   } else {
-    if (grid) grid.style.gridTemplateColumns = '1fr 1.65fr';
-    if (s3Card) s3Card.style.display = 'none';
+    if (grid) grid.style.gridTemplateColumns = '0.95fr 1.45fr 0.9fr';
+    if (s3Card) s3Card.style.display = 'flex';
     if (s1Title) s1Title.innerText = '🧑 第一步：上传人脸照片';
-    if (s2Title) s2Title.innerText = '👗 第二步：上传服装/穿搭参考图 (支持多张)';
+    if (s2Title) s2Title.innerText = '👗 第二步：选服装 + 选姿势 (可同时叠加)';
+    if (s3Title) s3Title.innerText = '🏞️ 第三步：场景环境图 (选填·4合1)';
+    if (s3Main) s3Main.innerText = '点击上传【场景环境图】(选填)';
     if (framingSel) framingSel.value = 'keep_target_frame';
     if (lightSel) lightSel.value = 'keep_target_light';
-    if (hairSel) hairSel.value = 'keep_target_hair';
+    if (hairSel) hairSel.value = 'keep_face_hair';
   }
   renderFusionTargetCards();
 }
@@ -5461,6 +5484,7 @@ function setFusionSlotB64(slotIdx, dataUrl) {
     if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
     if (empEl) empEl.style.display = 'block';
   }
+  updateFusionRunBtnLabel();
   if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
 }
 
@@ -5620,18 +5644,32 @@ function buildFusionRefsAndPrompt(targetListForJob) {
     return {refs, prompt};
   }
 
-  // 情形 B：多图合并为 1 张 (人脸 + 2张以上服装/配饰参考图)
+  // 情形 B：多图合并为 1 张 (人脸 + 服饰 + 姿势 3合1，或 + 场景 4合1)
   if (hasFace && targets.length >= 2) {
-    const refs = [targets[0], faceB64, ...targets.slice(1), ...(hasScene ? [sceneB64] : [])];
-    const extraItems = targets.slice(1).map((_, i) => `The additional clothing/styling item in <Picture ${i + 3}> is <Subject ${i + 3}>.`).join(' ');
-    const extraNames = targets.slice(1).map((_, i) => `<Subject ${i + 3}>`).join(' and ');
-    const sceneIdx = targets.length + 2;
-    const sceneClause = hasScene ? ` Place the figure inside the background environment of <Picture ${sceneIdx}>.` : '';
+    const isOutfitMode = (currentFusionSubMode === 'tryon') || (hairVal === 'keep_face_hair');
+    const personRefB64 = (isOutfitMode && fusionFaceOrigB64) ? fusionFaceOrigB64 : faceB64;
+    const outfitHint = window._lastPosewearOutfitDesc ? ` (${window._lastPosewearOutfitDesc})` : '';
+    const poseHint = window._lastPosewearPoseDesc ? ` (${window._lastPosewearPoseDesc})` : '';
+    const refs = [targets[0], personRefB64, ...targets.slice(1), ...(hasScene ? [sceneB64] : [])];
+    if (hasScene) {
+      const sceneIdx = targets.length + 2;
+      const prompt = (
+        `Edit <Picture 1>. The complete clothing outfit and accessories${outfitHint} in <Picture 1> is <Subject 1>. ` +
+        `The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. ` +
+        `The body posture, limb positions, and camera angle${poseHint} in <Picture 3> is <Subject 3>. ` +
+        `The real-world background environment, architecture, and ambient lighting in <Picture ${sceneIdx}> is <Subject ${sceneIdx}>. ` +
+        `Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>, placed naturally inside the background environment <Subject ${sceneIdx}> (<Picture ${sceneIdx}>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture ${sceneIdx}>. ` +
+        `Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged.` +
+        styleTail
+      );
+      return {refs, prompt};
+    }
     const prompt = (
-      `Edit <Picture 1>. The base body posture and primary outfit in <Picture 1> is <Subject 1>. ` +
-      `The person (exact slim face shape, jawline contour, facial features, expression, and hairstyle) in <Picture 2> is <Subject 2>. ${extraItems} ` +
-      `Replace the head and face of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>, wearing the combined outfit of <Subject 1> and ${extraNames}.${sceneClause} ` +
-      `Keep <Subject 2>'s exact face shape, narrow jawline, facial features, and identity from <Picture 2> 100% unchanged, while preserving the body posture from <Picture 1>. ` +
+      `Edit <Picture 1>. The complete clothing outfit and accessories${outfitHint} in <Picture 1> is <Subject 1>. ` +
+      `The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. ` +
+      `The body posture, limb positions, and camera angle${poseHint} in <Picture 3> is <Subject 3>. ` +
+      `Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>. ` +
+      `Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged in a clean studio background.` +
       styleTail
     );
     return {refs, prompt};
@@ -5801,7 +5839,14 @@ async function startFusionStudioGenerate() {
     return;
   }
 
-  const multiMode = ((document.getElementById('fusionMultiActionMode') || {}).value || 'batch');
+  const multiSelEl = document.getElementById('fusionMultiActionMode');
+  const propTxtNow = (((document.getElementById('fusionPropsActionInput') || {}).value) || '').trim();
+  const hasPoseSlot = fusionTargetSlotKinds.includes('pose') || /(站姿|坐姿|跪姿|躺姿|俯卧|仰卧|背影|正面视角|俯拍视角|仰拍视角)/.test(propTxtNow);
+  if (activeTargets.length >= 2 && hasPoseSlot && multiSelEl && multiSelEl.value === 'batch') {
+    multiSelEl.value = 'combine';
+    updateFusionRunBtnLabel();
+  }
+  const multiMode = ((multiSelEl || {}).value || 'combine');
   const resChoice = ((document.getElementById('fusionResSelect') || {}).value || 'auto');
   const batchCnt = parseInt(((document.getElementById('fusionBatchSelect') || {}).value || '1'), 10) || 1;
 
@@ -8241,39 +8286,75 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
       return;
     }
     if (target === 'FUSION_TARGET') {
+      const isPosePick = (_cc0ModalState.tab === 'pose');
+      const pickKind = isPosePick ? 'pose' : 'costume';
+      while (fusionTargetSlotKinds.length < fusionTargetList.length) {
+        fusionTargetSlotKinds.push('');
+      }
       if (d.image_b64) {
-        let placed = false;
+        let targetSlotIdx = -1;
+        // 1. 优先替换同类型槽位 (例如已选过服饰则更新服饰槽，已选过姿势则更新姿势槽)
         for (let i = 0; i < fusionTargetList.length; i++) {
-          if (!fusionTargetList[i]) {
-            fusionTargetList[i] = d.image_b64;
-            placed = true;
+          if (fusionTargetSlotKinds[i] === pickKind) {
+            targetSlotIdx = i;
             break;
           }
         }
-        if (!placed) {
-          if (fusionTargetList.length <= 1) {
-            fusionTargetList[0] = d.image_b64;
+        // 2. 否则寻找空白槽位
+        if (targetSlotIdx === -1) {
+          for (let i = 0; i < fusionTargetList.length; i++) {
+            if (!fusionTargetList[i]) {
+              targetSlotIdx = i;
+              break;
+            }
+          }
+        }
+        // 3. 若当前已有不同类型参考图（如 #1 已选了服饰，现在又选了姿势），自动开辟第 2 个槽位并排叠加，绝不覆盖！
+        if (targetSlotIdx === -1) {
+          if (pickKind === 'costume' && fusionTargetSlotKinds[0] === 'pose') {
+            fusionTargetList.unshift(d.image_b64);
+            fusionTargetSlotKinds.unshift('costume');
+            targetSlotIdx = 0;
           } else {
             fusionTargetList.push(d.image_b64);
+            fusionTargetSlotKinds.push(pickKind);
+            targetSlotIdx = fusionTargetList.length - 1;
           }
+        } else {
+          fusionTargetList[targetSlotIdx] = d.image_b64;
+          fusionTargetSlotKinds[targetSlotIdx] = pickKind;
+        }
+        // 当同时存在 2 张以上参考图（如 服饰 + 姿势）时，自动切换为「🧩 多图合并为1张」模式！
+        const multiSel = document.getElementById('fusionMultiActionMode');
+        if (multiSel && fusionTargetList.filter(Boolean).length >= 2) {
+          multiSel.value = 'combine';
         }
         renderFusionTargetCards();
       }
-      const propInp = document.getElementById('fusionPropsActionInput');
-      if (propInp && descZh) {
-        propInp.value = descZh;
+      if (isPosePick) {
+        window._lastPosewearPoseDesc = descEn ? `${descEn} / ${descZh}` : (descZh || '');
+        window._lastPosewearPoseZh = descZh || '';
+      } else {
+        window._lastPosewearOutfitDesc = descEn ? `${descEn} / ${descZh}` : (descZh || '');
+        window._lastPosewearOutfitZh = descZh || '';
       }
-      window._lastPosewearOutfitDesc = descEn ? `${descEn} / ${descZh}` : (descZh || '');
+      const propInp = document.getElementById('fusionPropsActionInput');
+      if (propInp) {
+        const parts = [];
+        if (window._lastPosewearOutfitZh) parts.push(`【服饰】${window._lastPosewearOutfitZh}`);
+        if (window._lastPosewearPoseZh) parts.push(`【姿势】${window._lastPosewearPoseZh}`);
+        propInp.value = parts.length ? parts.join(' ＋ ') : (descZh || '');
+      }
       if (currentMiniMaxMode !== 'fusion') {
         switchMiniMaxMode('fusion');
       }
-      if (_cc0ModalState.tab === 'costume' || _cc0ModalState.tab === 'anime') {
-        switchFusionSubMode('tryon');
-        const hairSel = document.getElementById('fusionHairModeSelect');
-        if (hairSel) hairSel.value = 'keep_face_hair';
-      }
+      switchFusionSubMode('tryon');
+      const hairSel = document.getElementById('fusionHairModeSelect');
+      if (hairSel) hairSel.value = 'keep_face_hair';
       document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
-      showGlobalCopyToast(`✅ 已将「${descZh.slice(0, 24)}」高清参考图与提示词载入【02 · 角色合成】第二步！`);
+      const filledCount = fusionTargetList.filter(Boolean).length;
+      const modeTip = filledCount >= 2 ? '（已自动开启 🧩服装+姿势多图合1）' : '';
+      showGlobalCopyToast(`✅ 已载入${isPosePick ? '姿势' : '服饰'}「${(descZh || '').slice(0, 22)}」${modeTip}！`);
       return;
     }
     dramaCastPhotoCacheBust = Date.now();
@@ -10688,34 +10769,84 @@ p.wait()
                 ):
                     if bad_frag in raw_p:
                         raw_p = raw_p.replace(bad_frag, "")
-                refs_in = payload.get("ref_images_b64") or []
-                if len(refs_in) == 2 and "Edit <Picture 1>" in raw_p:
+                refs_in = list(payload.get("ref_images_b64") or [])
+                if len(refs_in) >= 2 and "Edit <Picture 1>" in raw_p:
                     try:
                         venv_sp = BASE_DIR / ".venv" / "lib" / "python3.12" / "site-packages"
                         if venv_sp.is_dir() and str(venv_sp) not in sys.path:
                             sys.path.insert(0, str(venv_sp))
                         import cv2
                         import numpy as np
-                        b0 = base64.b64decode(str(refs_in[0]).split(",", 1)[-1])
-                        im0 = cv2.imdecode(np.frombuffer(b0, dtype=np.uint8), cv2.IMREAD_COLOR)
-                        app_det, _, _ = _ensure_biometric_swap_engine()
-                        has_real_face_in_pic1 = bool(im0 is not None and len(app_det.get(im0)) > 0)
+
+                        def _decode_ref_im(b64_s: str):
+                            raw_b = base64.b64decode(str(b64_s).split(",", 1)[-1])
+                            return cv2.imdecode(np.frombuffer(raw_b, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+                        def _is_wireframe_pose_im(im) -> bool:
+                            if im is None or im.size == 0:
+                                return False
+                            arr = im.astype(np.float32)
+                            color_diff = float(np.mean(np.abs(arr[:, :, 0] - arr[:, :, 1]) + np.abs(arr[:, :, 1] - arr[:, :, 2])))
+                            white_ratio = float(np.mean((arr[:, :, 0] > 235) & (arr[:, :, 1] > 235) & (arr[:, :, 2] > 235)))
+                            return color_diff < 4.5 and white_ratio > 0.68
+
                         m_add = re.search(r"Additional requirements:\s*([^.]+)", raw_p)
                         add_tail = ""
                         if m_add:
                             add_txt = m_add.group(1).strip()
                             if not any(k in add_txt for k in ("全身·标准", "全身·性感", "正面视角", "俯拍视角", "仰拍视角")):
                                 add_tail = f" Additional requirements: {add_txt}."
-                        if has_real_face_in_pic1:
-                            # <Picture 1> 是带真人的目标照片（非无头服装卡）：严格锁定原图衣服、花色、姿势与背景 100% 不变，只替换头脸（或头脸+发型）！
-                            raw_p = (
-                                "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. "
-                                "The face and hairstyle in <Picture 2> is <Subject 2>. "
-                                "Replace ONLY the head, face, and hairstyle of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. "
-                                "Keep the exact original clothing, fabric pattern, body posture, hand and leg positions, footwear, lighting, and background of <Picture 1> 100% identical and unchanged. "
-                                "Do NOT add any jacket, coat, or extra clothing, and do NOT change the clothing or background of <Picture 1>."
-                                + add_tail
-                            )
+
+                        if len(refs_in) == 2:
+                            im0 = _decode_ref_im(refs_in[0])
+                            app_det, _, _ = _ensure_biometric_swap_engine()
+                            has_real_face_in_pic1 = bool(im0 is not None and len(app_det.get(im0)) > 0)
+                            if has_real_face_in_pic1:
+                                raw_p = (
+                                    "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. "
+                                    "The face and hairstyle in <Picture 2> is <Subject 2>. "
+                                    "Replace ONLY the head, face, and hairstyle of <Subject 1> in <Picture 1> with <Subject 2> from <Picture 2>. "
+                                    "Keep the exact original clothing, fabric pattern, body posture, hand and leg positions, footwear, lighting, and background of <Picture 1> 100% identical and unchanged. "
+                                    "Do NOT add any jacket, coat, or extra clothing, and do NOT change the clothing or background of <Picture 1>."
+                                    + add_tail
+                                )
+                            elif _is_wireframe_pose_im(im0):
+                                raw_p = (
+                                    "Edit <Picture 1>. The body posture, limb positions, and camera angle in the pose sketch <Picture 1> is <Subject 1>. "
+                                    "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
+                                    "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> posed in the exact body posture and camera angle <Subject 1> from <Picture 1>. "
+                                    "Render realistic human skin texture and natural clothing (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged in a clean studio background."
+                                    + add_tail
+                                )
+                        elif len(refs_in) in (3, 4):
+                            im0 = _decode_ref_im(refs_in[0])
+                            im2 = _decode_ref_im(refs_in[2])
+                            w0 = _is_wireframe_pose_im(im0)
+                            w2 = _is_wireframe_pose_im(im2)
+                            if w0 and not w2:
+                                refs_in[0], refs_in[2] = refs_in[2], refs_in[0]
+                                payload["ref_images_b64"] = refs_in
+                                w0, w2 = w2, w0
+                            if w2:
+                                if len(refs_in) == 4:
+                                    raw_p = (
+                                        "Edit <Picture 1>. The complete clothing outfit and accessories in <Picture 1> is <Subject 1>. "
+                                        "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
+                                        "The body posture, limb positions, and camera angle in the pose sketch <Picture 3> is <Subject 3>. "
+                                        "The real-world background environment, architecture, and ambient lighting in <Picture 4> is <Subject 4>. "
+                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>, placed naturally inside the background environment <Subject 4> (<Picture 4>) with realistic spatial perspective, grounded shadows, and ambient lighting matching <Picture 4>. "
+                                        "Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged."
+                                        + add_tail
+                                    )
+                                else:
+                                    raw_p = (
+                                        "Edit <Picture 1>. The complete clothing outfit and accessories in <Picture 1> is <Subject 1>. "
+                                        "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. "
+                                        "The body posture, limb positions, and camera angle in the pose sketch <Picture 3> is <Subject 3>. "
+                                        "Generate a full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact complete clothing outfit and accessories <Subject 1> from <Picture 1> (do NOT add any extra jacket, coat, or outer clothing not present in <Picture 1>), posed in the exact body posture and camera angle <Subject 3> from <Picture 3>. "
+                                        "Render realistic human skin texture (do NOT draw mannequin wireframe sketch lines on the skin), keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged in a clean studio background."
+                                        + add_tail
+                                    )
                     except Exception:
                         pass
                 payload["prompt"] = raw_p
