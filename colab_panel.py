@@ -5121,9 +5121,13 @@ function syncFusionRoleDropdown() {
   if (!sel) return;
   const roles = (Array.isArray(dramaCastState) && dramaCastState.length > 0)
     ? dramaCastState
-    : [{id: 'A', name: '角色A'}, {id: 'B', name: '角色B'}, {id: 'C', name: '角色C'}, {id: 'D', name: '角色D'}, {id: 'E', name: '角色E'}];
+    : [{id: 'A', name: ''}, {id: 'B', name: ''}, {id: 'C', name: ''}, {id: 'D', name: ''}, {id: 'E', name: ''}];
   const curVal = sel.value || 'A';
-  sel.innerHTML = roles.map(r => `<option value="${escapeHtmlAttr(r.id)}" ${r.id === curVal ? 'selected' : ''}>🎭 短剧角色${escapeHtmlAttr(r.id)}${r.name ? ' (' + escapeHtmlAttr(r.name) + ')' : ''}</option>`).join('');
+  sel.innerHTML = roles.map(r => {
+    const cleanName = (r.name || '').trim();
+    const showSuffix = cleanName && cleanName !== `角色${r.id}` && cleanName !== r.id;
+    return `<option value="${escapeHtmlAttr(r.id)}" ${r.id === curVal ? 'selected' : ''}>🎭 短剧角色${escapeHtmlAttr(r.id)}${showSuffix ? ' (' + escapeHtmlAttr(cleanName) + ')' : ''}</option>`;
+  }).join('');
 }
 
 function toggleFusionAdvancedDrawer() {
@@ -7481,10 +7485,7 @@ let dramaPollTimer = null;
 let currentDramaWorkflow = null;
 let currentDramaWfTab = 'img';
 let dramaCastPhotoCacheBust = Date.now();
-let dramaCastState = [
-  {id: 'A', name: '林晚', voice: 'ming:灵小柔', desc: '27岁江南修伞铺女老板，鹅蛋脸，左眉尾小痣，低髻插素银玉兰簪，月白立领盘扣短衫配浅灰蓝围裙', has_photo: true, user_uploaded: false},
-  {id: 'B', name: '沈砚', voice: 'ming:灵孤影_悲伤', desc: '30岁青年，剑眉丹凤眼，右侧颧骨下浅淡旧疤，炭黑色羊毛长大衣内搭米白高领，左腕系褪色红绳', has_photo: true, user_uploaded: false},
-];
+let dramaCastState = [];
 
 const CAST_VOICE_OPTIONS = [
   {val: 'ming:灵小柔', lbl: '🌸 灵小柔 (清亮甜美女主)'},
@@ -7510,6 +7511,7 @@ const CAST_VOICE_OPTIONS = [
 ];
 
 function renderDramaCastCards() {
+  syncFusionRoleDropdown();
   const grid = document.getElementById('dramaCastCardsGrid');
   if (!grid) return;
   if (!Array.isArray(dramaCastState) || dramaCastState.length === 0) {
