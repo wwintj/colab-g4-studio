@@ -8035,30 +8035,46 @@ function renderDramaWfEditorTables() {
   const btnRemux = document.getElementById('btnRemuxAutoDrama');
   const imgTasks = currentDramaWorkflow.image_tasks || [];
   const vidTasks = currentDramaWorkflow.video_tasks || [];
+  const isEmptyWf = (imgTasks.length === 0 && vidTasks.length === 0);
   const totalDur = vidTasks.reduce((acc, v) => acc + (parseFloat(v.duration) || 3.0), 0).toFixed(1);
-  const totalSteps = imgTasks.length + vidTasks.length + 1;
-  const projTitle = currentDramaWorkflow.title || '《未命名短剧》';
+  const totalSteps = isEmptyWf ? 0 : (imgTasks.length + vidTasks.length + 1);
+  const projTitle = currentDramaWorkflow.title || (isEmptyWf ? '' : '《未命名短剧》');
   if (titleInp) titleInp.value = projTitle;
   if (hdrEl) {
-    hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${projTitle} (${vidTasks.length} 镜 · ${totalDur} 秒)`;
+    hdrEl.innerText = isEmptyWf
+      ? '🎬 通用分镜短剧全自动工作流引擎 · 待解析新剧本 (0 镜 · 0.0 秒)'
+      : `🎬 通用分镜短剧全自动工作流引擎 · ${projTitle || '《未命名短剧》'} (${vidTasks.length} 镜 · ${totalDur} 秒)`;
   }
   if (btnStart && !btnStart.disabled) {
-    btnStart.innerText = `🚀 一键全自动拍摄 ${projTitle} (${vidTasks.length}镜 · ${totalDur}秒 · 共 ${totalSteps} 步)`;
+    btnStart.innerText = isEmptyWf
+      ? '🚀 请先在工作台粘贴剧本并点「🔍 智能解析剧本生成工作流节点」'
+      : `🚀 一键全自动拍摄 ${projTitle || '《未命名短剧》'} (${vidTasks.length}镜 · ${totalDur}秒 · 共 ${totalSteps} 步)`;
   }
   if (btnRemux) {
-    btnRemux.innerText = `🎞️ 仅用已有分镜重新合成成片 (${totalDur}s)`;
+    btnRemux.innerText = isEmptyWf
+      ? '🎞️ 仅用已有分镜重新合成成片'
+      : `🎞️ 仅用已有分镜重新合成成片 (${totalDur}s)`;
   }
   if (sumEl) {
-    const avList = vidTasks.filter(v => v.engine === 'avatar');
-    const flList = vidTasks.filter(v => v.engine !== 'avatar');
-    const durBreakdown = vidTasks.map(v => `${(parseFloat(v.duration) || 3.0).toFixed(1)}s`).join(' + ');
-    sumEl.innerHTML = `
-      <div><b>🤖 当前工作流四阶段全自动执行蓝图（${projTitle} · 共 ${vidTasks.length} 镜 · 总时长 ${totalDur} 秒 · 总计 ${totalSteps} 步）：</b></div>
-      <div>① <b>阶段一 & 二 (MiniMax-H3-Image)</b>：自动生成角色锁脸定妆卡与各镜首尾帧，共 <b>${imgTasks.length} 张原生 16:9 / 9:16 锁脸关键帧</b>；</div>
-      <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，生成 <b>${avList.length} 个口型对白镜头</b>${avList.length ? '（' + avList.map(v => v.label.split(':')[0]).join('、') + '）' : '（当前剧本无特写对白镜头）'}；</div>
-      <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，按各镜时长动态采样生成 <b>${flList.length} 个动作与原生环境音镜头</b>；</div>
-      <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按各镜时长（<code>${durBreakdown} = ${totalDur}s</code>）0.1秒级精准卡点并将环境底噪铺入对白背景，输出完整成片至 <code>~/Movies/EasyColab/</code>！</div>
-    `;
+    if (isEmptyWf) {
+      sumEl.innerHTML = `
+        <div style="color:#fcd34d;font-weight:700;">✨ 当前已清空全部工作流节点（0 个图片节点 · 0 个视频分镜节点）：</div>
+        <div>1. 可先在上方「🎭 剧组角色定妆与音色卡槽」上传定妆照或点「🎲 抽卡」定好角色；</div>
+        <div>2. 在左侧文本框写下您的故事并点「📋 一键复制【发给外部 AI 的编剧指令】」，或直接粘贴已写好的分镜剧本；</div>
+        <div>3. 点击「🔍 智能解析剧本生成工作流节点」，即可自动拆解出新剧的全套关键帧与分镜节点！</div>
+      `;
+    } else {
+      const avList = vidTasks.filter(v => v.engine === 'avatar');
+      const flList = vidTasks.filter(v => v.engine !== 'avatar');
+      const durBreakdown = vidTasks.map(v => `${(parseFloat(v.duration) || 3.0).toFixed(1)}s`).join(' + ');
+      sumEl.innerHTML = `
+        <div><b>🤖 当前工作流四阶段全自动执行蓝图（${projTitle || '《未命名短剧》'} · 共 ${vidTasks.length} 镜 · 总时长 ${totalDur} 秒 · 总计 ${totalSteps} 步）：</b></div>
+        <div>① <b>阶段一 & 二 (MiniMax-H3-Image)</b>：自动生成角色锁脸定妆卡与各镜首尾帧，共 <b>${imgTasks.length} 张原生 16:9 / 9:16 锁脸关键帧</b>；</div>
+        <div>② <b>阶段三-A (LongCat-Avatar-1.6 + Ming-3.0)</b>：自动切换数字人引擎，生成 <b>${avList.length} 个口型对白镜头</b>${avList.length ? '（' + avList.map(v => v.label.split(':')[0]).join('、') + '）' : '（当前剧本无特写对白镜头）'}；</div>
+        <div>③ <b>阶段三-B (MiniMax-H3 FL2VA)</b>：自动切换首尾帧有声视频引擎，按各镜时长动态采样生成 <b>${flList.length} 个动作与原生环境音镜头</b>；</div>
+        <div>④ <b>阶段四 (FFmpeg 自动精剪混音合片)</b>：自动按各镜时长（<code>${durBreakdown} = ${totalDur}s</code>）0.1秒级精准卡点并将环境底噪铺入对白背景，输出完整成片至 <code>~/Movies/EasyColab/</code>！</div>
+      `;
+    }
   }
   const cImgEl = document.getElementById('wfImgCount');
   const cVidEl = document.getElementById('wfVidCount');
@@ -8623,12 +8639,16 @@ async function pollAutoDramaStatus() {
     const pct = Math.max(0, Math.min(100, parseInt(d.pct || 0, 10)));
     if (pBar) pBar.style.width = `${pct}%`;
     const hdrEl = document.getElementById('dramaTitleHeader');
-    if (hdrEl && d.title && d.shot_count && d.total_duration) {
-      hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${d.title} (${d.shot_count} 镜 · ${d.total_duration} 秒)`;
+    if (hdrEl) {
+      if (d.shot_count > 0) {
+        hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${d.title || '《未命名短剧》'} (${d.shot_count} 镜 · ${d.total_duration} 秒)`;
+      } else {
+        hdrEl.innerText = '🎬 通用分镜短剧全自动工作流引擎 · 待解析新剧本 (0 镜 · 0.0 秒)';
+      }
     }
     const btnRemux = document.getElementById('btnRemuxAutoDrama');
-    if (btnRemux && d.total_duration) {
-      btnRemux.innerText = `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)`;
+    if (btnRemux) {
+      btnRemux.innerText = d.shot_count > 0 ? `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)` : '🎞️ 仅用已有分镜重新合成成片';
     }
     if (d.running) {
       if (videoPollTimer) {
@@ -8687,19 +8707,23 @@ async function pollAutoDramaStatus() {
       }
       if (btnStart) {
         btnStart.disabled = false;
-        const shotCnt = d.shot_count || (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.length : 11);
-        const totDur = d.total_duration || (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.reduce((a, v) => a + (parseFloat(v.duration) || 3.0), 0).toFixed(1) : '30.0');
-        const totSt = d.total_count || 27;
+        const shotCnt = (typeof d.shot_count === 'number') ? d.shot_count : (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.length : 0);
+        const totDur = (typeof d.total_duration === 'number') ? d.total_duration : (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.reduce((a, v) => a + (parseFloat(v.duration) || 3.0), 0).toFixed(1) : '0.0');
+        const totSt = (typeof d.total_count === 'number') ? d.total_count : 0;
         const pTitle = d.title || (currentDramaWorkflow && currentDramaWorkflow.title) || '当前短剧';
-        btnStart.innerText = `🚀 一键全自动拍摄 ${pTitle} (${shotCnt}镜 · ${totDur}秒 · 共 ${totSt} 步)`;
+        btnStart.innerText = shotCnt > 0
+          ? `🚀 一键全自动拍摄 ${pTitle} (${shotCnt}镜 · ${totDur}秒 · 共 ${totSt} 步)`
+          : '🚀 请先在工作台粘贴剧本并点「🔍 智能解析剧本生成工作流节点」';
       }
       const btnRemux = document.getElementById('btnRemuxAutoDrama');
-      if (btnRemux && d.total_duration) {
-        btnRemux.innerText = `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)`;
+      if (btnRemux) {
+        btnRemux.innerText = d.shot_count > 0 ? `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)` : '🎞️ 仅用已有分镜重新合成成片';
       }
       const hdrEl = document.getElementById('dramaTitleHeader');
-      if (hdrEl && d.title && d.shot_count && d.total_duration) {
-        hdrEl.innerText = `🎬 通用分镜短剧全自动工作流引擎 · ${d.title} (${d.shot_count} 镜 · ${d.total_duration} 秒)`;
+      if (hdrEl) {
+        hdrEl.innerText = d.shot_count > 0
+          ? `🎬 通用分镜短剧全自动工作流引擎 · ${d.title || '《未命名短剧》'} (${d.shot_count} 镜 · ${d.total_duration} 秒)`
+          : '🎬 通用分镜短剧全自动工作流引擎 · 待解析新剧本 (0 镜 · 0.0 秒)';
       }
       if (btnStop) btnStop.style.display = 'none';
       if (d.error) {
@@ -10673,7 +10697,7 @@ p.wait()
             wf = _load_drama_workflow()
             wf["image_tasks"] = []
             wf["video_tasks"] = []
-            if payload.get("clear_title"):
+            if payload.get("clear_title", True):
                 wf["title"] = ""
                 wf["raw_script"] = ""
             try:
@@ -10688,6 +10712,11 @@ p.wait()
                     shutil.rmtree(norm_dir, ignore_errors=True)
             except Exception:
                 pass
+            _DRAMA_STATE["pct"] = 0
+            _DRAMA_STATE["error"] = ""
+            _DRAMA_STATE["final_video"] = ""
+            _DRAMA_STATE["active_file"] = ""
+            _DRAMA_STATE["message"] = "🗑️ 已一键清空全部图片节点、视频分镜节点与旧分镜缓存！现在可在左侧粘贴新剧本并点击「🔍 智能解析剧本生成工作流节点」"
             _save_drama_workflow(wf)
             _append_panel_log("🗑️ [工作流节点清空] 已一键清空全部图片节点、视频分镜节点与旧分镜缓存素材")
             self._send_json({"ok": True, "workflow": wf})
@@ -11131,7 +11160,9 @@ def _load_drama_workflow() -> Dict[str, Any]:
     if DRAMA_WORKFLOW_FILE.is_file():
         try:
             wf = json.loads(DRAMA_WORKFLOW_FILE.read_text(encoding="utf-8"))
-            if isinstance(wf, dict) and wf.get("image_tasks") and wf.get("video_tasks"):
+            if isinstance(wf, dict) and ("image_tasks" in wf or "video_tasks" in wf):
+                wf.setdefault("image_tasks", [])
+                wf.setdefault("video_tasks", [])
                 changed = False
                 for vt in wf.get("video_tasks") or []:
                     if vt.get("tts_voice") == "ming:灵逍遥":
@@ -11730,7 +11761,8 @@ def _get_drama_status_payload() -> Dict[str, Any]:
     all_defs = [(it["file"], it["label"]) for it in img_tasks]
     all_defs += [(vt["file"], vt["label"]) for vt in vid_tasks]
     tot_dur = round(sum(float(vt.get("duration") or 3.0) for vt in vid_tasks), 1)
-    all_defs.append(("ancient_drama_30s_final.mp4", f"🎬 {tot_dur}s 完整短剧混音合片"))
+    if vid_tasks:
+        all_defs.append(("ancient_drama_30s_final.mp4", f"🎬 {tot_dur}s 完整短剧混音合片"))
 
     for fn, lbl in all_defs:
         p = DRAMA_WORK_DIR / fn
