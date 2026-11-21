@@ -7933,55 +7933,55 @@ function renderDramaCastCards() {
     const draws = Array.isArray(c.draw_history) ? c.draw_history : [];
     const activeDraw = c.active_draw || (draws.length ? draws[draws.length - 1] : '');
     const badgeHtml = c.user_uploaded
-      ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;">📌已锁上传照</span>`
+      ? `<span style="font-size:9.5px;padding:2px 5px;border-radius:4px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;white-space:nowrap;flex-shrink:0;">📌已锁照</span>`
       : (draws.length > 0
-          ? `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(245,158,11,0.22);color:#fcd34d;border:1px solid #f59e0b;font-weight:700;">🎲已抽${draws.length}次</span>`
-          : `<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#7dd3fc;font-weight:600;">🎨AI定妆/可抽卡</span>`);
+          ? `<span style="font-size:9.5px;padding:2px 5px;border-radius:4px;background:rgba(245,158,11,0.22);color:#fcd34d;border:1px solid #f59e0b;font-weight:700;white-space:nowrap;flex-shrink:0;">🎲已抽${draws.length}次</span>`
+          : `<span style="font-size:9.5px;padding:2px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#7dd3fc;font-weight:600;white-space:nowrap;flex-shrink:0;">🎨AI定妆</span>`);
     const drawPillsHtml = draws.length > 0
       ? `<div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-top:1px;">
-          <span style="font-size:9.5px;color:#94a3b8;">抽卡记录:</span>
+          <span style="font-size:9.5px;color:#94a3b8;white-space:nowrap;">抽卡记录:</span>
           ${draws.map((dfn, dIdx) => {
             const isSel = (dfn === activeDraw) && !c.user_uploaded;
-            return `<button type="button" onclick="selectDramaCastDraw('${escapeHtmlAttr(c.id)}', '${escapeHtmlAttr(dfn)}')" style="padding:0px 5px;font-size:9.5px;font-weight:${isSel ? '800' : '600'};border-radius:3px;border:1px solid ${isSel ? '#f59e0b' : '#475569'};background:${isSel ? 'rgba(245,158,11,0.28)' : '#0f172a'};color:${isSel ? '#fde68a' : '#94a3b8'};cursor:pointer;" title="切换回第 ${dIdx + 1} 次抽卡结果">#${dIdx + 1}</button>`;
+            return `<button type="button" onclick="selectDramaCastDraw('${escapeHtmlAttr(c.id)}', '${escapeHtmlAttr(dfn)}')" style="padding:0px 5px;font-size:9.5px;font-weight:${isSel ? '800' : '600'};border-radius:3px;border:1px solid ${isSel ? '#f59e0b' : '#475569'};background:${isSel ? 'rgba(245,158,11,0.28)' : '#0f172a'};color:${isSel ? '#fde68a' : '#94a3b8'};cursor:pointer;white-space:nowrap;" title="切换回第 ${dIdx + 1} 次抽卡结果">#${dIdx + 1}</button>`;
           }).join('')}
         </div>`
       : '';
     return `
-      <div style="padding:7px 9px;border-radius:8px;background:#020617;border:1px solid ${c.user_uploaded ? '#10b981' : (draws.length > 0 ? '#f59e0b' : '#334155')};display:flex;gap:8px;align-items:stretch;">
-        <!-- 左：16:9 定妆缩略图 (点击可放大) + 传照/脸库/抽卡/生图词按钮 -->
-        <div style="width:122px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
-          <div onclick="previewDramaWorkImage('char_${escapeHtmlAttr(c.id)}_half.jpg', '角色${escapeHtmlAttr(c.id)}${c.name ? ' (' + escapeHtmlAttr(c.name) + ')' : ''} 定妆照', '${escapeHtmlAttr(c.id)}')" style="position:relative;width:122px;height:66px;border-radius:5px;overflow:hidden;background:#0f172a;border:1px solid #475569;display:flex;align-items:center;justify-content:center;cursor:zoom-in;" title="点击放大查看高清定妆照并可连续抽卡">
+      <div style="padding:8px 10px;border-radius:8px;background:#020617;border:1px solid ${c.user_uploaded ? '#10b981' : (draws.length > 0 ? '#f59e0b' : '#334155')};display:flex;gap:9px;align-items:stretch;">
+        <!-- 左：16:9 定妆缩略图 (点击可放大) + 传照/脸库/抽卡/生图词按钮 (严格单行等高) -->
+        <div style="width:138px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
+          <div onclick="previewDramaWorkImage('char_${escapeHtmlAttr(c.id)}_half.jpg', '角色${escapeHtmlAttr(c.id)}${c.name ? ' (' + escapeHtmlAttr(c.name) + ')' : ''} 定妆照', '${escapeHtmlAttr(c.id)}')" style="position:relative;width:138px;height:68px;border-radius:5px;overflow:hidden;background:#0f172a;border:1px solid #475569;display:flex;align-items:center;justify-content:center;cursor:zoom-in;" title="点击放大查看高清定妆照并可连续抽卡">
             <img src="${imgUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" onload="this.style.display='block';this.nextElementSibling.style.display='none';" style="width:100%;height:100%;object-fit:cover;display:block;">
             <div style="display:none;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:#64748b;text-align:center;line-height:1.2;">📷<br>角色${escapeHtmlAttr(c.id)}</div>
-            <span style="position:absolute;right:3px;bottom:2px;font-size:8.5px;padding:0 4px;border-radius:3px;background:rgba(2,6,23,0.75);color:#cbd5e1;">🔍放大</span>
+            <span style="position:absolute;right:3px;bottom:2px;font-size:8.5px;padding:0 4px;border-radius:3px;background:rgba(2,6,23,0.75);color:#cbd5e1;white-space:nowrap;">🔍放大</span>
           </div>
-          <div style="display:flex;gap:2px;">
-            <label style="flex:1;text-align:center;padding:2px 0;font-size:9px;font-weight:700;border-radius:4px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="上传角色${escapeHtmlAttr(c.id)}照片（100%锁脸）">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 0.82fr;gap:3px;">
+            <label style="display:inline-flex;align-items:center;justify-content:center;padding:3px 0;font-size:9.5px;font-weight:700;border-radius:4px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;white-space:nowrap;line-height:1;" title="上传角色${escapeHtmlAttr(c.id)}照片（100%锁脸）">
               📤传照
               <input type="file" accept="image/*" style="display:none;" onchange="uploadDramaCharPhoto('${escapeHtmlAttr(c.id)}', this)">
             </label>
-            <button type="button" onclick="openCc0PortraitGalleryModal('${escapeHtmlAttr(c.id)}')" style="flex:1;padding:2px 0;font-size:9px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;" title="从内置 1,499 张 CC0 高清演员脸库中直接挑选并锁定为角色${escapeHtmlAttr(c.id)}（无需等待云端 GPU）">👩脸库</button>
-            <button type="button" id="btnRollCast_${escapeHtmlAttr(c.id)}" onclick="rollDramaCastPhoto('${escapeHtmlAttr(c.id)}', this)" style="flex:1.05;padding:2px 0;font-size:9px;font-weight:800;border-radius:4px;border:1px solid #f59e0b;background:rgba(245,158,11,0.22);color:#fde68a;cursor:pointer;" title="云端 AI 立即抽卡生成角色${escapeHtmlAttr(c.id)}定妆照（不填提示词也能自动抽卡，支持二次/三次/无限次重抽并保留历史记录）">🎲抽卡</button>
-            <button type="button" onclick="copyCharacterGoldenPrompt('${escapeHtmlAttr(c.id)}', this)" style="flex:0.85;padding:2px 0;font-size:9px;font-weight:700;border-radius:4px;border:1px solid #f472b6;background:rgba(244,114,182,0.16);color:#fbcfe8;cursor:pointer;" title="复制角色${escapeHtmlAttr(c.id)}的【5条黄金标准·定妆生图词】">📋词</button>
+            <button type="button" onclick="openCc0PortraitGalleryModal('${escapeHtmlAttr(c.id)}')" style="display:inline-flex;align-items:center;justify-content:center;padding:3px 0;font-size:9.5px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;white-space:nowrap;line-height:1;" title="从内置 1,499 张 CC0 高清演员脸库中直接挑选并锁定为角色${escapeHtmlAttr(c.id)}（无需等待云端 GPU）">👩脸库</button>
+            <button type="button" id="btnRollCast_${escapeHtmlAttr(c.id)}" onclick="rollDramaCastPhoto('${escapeHtmlAttr(c.id)}', this)" style="display:inline-flex;align-items:center;justify-content:center;padding:3px 0;font-size:9.5px;font-weight:800;border-radius:4px;border:1px solid #f59e0b;background:rgba(245,158,11,0.22);color:#fde68a;cursor:pointer;white-space:nowrap;line-height:1;" title="云端 AI 立即抽卡生成角色${escapeHtmlAttr(c.id)}定妆照（不填提示词也能自动抽卡，支持二次/三次/无限次重抽并保留历史记录）">🎲抽卡</button>
+            <button type="button" onclick="copyCharacterGoldenPrompt('${escapeHtmlAttr(c.id)}', this)" style="display:inline-flex;align-items:center;justify-content:center;padding:3px 0;font-size:9.5px;font-weight:700;border-radius:4px;border:1px solid #f472b6;background:rgba(244,114,182,0.16);color:#fbcfe8;cursor:pointer;white-space:nowrap;line-height:1;" title="复制角色${escapeHtmlAttr(c.id)}的【5条黄金标准·定妆生图词】">📋词</button>
           </div>
         </div>
-        <!-- 右：角色代号、姓名、专属音色、外貌与服装描述 + 历史抽卡切换条 -->
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:3px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
-            <div style="display:flex;align-items:center;gap:4px;">
-              <span style="font-size:11px;font-weight:900;padding:1px 6px;border-radius:4px;background:#f472b6;color:#020617;">角色${escapeHtmlAttr(c.id)}</span>
-              <input type="text" value="${escapeHtmlAttr(c.name || '')}" onchange="dramaCastState[${idx}].name=this.value.trim();syncCastToWorkflow();" placeholder="姓名(如:博哥)" style="width:66px;padding:2px 5px;font-size:11px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+        <!-- 右：角色代号、姓名、专属音色、外貌与服装描述 + 历史抽卡切换条 (顶部一行对齐，绝不折行) -->
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;gap:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
+            <div style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;">
+              <span style="font-size:11px;font-weight:900;padding:2px 6px;border-radius:4px;background:#f472b6;color:#020617;white-space:nowrap;flex-shrink:0;">角色${escapeHtmlAttr(c.id)}</span>
+              <input type="text" value="${escapeHtmlAttr(c.name || '')}" onchange="dramaCastState[${idx}].name=this.value.trim();syncCastToWorkflow();" placeholder="姓名(如:博哥)" style="flex:1;min-width:48px;max-width:88px;padding:2px 6px;font-size:11px;font-weight:700;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
               ${badgeHtml}
             </div>
-            <div style="display:flex;align-items:center;gap:3px;">
-              ${c.user_uploaded ? `<button type="button" onclick="deleteDramaCharPhoto('${escapeHtmlAttr(c.id)}')" style="padding:1px 5px;font-size:9.5px;border-radius:3px;border:1px solid #f59e0b;background:transparent;color:#fcd34d;cursor:pointer;" title="取消上传的照片，改由云端 AI 抽卡生成定妆照">↺改AI抽</button>` : ''}
-              <button type="button" onclick="removeDramaCastRole('${escapeHtmlAttr(c.id)}')" style="padding:1px 6px;font-size:10px;border-radius:3px;border:1px solid #ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="删除角色${escapeHtmlAttr(c.id)}">✕</button>
+            <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+              ${c.user_uploaded ? `<button type="button" onclick="deleteDramaCharPhoto('${escapeHtmlAttr(c.id)}')" style="padding:2px 5px;font-size:9.5px;border-radius:3px;border:1px solid #f59e0b;background:transparent;color:#fcd34d;cursor:pointer;white-space:nowrap;" title="取消上传的照片，改由云端 AI 抽卡生成定妆照">↺改AI</button>` : ''}
+              <button type="button" onclick="removeDramaCastRole('${escapeHtmlAttr(c.id)}')" style="padding:2px 6px;font-size:10px;border-radius:4px;border:1px solid #ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;white-space:nowrap;line-height:1;" title="删除角色${escapeHtmlAttr(c.id)}">✕</button>
             </div>
           </div>
-          <select onchange="dramaCastState[${idx}].voice=this.value;syncCastToWorkflow();" style="width:100%;padding:2px 5px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#fde68a;font-weight:600;">
+          <select onchange="dramaCastState[${idx}].voice=this.value;syncCastToWorkflow();" style="width:100%;padding:3px 5px;font-size:11px;border-radius:4px;border:1px solid #475569;background:#0f172a;color:#fde68a;font-weight:600;">
             ${voiceOpts}
           </select>
-          <input type="text" value="${escapeHtmlAttr(c.desc || '')}" onchange="dramaCastState[${idx}].desc=this.value.trim();syncCastToWorkflow();" placeholder="选填：外貌与穿搭描述（留空也可直接点左侧「🎲抽卡」自动生成）..." style="width:100%;padding:3px 6px;font-size:10.5px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;">
+          <input type="text" value="${escapeHtmlAttr(c.desc || '')}" onchange="dramaCastState[${idx}].desc=this.value.trim();syncCastToWorkflow();" placeholder="选填：外貌与穿搭描述（留空也可直接点左侧「🎲抽卡」自动生成）..." style="width:100%;padding:3px 6px;font-size:11px;border-radius:4px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;">
           ${drawPillsHtml}
         </div>
       </div>
