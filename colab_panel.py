@@ -9,6 +9,8 @@ Google Colab G4 本地可视化网页控制台 (http://127.0.0.1:18080)
 """
 
 import base64
+import hashlib
+import io
 import json
 import math
 import os
@@ -16,6 +18,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -7530,6 +7533,12 @@ function addDramaCastRole() {
 
 function removeDramaCastRole(roleId) {
   dramaCastState = dramaCastState.filter(c => c.id !== roleId);
+  fetch('/api/drama_delete_char_photo', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role_id: roleId}),
+  }).catch(() => {});
+  dramaCastPhotoCacheBust = Date.now();
   syncCastToWorkflow();
   renderDramaCastCards();
   showGlobalCopyToast(`🗑️ 已删除「角色${roleId}」（当前剩余 ${dramaCastState.length} 个角色）`);
@@ -7537,9 +7546,15 @@ function removeDramaCastRole(roleId) {
 
 function clearAllDramaCastRoles() {
   dramaCastState = [];
+  fetch('/api/drama_delete_char_photo', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role_id: 'ALL'}),
+  }).catch(() => {});
+  dramaCastPhotoCacheBust = Date.now();
   syncCastToWorkflow();
   renderDramaCastCards();
-  showGlobalCopyToast('🗑️ 已清空全部预设角色！现在复制编剧指令时将 100% 由您的故事自由决定角色');
+  showGlobalCopyToast('🗑️ 已清空全部预设角色与旧定妆图！现在可自由新增角色或粘贴新剧本');
 }
 
 async function uploadDramaCharPhoto(roleId, inputEl) {
@@ -7548,6 +7563,7 @@ async function uploadDramaCharPhoto(roleId, inputEl) {
   const reader = new FileReader();
   reader.onload = async () => {
     const b64 = reader.result;
+    if (inputEl) inputEl.value = '';
     try {
       const r = await fetch('/api/drama_upload_char_photo', {
         method: 'POST',
@@ -7564,11 +7580,13 @@ async function uploadDramaCharPhoto(roleId, inputEl) {
       if (item) {
         item.has_photo = true;
         item.user_uploaded = true;
+        if (Array.isArray(d.draw_history)) item.draw_history = d.draw_history;
+        if (d.active_draw) item.active_draw = d.active_draw;
       }
       syncCastToWorkflow();
       renderDramaCastCards();
       await pollAutoDramaStatus();
-      showGlobalCopyToast(`✅ 角色${roleId} 定妆照已上传并锁定为 16:9 基准图！开拍时将跳过AI捏脸，100%使用此照片锁脸`);
+      showGlobalCopyToast(`✅ 角色${roleId} 定妆照已上传并锁定！开拍时将跳过AI捏脸，100%使用此照片锁脸`);
     } catch (e) {
       alert('上传定妆照异常: ' + e);
     }
@@ -7587,6 +7605,9 @@ async function deleteDramaCharPhoto(roleId) {
     const item = dramaCastState.find(c => c.id === roleId);
     if (item) {
       item.user_uploaded = false;
+      item.has_photo = false;
+      item.draw_history = [];
+      item.active_draw = '';
     }
     syncCastToWorkflow();
     renderDramaCastCards();
@@ -9316,7 +9337,6 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/accounts/notebook_bootstrap":
             try:
-                import base64
                 rclone_p = BASE_DIR / ".gdrive_rclone.conf"
                 rclone_b64 = base64.b64encode(rclone_p.read_bytes()).decode("ascii") if rclone_p.exists() else ""
                 cfg = _load_endpoint_cfg()
@@ -9349,9 +9369,6 @@ p.wait()
 
         if self.path == "/api/tts_preview":
             try:
-                import base64
-                import math
-                import tempfile
                 tts_text = str(payload.get("text") or "").strip()
                 tts_voice_raw = str(payload.get("voice") or "ming:灵雨汐_中性").strip()
                 clone_ref_b64 = str(payload.get("clone_ref_b64") or "").strip()
@@ -9545,8 +9562,6 @@ p.wait()
 
         if self.path == "/api/accounts/remote_url":
             try:
-                import base64
-                import hashlib
                 from importlib import resources
                 from google_auth_oauthlib.flow import InstalledAppFlow
                 from colab_cli.auth import PUBLIC_SCOPES, REMOTE_REDIRECT_URI
@@ -9750,7 +9765,6 @@ p.wait()
 
         if self.path == "/api/accounts/bind_drive":
             try:
-                import shutil
                 rclone_bin = BASE_DIR / ".venv" / "bin" / "rclone"
                 if not rclone_bin.exists():
                     rclone_bin = Path(shutil.which("rclone") or "rclone")
@@ -10147,7 +10161,6 @@ p.wait()
                 return
 
         if self.path == "/api/video_upscale":
-            import base64
             cfg = _load_endpoint_cfg()
             fname = os.path.basename(str(payload.get("filename") or "").strip())
             preset = str(payload.get("target_preset") or "2k").lower().strip()
@@ -10208,7 +10221,6 @@ p.wait()
                 return
 
         if self.path == "/api/import_external_video":
-            import base64
             raw_name = os.path.basename(str(payload.get("filename") or "imported_video.mp4").strip())
             video_b64 = str(payload.get("video_b64") or "").strip()
             if not video_b64:
@@ -10254,8 +10266,6 @@ p.wait()
             return
 
         if self.path == "/api/detect_and_crop_face":
-            import base64
-            import io
             from PIL import Image
             img_b64 = str(payload.get("image_b64") or "").strip()
             if not img_b64:
@@ -10392,7 +10402,6 @@ p.wait()
             return
 
         if self.path == "/api/extract_last_frame":
-            import base64
             fname = os.path.basename(str(payload.get("name") or "").strip())
             fpath = LOCAL_MOVIES_DIR / fname
             if not fname or not fpath.is_file():
@@ -10609,23 +10618,24 @@ p.wait()
                     img_b64 = img_b64.split(",", 1)[1]
                 raw_bytes = base64.b64decode(img_b64)
                 DRAMA_WORK_DIR.mkdir(parents=True, exist_ok=True)
+                wf = _load_drama_workflow()
+                is_vert = str(wf.get("aspect_ratio") or "16:9").strip() == "9:16"
+                target_size = (1152, 2048) if is_vert else (2048, 1152)
                 target_fn = f"char_{role_id}_half.jpg"
                 target_path = DRAMA_WORK_DIR / target_fn
                 try:
-                    import io
                     from PIL import Image, ImageOps
                     im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
-                    im_half = ImageOps.fit(im, (2048, 1152), method=Image.Resampling.LANCZOS, centering=(0.5, 0.22))
+                    im_half = ImageOps.fit(im, target_size, method=Image.Resampling.LANCZOS, centering=(0.5, 0.22))
                     im_half.save(target_path, format="JPEG", quality=95)
                     if role_id == "A":
-                        im_close = ImageOps.fit(im, (2048, 1152), method=Image.Resampling.LANCZOS, centering=(0.5, 0.16))
+                        im_close = ImageOps.fit(im, target_size, method=Image.Resampling.LANCZOS, centering=(0.5, 0.16))
                         im_close.save(DRAMA_WORK_DIR / "char_A_closeup.jpg", format="JPEG", quality=95)
                 except Exception:
                     target_path.write_bytes(raw_bytes)
                     if role_id == "A":
                         (DRAMA_WORK_DIR / "char_A_closeup.jpg").write_bytes(raw_bytes)
 
-                wf = _load_drama_workflow()
                 uploaded_set = set(wf.get("user_uploaded_chars") or [])
                 uploaded_set.add(role_id)
                 wf["user_uploaded_chars"] = sorted(list(uploaded_set))
@@ -10634,6 +10644,7 @@ p.wait()
                 for c_item in cast_list:
                     if str(c_item.get("id") or "").upper() == role_id:
                         c_item["user_uploaded"] = True
+                        c_item["has_photo"] = True
                         found_role = True
                 if not found_role:
                     cast_list.append({
@@ -10643,6 +10654,7 @@ p.wait()
                         "desc": "",
                         "file": target_fn,
                         "user_uploaded": True,
+                        "has_photo": True,
                     })
                 wf["cast_list"] = cast_list
                 if not any(it.get("file") == target_fn for it in (wf.get("image_tasks") or [])):
@@ -10653,27 +10665,45 @@ p.wait()
                         "prompt": f"用户指定角色{role_id}定妆照 ({target_fn})",
                     })
                 _save_drama_workflow(wf)
-                _append_panel_log(f"📸 [角色定妆锁定] 已上传并归一化 16:9 (2048x1152) 角色{role_id}定妆照 -> {target_fn}")
-                self._send_json({"ok": True, "file": target_fn, "role_id": role_id})
+                _append_panel_log(f"📸 [角色定妆锁定] 已上传并归一化 {target_size[0]}x{target_size[1]} 角色{role_id}定妆照 -> {target_fn}")
+                self._send_json({
+                    "ok": True,
+                    "file": target_fn,
+                    "role_id": role_id,
+                })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
             return
 
         if self.path == "/api/drama_delete_char_photo":
-            role_id = re.sub(r"[^A-Z0-9]", "", str(payload.get("role_id") or "A").strip().upper()) or "A"
+            raw_role = str(payload.get("role_id") or "A").strip().upper()
+            role_id = "ALL" if raw_role == "ALL" else (re.sub(r"[^A-Z0-9]", "", raw_role) or "A")
             try:
-                for fn in (f"char_{role_id}_half.jpg", f"char_{role_id}_closeup.jpg" if role_id == "A" else ""):
-                    if fn and (DRAMA_WORK_DIR / fn).is_file():
-                        (DRAMA_WORK_DIR / fn).unlink()
                 wf = _load_drama_workflow()
+                if role_id == "ALL":
+                    for p in DRAMA_WORK_DIR.glob("char_*"):
+                        if p.is_file():
+                            p.unlink()
+                    wf["user_uploaded_chars"] = []
+                    wf["cast_list"] = []
+                    _save_drama_workflow(wf)
+                    _append_panel_log("🗑️ [清空角色定妆] 已清空所有旧角色定妆照与历史抽卡缓存")
+                    self._send_json({"ok": True, "role_id": "ALL"})
+                    return
+                for p in DRAMA_WORK_DIR.glob(f"char_{role_id}_*"):
+                    if p.is_file():
+                        p.unlink()
                 uploaded_set = set(wf.get("user_uploaded_chars") or [])
                 uploaded_set.discard(role_id)
                 wf["user_uploaded_chars"] = sorted(list(uploaded_set))
                 for c_item in (wf.get("cast_list") or []):
                     if str(c_item.get("id") or "").upper() == role_id:
                         c_item["user_uploaded"] = False
+                        c_item["has_photo"] = False
+                        c_item["draw_history"] = []
+                        c_item["active_draw"] = ""
                 _save_drama_workflow(wf)
-                _append_panel_log(f"🗑️ [角色定妆解除] 已移除角色{role_id}的上传照片，将恢复由 AI 自动生图定妆")
+                _append_panel_log(f"🗑️ [角色定妆解除] 已移除角色{role_id}的定妆照片，可重新上传或由 AI 抽卡生成")
                 self._send_json({"ok": True, "role_id": role_id})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
@@ -11486,17 +11516,29 @@ def _parse_raw_script_to_workflow(
             first_img_prompt = re.sub(r"[；;。]?\s*(?:随后|接着)(?:为|是|[:：])?\s*", "，", vis_txt).strip()
         first_img_prompt = re.sub(r"^起幅(?:为|是|[:：])\s*", "", first_img_prompt).strip()
 
-        # 若该镜走 LongCat-Avatar 数字人驱动，自动净化首帧生图词中的“两人面对面/双人近景/抱住B”等会诱发画出第二张嘴的描述，确保画面只聚焦说话人一人面孔
+        # 若该镜走 LongCat-Avatar 数字人驱动，自动净化首帧生图词中的“两人面对面/双人近景/B的脸庞”等会诱发画出第二张嘴的子句，并显式注入说话人外貌穿搭特征
         if use_avatar:
             other_rids = [r for r in sorted_role_ids if r != speaker_role]
-            spk_nm = roles_dict.get(speaker_role, {}).get("name") or f"角色{speaker_role}"
-            first_img_prompt = re.sub(r"A与B面对面[^，,；;。]*|两人面对面[^，,；;。]*|从两人相拥的侧景推向双人近景特写|双人近景特写|双人面部特写", f"{spk_nm}单人近景面部特写", first_img_prompt)
+            spk_info = roles_dict.get(speaker_role, {})
+            spk_nm = spk_info.get("name") or f"角色{speaker_role}"
+            spk_bust_desc = _clean_desc_for_bust_portrait(str(spk_info.get("desc") or ""))
+            other_tokens = ["两人", "双人", "二人", "面对面", "彼此"]
             for orid in other_rids:
+                other_tokens.extend([f"角色{orid}", f"人物{orid}"])
                 onm = roles_dict.get(orid, {}).get("name") or ""
-                first_img_prompt = re.sub(rf"(?:靠近|环住|揽入|轻托|紧锁|回望|直视|搭上)(?:角色)?{orid}[^，,；;。]*", "目光深情专注地凝视镜头前方", first_img_prompt)
                 if onm:
-                    first_img_prompt = re.sub(rf"(?:靠近|环住|揽入|轻托|紧锁|回望|直视|搭上){re.escape(onm)}[^，,；;。]*", "目光深情专注地凝视镜头前方", first_img_prompt)
-            cam_for_img = re.sub(r"双人|两人|越肩正反打|轻微越肩构图|前景虚化[^，,；;。]*", "单人近景特写", cam_txt)
+                    other_tokens.append(onm)
+            raw_clauses = [c.strip() for c in re.split(r"[，,；;。]", first_img_prompt) if c.strip()]
+            solo_clauses = []
+            for cl in raw_clauses:
+                if any(tok in cl for tok in other_tokens):
+                    continue
+                if any(re.search(rf"(?<![A-Za-z]){orid}(?![A-Za-z])", cl) for orid in other_rids):
+                    continue
+                solo_clauses.append(cl)
+            cleaned_action = "，".join(solo_clauses) if solo_clauses else "目光深情专注地凝视镜头前方，神情自然富有戏剧张力"
+            first_img_prompt = f"{spk_nm}（{spk_bust_desc}）单人近景特写，{cleaned_action}（画面中严格只有{spk_nm}一人，严禁出现第二个人物）"
+            cam_for_img = "85mm电影人像单人近景特写镜头"
         else:
             cam_for_img = cam_txt
 
@@ -11955,10 +11997,18 @@ def _drama_run_image_step(
             faces_chk = app_det.get(im_chk) if im_chk is not None else []
             if len(faces_chk) >= 2:
                 _append_panel_log(f"🛡️ [单人说话防双嘴检测] 检测到 {fn} 中出现 {len(faces_chk)} 张人脸，正在自动重绘为纯单人特写以防两人同时张嘴...")
+                m_rid = re.match(r"^char_([A-Z0-9]+)_half\.jpg$", str(ref_files[0]), flags=re.IGNORECASE)
+                c_rid = m_rid.group(1).upper() if m_rid else "A"
+                wf_tmp = _load_drama_workflow()
+                c_desc_full = ""
+                for c_it in (wf_tmp.get("cast_list") or []):
+                    if isinstance(c_it, dict) and str(c_it.get("id") or "").upper() == c_rid:
+                        c_desc_full = f"{c_it.get('name') or ''}，{c_it.get('desc') or ''}"
+                        break
                 solo_strict_prompt = (
-                    "The person in <Picture 1> is <Subject 1>. Solo single-person medium close-up portrait showing ONLY <Subject 1> alone in the frame "
+                    f"The person in <Picture 1> is <Subject 1>. Solo single-person medium close-up portrait showing ONLY <Subject 1> ({c_desc_full}) alone in the frame "
                     "(Strictly 1 person, 1 face, no second person anywhere in the frame, clean blurred indoor background): "
-                    "写实真人电影级质感，85mm f/1.4浅景深，柔和暖调室内灯光，单人近景面部特写，目光深情专注地凝视镜头前方，双唇自然闭合。"
+                    f"写实真人电影级质感，85mm f/1.4浅景深，柔和暖调室内灯光，{c_desc_full}，单人近景面部特写，目光深情专注地凝视镜头前方，双唇自然闭合。"
                 )
                 payload["prompt"] = solo_strict_prompt
                 res_p = _drama_submit_and_wait_media(payload, out_p, f"{step_label}(纯单人重绘)")
