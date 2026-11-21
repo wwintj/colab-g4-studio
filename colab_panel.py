@@ -2303,62 +2303,52 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 6 大功能按创作流水线序列一字排开 (6列等宽醒目导航卡：01生图 -> 02换脸换装融景 -> 03文生视频 -> 04首尾帧视频 -> 05数字人说话 -> 06全自动短剧导演) -->
-    <div style="display:grid;grid-template-columns:repeat(6, minmax(0, 1fr));gap:8px;width:100%;">
-      <!-- 01: 4K写真生图 -->
+    <!-- 5 大功能按创作流水线序列一字排开 (5列等宽醒目导航卡：01 4K生图与换装 -> 02 文生视频 -> 03 首尾帧视频 -> 04 数字人说话 -> 05 全自动短剧导演) -->
+    <div style="display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));gap:8px;width:100%;">
+      <!-- 01: 4K写真生图 & 换脸换装融景 (二合一) -->
       <button type="button" id="tabBtnImage" onclick="switchMiniMaxMode('image')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(244,114,182,0.22);color:#f472b6;">01 · 图像创作</span>
-          <span style="font-size:14px;">📸</span>
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:linear-gradient(135deg,rgba(244,114,182,0.25),rgba(192,132,252,0.25));color:#f472b6;">01 · 图像与换装</span>
+          <span style="font-size:14px;">📸🪄</span>
         </div>
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">4K 写真生图</div>
-        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">H3-Image · 文本直出大图</div>
+        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">4K生图 · 换脸换装</div>
+        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">纯文生4K + 人脸/服装/姿势/融景</div>
       </button>
 
-      <!-- 02: 智能换脸·换装·场景融合 -->
-      <button type="button" id="tabBtnFusion" onclick="switchMiniMaxMode('fusion')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(192,132,252,0.22);color:#c084fc;">02 · 角色合成</span>
-          <span style="font-size:14px;">🪄</span>
-        </div>
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">换脸·换装·融景</div>
-        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">人脸+服装+实景三合一</div>
-      </button>
-
-      <!-- 03: 文生音视频 (T2VA) -->
+      <!-- 02: 文生音视频 (T2VA) -->
       <button type="button" id="tabBtnT2va" onclick="switchMiniMaxMode('t2va')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #3b82f6;background:linear-gradient(135deg,rgba(37,99,235,0.35),rgba(15,23,42,0.95));box-shadow:0 6px 16px -4px rgba(59,130,246,0.45);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(59,130,246,0.28);color:#93c5fd;">03 · 纯文生视频</span>
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(59,130,246,0.28);color:#93c5fd;">02 · 纯文生视频</span>
           <span style="font-size:14px;">✨</span>
         </div>
         <div style="font-size:13px;font-weight:800;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">文生有声视频</div>
         <div style="font-size:10.5px;color:#bfdbfe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">T2VA · 提示词直出音视频</div>
       </button>
 
-      <!-- 04: 首尾帧生音视频 (FL2VA) -->
+      <!-- 03: 首尾帧生音视频 (FL2VA) -->
       <button type="button" id="tabBtnFl2va" onclick="switchMiniMaxMode('fl2va')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(56,189,248,0.22);color:#38bdf8;">04 · 图生视频</span>
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(56,189,248,0.22);color:#38bdf8;">03 · 图生视频</span>
           <span style="font-size:14px;">🖼️</span>
         </div>
         <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">首尾帧有声视频</div>
         <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FL2VA · 首尾图精准运镜</div>
       </button>
 
-      <!-- 05: 数字人音频驱动 (LongCat-Avatar) -->
+      <!-- 04: 数字人音频驱动 (LongCat-Avatar) -->
       <button type="button" id="tabBtnAvatar" onclick="switchMiniMaxMode('avatar')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.22);color:#34d399;">05 · 口型配音</span>
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.22);color:#34d399;">04 · 口型配音</span>
           <span style="font-size:14px;">🎭</span>
         </div>
         <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">数字人配音说话</div>
         <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">LongCat + Ming3.0 驱动</div>
       </button>
 
-      <!-- 06: 短剧分镜全自动导演台 -->
+      <!-- 05: 短剧分镜全自动导演台 -->
       <button type="button" id="tabBtnAutoDrama" onclick="switchMiniMaxMode('drama')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.24);color:#fbbf24;">06 · 全剧集总控</span>
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.24);color:#fbbf24;">05 · 全剧集总控</span>
           <span style="font-size:14px;">🎬</span>
         </div>
         <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">短剧全自动导演</div>
@@ -2367,19 +2357,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- 第 6 大功能：🪄 四合一角色自由组装台（①人脸 + ②服饰 + ③姿势 + ④场景 同屏直出） -->
-  <div id="fusionStudioRow" style="display:none;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(46,16,101,0.85) 100%);border:1.5px solid #c084fc;border-radius:12px;">
-    <!-- 顶部极简标题栏：已将 换装 / 换脸 / 姿势 / 融景 四大功能彻底整合为同一套 4 槽位自由组装流水线 -->
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span style="font-size:14.5px;font-weight:900;color:#f3e8ff;">🪄 四合一角色自由组装台</span>
-        <span style="font-size:11.5px;padding:2px 10px;border-radius:999px;background:rgba(168,85,247,0.22);border:1px solid rgba(192,132,252,0.45);color:#e9d5ff;font-weight:700;">
-          ①人脸(必填) ＋ ②服饰(选填) ＋ ③姿势(选填) ＋ ④场景(选填) ➔ 按需任选 2~4 项自动合成 1 张大片
+  <!-- 01 · 图像与换装二合一工作台：🪄 1. 角色换脸 · 换装 · 姿势 · 场景四宫格（不传图=下方直接纯文生4K；传图=自动开启像素级锁脸合成） -->
+  <div id="fusionStudioRow" style="display:none;padding:12px 14px;margin-bottom:14px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(46,16,101,0.82) 100%);border:1.5px solid rgba(192,132,252,0.65);border-radius:12px;">
+    <!-- 顶部单行控制栏：标题 + 智能模式状态胶囊 + 发型/角色定妆/四视图/高级微调/清空/收起 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:10px;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;">
+        <span style="font-size:14px;font-weight:900;color:#f3e8ff;white-space:nowrap;flex-shrink:0;">🪄 1. 角色参考图四宫格</span>
+        <span id="unifiedImgModeBadge" style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(244,114,182,0.16);border:1px solid rgba(244,114,182,0.45);color:#fbcfe8;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ✨ 未传图=纯文生 4K 写真（上传①人脸+任选②服饰/③姿势/④场景=自动开启像素级锁脸换装）
         </span>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;">
-        <button type="button" onclick="clearAllFourFusionSlots()" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer;" title="一键清空全部 4 个槽位">🗑️ 清空四槽</button>
-        <button type="button" onclick="toggleFusionAdvancedDrawer()" id="btnToggleFusionAdv" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:rgba(15,23,42,0.8);color:#cbd5e1;cursor:pointer;">⚙️ 高级微调 (默认自动最优) ▾</button>
+      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;flex-wrap:nowrap;">
+        <select id="fusionHairModeSelect" style="height:26px;padding:0 6px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #ec4899;background:#0f172a;color:#fbcfe8;cursor:pointer;" title="选择换脸换装后使用哪张图的发型">
+          <option value="keep_face_hair" selected>💇 用①人脸发型(连发换)</option>
+          <option value="keep_target_hair">👑 用②目标发型(只换脸)</option>
+        </select>
+        <div style="display:inline-flex;align-items:center;gap:3px;height:26px;box-sizing:border-box;background:rgba(15,23,42,0.9);padding:0 5px;border-radius:6px;border:1px solid rgba(16,185,129,0.45);">
+          <select id="selFusionTargetRole" style="height:20px;max-width:78px;padding:0 3px;font-size:11px;font-weight:700;border-radius:4px;border:none;background:transparent;color:#a7f3d0;cursor:pointer;">
+            <option value="A">🎭 角色A</option>
+            <option value="B">🎭 角色B</option>
+            <option value="C">🎭 角色C</option>
+            <option value="D">🎭 角色D</option>
+            <option value="E">🎭 角色E</option>
+          </select>
+          <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="height:20px;padding:0 6px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把生成好的图直接设为短剧对应角色定妆照">📌定妆</button>
+        </div>
+        <button type="button" id="btnRunFusionTurnaround" onclick="startCharacterTurnaroundSheetGenerate()" style="height:26px;padding:0 9px;font-size:11px;font-weight:800;border-radius:6px;border:1px solid #38bdf8;background:rgba(14,165,233,0.2);color:#bae6fd;cursor:pointer;white-space:nowrap;" title="一键直出同一角色『正面 + 3/4侧 + 90°正侧 + 背面』同框四视图定妆卡">📐 四视图</button>
+        <button type="button" onclick="toggleFusionAdvancedDrawer()" id="btnToggleFusionAdv" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #475569;background:rgba(15,23,42,0.85);color:#cbd5e1;cursor:pointer;white-space:nowrap;">⚙️ 微调 ▾</button>
+        <button type="button" onclick="clearAllFourFusionSlots()" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer;white-space:nowrap;" title="一键清空全部 4 个槽位（恢复纯文生4K模式）">🗑️ 清空四槽</button>
+        <button type="button" id="btnToggleFusionSlots" onclick="toggleFusionSlotsGrid()" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid rgba(192,132,252,0.45);background:rgba(192,132,252,0.14);color:#e9d5ff;cursor:pointer;white-space:nowrap;" title="纯文生图时可收起四宫格腾出空间">▴ 收起</button>
       </div>
     </div>
 
@@ -2465,49 +2471,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 隐藏兼容节点，确保旧逻辑引用不报错 -->
+    <!-- 隐藏兼容节点，确保旧逻辑引用不报错（提示词、分辨率与生成按钮已统一整合至下方第 2、3 卡片） -->
     <select id="fusionMultiActionMode" style="display:none;"><option value="combine" selected>combine</option></select>
     <div id="fusionTargetCardsGrid" style="display:none;"></div>
+    <input type="hidden" id="fusionPropsActionInput" value="">
+    <select id="fusionResSelect" style="display:none;"><option value="auto" selected>auto</option></select>
+    <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="display:none;">🪄 一键开始合成</button>
+    <button type="button" id="btnStopFusionStudio" onclick="stopFusionBatchGenerate()" style="display:none;">🛑 停止</button>
 
-    <!-- 底部单行紧凑控制栏：补充要求 + 发型模式 + 比例 + 角色定妆 + 四视图 + 一键合成 (全部严格在容器宽度内一行对齐，绝不溢出) -->
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;width:100%;box-sizing:border-box;">
-      <input type="text" id="fusionPropsActionInput" placeholder="💬 补充要求 (选填，不填即自动按上方槽位合成)..." style="flex:1;min-width:100px;padding:7px 10px;font-size:12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-      <select id="fusionHairModeSelect" style="width:156px;padding:7px 6px;font-size:11.5px;font-weight:700;border-radius:8px;border:1px solid #ec4899;background:#0f172a;color:#fbcfe8;flex-shrink:0;" title="选择合成后使用哪张图的发型">
-        <option value="keep_face_hair" selected>💇 用①人脸发型(连发换)</option>
-        <option value="keep_target_hair">👑 用②目标发型(只换脸)</option>
-      </select>
-      <select id="fusionResSelect" style="width:104px;padding:7px 6px;font-size:11.5px;font-weight:700;border-radius:8px;border:1px solid #c084fc;background:#0f172a;color:#f8fafc;flex-shrink:0;" title="输出画幅比例">
-        <option value="auto" selected>📐 自动比例</option>
-        <option value="1152x2048">📱 9:16 竖屏 (1152×2048)</option>
-        <option value="2048x1152">📺 16:9 横屏 (2048×1152)</option>
-        <option value="3552x4736">🖼️ 3:4 4K超清 (3552×4736)</option>
-      </select>
-      <div style="display:flex;align-items:center;gap:4px;background:rgba(15,23,42,0.9);padding:4px 6px;border-radius:8px;border:1px solid rgba(16,185,129,0.4);flex-shrink:0;">
-        <select id="selFusionTargetRole" style="max-width:96px;padding:3px 4px;font-size:11.5px;font-weight:700;border-radius:5px;border:1px solid #10b981;background:#020617;color:#a7f3d0;">
-          <option value="A">🎭 角色A</option>
-          <option value="B">🎭 角色B</option>
-          <option value="C">🎭 角色C</option>
-          <option value="D">🎭 角色D</option>
-          <option value="E">🎭 角色E</option>
-        </select>
-        <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:3px 6px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把生成好的图直接设为短剧对应角色定妆照">📌定妆</button>
-      </div>
-      <button type="button" id="btnRunFusionTurnaround" onclick="startCharacterTurnaroundSheetGenerate()" style="padding:7px 10px;font-size:11.5px;font-weight:900;border-radius:8px;border:1.5px solid #38bdf8;background:linear-gradient(135deg,rgba(14,165,233,0.28),rgba(99,102,241,0.28));color:#bae6fd;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="AusBoss (3444714) 角色四视图设定集：一键直出同一角色『正面 + 3/4侧 + 90°正侧 + 背面』同框四视图定妆卡">
-        📐 四视图定妆卡
-      </button>
-      <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="padding:7px 13px;font-size:12.5px;font-weight:900;border-radius:8px;border:none;background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 6px 18px -4px rgba(236,72,153,0.55);white-space:nowrap;flex-shrink:0;">
-        🪄 一键开始合成
-      </button>
-      <button type="button" id="btnStopFusionStudio" onclick="stopFusionBatchGenerate()" style="display:none;padding:7px 10px;font-size:12px;font-weight:800;border-radius:8px;border:1px solid #ef4444;background:rgba(239,68,68,0.22);color:#fca5a5;cursor:pointer;white-space:nowrap;flex-shrink:0;">
-        🛑 停止
-      </button>
-    </div>
-
-    <!-- 角色合成专属实时进度条与状态提示 (绝不跳回 01 标签页) -->
-    <div id="fusionProgressWrap" style="display:none;margin-top:10px;">
+    <!-- 角色合成专属实时进度条与状态提示 -->
+    <div id="fusionProgressWrap" style="display:none;margin-top:8px;">
       <div class="progress-bar" style="height:7px;background:#0f172a;"><div class="progress-fill" id="fusionProgressBar" style="width:8%;background:linear-gradient(90deg,#a855f7,#ec4899,#10b981);"></div></div>
     </div>
-    <div id="fusionStudioStatusText" style="margin-top:6px;font-size:12px;font-weight:700;color:#cbd5e1;"></div>
+    <div id="fusionStudioStatusText" style="margin-top:4px;font-size:12px;font-weight:700;color:#cbd5e1;"></div>
 
     <!-- 批量合成结果缩略图画廊 (当生成 1~N 张后在此横向展示，点击任意一张即可在下方大屏查看/流转) -->
     <div id="fusionBatchResultsBar" style="display:none;margin-top:10px;padding:8px 10px;border-radius:8px;background:rgba(2,6,23,0.78);border:1px solid rgba(192,132,252,0.4);"></div>
@@ -2745,72 +2721,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div id="dramaStepsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(155px, 1fr));gap:6px;font-size:11px;"></div>
   </div>
 
-  <!-- MiniMax-H3-Image 4K无审查写真与免Mask锁脸换装操作区 (切换至 image 模式自动显示) -->
-  <div id="h3ImageControlRow" style="display:none;grid-template-columns:1fr 1fr;gap:14px;padding:12px 14px;margin-bottom:14px;background:#0f172a;border:1.5px dashed #ec4899;border-radius:12px;align-items:stretch;">
-    <div style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
-      <div style="display:flex;flex-direction:column;flex:1;min-width:0;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:nowrap;height:26px;margin-bottom:8px;">
-          <label style="font-size:12.5px;font-weight:800;color:#f472b6;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🖼️ 1. 参考图上传 <span style="font-size:11.5px;font-weight:600;color:#f9a8d4;">(不传=纯文生4K；传图=免Mask锁脸换装)</span></label>
-          <button type="button" onclick="clearAllH3RefImages()" style="height:24px;padding:0 9px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #475569;background:rgba(30,41,59,0.85);color:#cbd5e1;cursor:pointer;white-space:nowrap;flex-shrink:0;">✕ 清空参考图</button>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px;flex:1;">
-          <div style="padding:8px 9px;border-radius:8px;background:#1e293b;border:1px solid #334155;display:flex;flex-direction:column;justify-content:center;min-width:0;">
-            <div style="font-size:11px;font-weight:700;color:#fbcfe8;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👩 &lt;Picture 1&gt; 主人物/底图</div>
-            <input type="file" id="inpH3ImgRef1" accept="image/*" onchange="handleH3RefImageSelect(0, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
-            <img id="h3ImgRef1Preview" style="display:none;margin-top:6px;width:100%;height:78px;object-fit:contain;border-radius:5px;background:#020617;">
-          </div>
-          <div style="padding:8px 9px;border-radius:8px;background:#1e293b;border:1px solid #334155;display:flex;flex-direction:column;justify-content:center;min-width:0;">
-            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👗 &lt;Picture 2&gt; 服饰/道具</div>
-            <input type="file" id="inpH3ImgRef2" accept="image/*" onchange="handleH3RefImageSelect(1, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
-            <img id="h3ImgRef2Preview" style="display:none;margin-top:6px;width:100%;height:78px;object-fit:contain;border-radius:5px;background:#020617;">
-          </div>
-          <div style="padding:8px 9px;border-radius:8px;background:#1e293b;border:1px solid #334155;display:flex;flex-direction:column;justify-content:center;min-width:0;">
-            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🏞️ &lt;Picture 3&gt; 新场景背景</div>
-            <input type="file" id="inpH3ImgRef3" accept="image/*" onchange="handleH3RefImageSelect(2, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
-            <img id="h3ImgRef3Preview" style="display:none;margin-top:6px;width:100%;height:78px;object-fit:contain;border-radius:5px;background:#020617;">
-          </div>
-        </div>
-      </div>
-      <div style="margin-top:8px;padding-top:7px;border-top:1px solid var(--border);display:flex;align-items:center;height:20px;font-size:11.5px;min-width:0;">
-        <span id="h3ImgRefStatus" style="color:#f472b6;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✨ 当前为「纯文生 4K 超清写真」模式（上传 &lt;Picture 1&gt; 即自动切换为免涂 Mask 锁脸换装）</span>
-      </div>
-    </div>
-
-    <div style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
-      <div style="display:flex;flex-direction:column;flex:1;min-width:0;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:nowrap;height:26px;margin-bottom:8px;">
-          <label style="font-size:12.5px;font-weight:800;color:#fcd34d;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🪄 2. 免Mask锁脸换装 &amp; 4K去磨砂黄金模板</label>
-          <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:24px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11px;font-weight:700;max-width:225px;flex-shrink:0;cursor:pointer;">
-            <option value="">✨ 一键套用 4K 写真 / 锁脸换装模板...</option>
-            <option value="edit_qipao">👘 【锁脸换装·需传图】黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
-            <option value="edit_silk">🍷 【锁脸换装·需传图】酒红真丝滑落肩头吊带睡袍 + 黑色蕾丝花边</option>
-            <option value="edit_lace">🤍 【锁脸换装·需传图】纯白镂空蕾丝吊带短裙 + 柔光私房质感</option>
-            <option value="edit_ol">🖤 【锁脸换装·需传图】修身黑丝绒高开叉晚礼服 + 璀璨钻石颈链</option>
-            <option value="t2i_courtyard">🏮 【纯文生4K·免传图】江南少女：苏州庭院黄昏白玉簪中国少女 (单反真皮)</option>
-            <option value="t2i_boudoir">🥂 【纯文生4K·免传图】私房写真：午后百叶窗暖光酒红真丝蕾丝写真 (无审查)</option>
-            <option value="t2i_white_lace">🦢 【纯文生4K·免传图】纯白蕾丝：晨光落地窗纯白蕾丝吊带少女特写 (通透真皮)</option>
-            <option value="t2i_chongqing">🌃 【纯文生4K·免传图】雨夜街拍：重庆洪崖洞透明伞回眸姑娘 + 双语霓虹</option>
-          </select>
-        </div>
-        <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;flex:1;display:flex;flex-direction:column;justify-content:center;">
-          <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">上传 &lt;Picture 1&gt; 后填写下方任意一项，后台自动合成 <code style="color:#f472b6;">Picture + Subject</code> 三段式像素级锁脸语法：</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <div style="min-width:0;">
-              <label style="font-size:11px;color:#fbcfe8;display:block;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👗 换成什么新衣服/穿搭 (&lt;Subject 2&gt;)</label>
-              <input id="inpH3EditOutfit" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="例如: a white lace camisole dress / 黑色真丝旗袍" style="width:100%;height:28px;box-sizing:border-box;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
-            </div>
-            <div style="min-width:0;">
-              <label style="font-size:11px;color:#93c5fd;display:block;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🏞️ 换成什么新场景 (留空则100%保留原背景)</label>
-              <input id="inpH3EditScene" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="留空保留原背景；或填 sunlit bedroom" style="width:100%;height:28px;box-sizing:border-box;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
-            </div>
-          </div>
-        </div>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:7px;border-top:1px solid var(--border);height:20px;font-size:11.5px;color:#6ee7b7;cursor:pointer;user-select:none;min-width:0;">
-        <input type="checkbox" id="chkCleanMatteWords" checked style="width:13.5px;height:13.5px;accent-color:#10b981;flex-shrink:0;margin:0;">
-        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🛡️ 自动开启「去磨砂真皮过滤」（自动剔除 <code style="color:#cbd5e1;">matte skin / fine pores / film grain</code> 等导致砂纸脸的旧词）</span>
-      </label>
-    </div>
+  <!-- 旧版独立 H3-Image 参考图框已与上方四宫格合并，保留隐藏兼容节点 -->
+  <div id="h3ImageControlRow" style="display:none;">
+    <input type="hidden" id="inpH3EditOutfit" value="">
+    <input type="hidden" id="inpH3EditScene" value="">
+    <span id="h3ImgRefStatus" style="display:none;"></span>
   </div>
 
   <!-- LongCat-Video-Avatar-1.6 数字人音频驱动图形化操作区 (切换至 avatar 模式自动显示) -->
@@ -3009,6 +2924,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button type="button" class="btn-outline" style="height:28px;padding:0 11px;font-size:11.5px;border-radius:7px;border-color:rgba(239,68,68,0.45);color:#fca5a5;white-space:nowrap;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
       </div>
       <div id="singleBoxActionBtns" style="display:none;align-items:center;gap:6px;flex-wrap:nowrap;flex-shrink:0;">
+        <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:26px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11.5px;font-weight:700;max-width:230px;flex-shrink:0;cursor:pointer;">
+          <option value="">✨ 一键套用 4K 写真 / 锁脸换装模板...</option>
+          <option value="edit_qipao">👘 【锁脸换装·需传图】黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
+          <option value="edit_silk">🍷 【锁脸换装·需传图】酒红真丝滑落肩头吊带睡袍 + 黑色蕾丝花边</option>
+          <option value="edit_lace">🤍 【锁脸换装·需传图】纯白镂空蕾丝吊带短裙 + 柔光私房质感</option>
+          <option value="edit_ol">🖤 【锁脸换装·需传图】修身黑丝绒高开叉晚礼服 + 璀璨钻石颈链</option>
+          <option value="t2i_courtyard">🏮 【纯文生4K·免传图】江南少女：苏州庭院黄昏白玉簪中国少女 (单反真皮)</option>
+          <option value="t2i_boudoir">🥂 【纯文生4K·免传图】私房写真：午后百叶窗暖光酒红真丝蕾丝写真 (无审查)</option>
+          <option value="t2i_white_lace">🦢 【纯文生4K·免传图】纯白蕾丝：晨光落地窗纯白蕾丝吊带少女特写 (通透真皮)</option>
+          <option value="t2i_chongqing">🌃 【纯文生4K·免传图】雨夜街拍：重庆洪崖洞透明伞回眸姑娘 + 双语霓虹</option>
+        </select>
+        <label id="lblCleanMatteWords" title="自动剔除 matte skin / fine pores / film grain 等导致 3D 磨砂塑料假脸的旧词，开启通透柔光真皮质感" style="display:inline-flex;align-items:center;gap:4px;height:26px;box-sizing:border-box;padding:0 8px;border-radius:6px;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.45);font-size:11.5px;font-weight:700;color:#6ee7b7;cursor:pointer;user-select:none;white-space:nowrap;">
+          <input type="checkbox" id="chkCleanMatteWords" checked style="width:13px;height:13px;accent-color:#10b981;margin:0;cursor:pointer;">
+          <span>🛡️ 去磨砂真皮</span>
+        </label>
         <button type="button" class="btn-outline" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:6px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 填入</button>
         <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:6px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;white-space:nowrap;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
@@ -3020,7 +2950,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this); if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;"></textarea>
+      <textarea id="videoPrompt" rows="4" oninput="if (currentMiniMaxMode === 'image') { const fp = document.getElementById('fusionPropsActionInput'); if (fp) fp.value = this.value; } autoSplitAvatarPromptAndTts(this); if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 2 (单独一行)：环境音效与台词对白（可选） -->
@@ -5301,6 +5231,7 @@ const VIDEO_RES_OPTIONS_HTML = `
 
 const H3_IMAGE_RES_OPTIONS_HTML = `
   <option value="3552x4736" selected>3552×4736 (3:4 竖版4K人像 · 1682万像素·推荐)</option>
+  <option value="auto">📐 自动匹配参考图比例 (传图换装自动跟随比例 · 纯文生默认4K竖版)</option>
   <option value="3360x5024">3360×5024 (2:3 写真4K竖幅 · 1688万像素)</option>
   <option value="3072x5472">3072×5472 (9:16 全屏4K竖屏 · 1681万像素)</option>
   <option value="4096x4096">4096×4096 (1:1 方形4K海报 · 1677万像素)</option>
@@ -5312,6 +5243,7 @@ const H3_IMAGE_RES_OPTIONS_HTML = `
 `;
 
 function switchMiniMaxMode(mode) {
+  if (mode === 'fusion') mode = 'image';
   const prevMode = currentMiniMaxMode;
   currentMiniMaxMode = mode;
   try { localStorage.setItem('easycolab_active_tab', mode); } catch (e) {}
@@ -5321,7 +5253,6 @@ function switchMiniMaxMode(mode) {
   const isAv = mode === 'avatar';
   const isImg = mode === 'image';
   const isDrama = mode === 'drama';
-  const isFusion = mode === 'fusion';
   const flRow = document.getElementById('fl2vaImageRow');
   const avRow = document.getElementById('avatarControlRow');
   const imgRow = document.getElementById('h3ImageControlRow');
@@ -5331,15 +5262,14 @@ function switchMiniMaxMode(mode) {
   const specCard = document.getElementById('specSectionCard');
   if (flRow) flRow.style.display = isFl ? 'grid' : 'none';
   if (avRow) avRow.style.display = isAv ? 'grid' : 'none';
-  if (imgRow) imgRow.style.display = isImg ? 'grid' : 'none';
+  if (imgRow) imgRow.style.display = 'none';
   if (dramaRow) dramaRow.style.display = isDrama ? 'block' : 'none';
-  if (fusionRow) fusionRow.style.display = isFusion ? 'block' : 'none';
-  if (promptCard) promptCard.style.display = (isDrama || isFusion) ? 'none' : 'block';
-  if (specCard) specCard.style.display = (isDrama || isFusion) ? 'none' : 'block';
+  if (fusionRow) fusionRow.style.display = isImg ? 'block' : 'none';
+  if (promptCard) promptCard.style.display = isDrama ? 'none' : 'block';
+  if (specCard) specCard.style.display = isDrama ? 'none' : 'block';
   const tabConfigs = [
-    {id: 'tabBtnImage', active: isImg, border: '#ec4899', bg: 'linear-gradient(135deg,rgba(236,72,153,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(236,72,153,0.45)'},
-    {id: 'tabBtnFusion', active: isFusion, border: '#c084fc', bg: 'linear-gradient(135deg,rgba(168,85,247,0.38),rgba(15,23,42,0.95))', shadow: 'rgba(168,85,247,0.48)'},
-    {id: 'tabBtnT2va', active: (!isFl && !isAv && !isImg && !isDrama && !isFusion), border: '#3b82f6', bg: 'linear-gradient(135deg,rgba(37,99,235,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(59,130,246,0.45)'},
+    {id: 'tabBtnImage', active: isImg, border: '#ec4899', bg: 'linear-gradient(135deg,rgba(236,72,153,0.34),rgba(168,85,247,0.32),rgba(15,23,42,0.95))', shadow: 'rgba(236,72,153,0.45)'},
+    {id: 'tabBtnT2va', active: (!isFl && !isAv && !isImg && !isDrama), border: '#3b82f6', bg: 'linear-gradient(135deg,rgba(37,99,235,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(59,130,246,0.45)'},
     {id: 'tabBtnFl2va', active: isFl, border: '#38bdf8', bg: 'linear-gradient(135deg,rgba(14,165,233,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(56,189,248,0.45)'},
     {id: 'tabBtnAvatar', active: isAv, border: '#10b981', bg: 'linear-gradient(135deg,rgba(16,185,129,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(16,185,129,0.45)'},
     {id: 'tabBtnAutoDrama', active: isDrama, border: '#f59e0b', bg: 'linear-gradient(135deg,rgba(245,158,11,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(245,158,11,0.48)'},
@@ -5363,18 +5293,13 @@ function switchMiniMaxMode(mode) {
     pollAutoDramaStatus();
     return;
   }
-  if (isFusion) {
-    if (titleEl) titleEl.innerText = '🪄 AI 智能换脸 · 试衣换装 · 姿势 · 实景四合一自由组装工坊';
-    if (badgeEl) badgeEl.innerText = '免涂 Mask 像素级骨相锁脸 + 服装姿势空间解耦 + 实景环境光重打光';
-    syncFusionRoleDropdown();
-    renderFusionTargetCards();
-    return;
-  }
   const pEl = document.getElementById('videoPrompt');
   const pSecTitle = document.getElementById('promptSectionTitle');
   const pSecSubHint = document.getElementById('promptSectionSubHint');
   const fourBtns = document.getElementById('fourBoxActionBtns');
   const singleBtns = document.getElementById('singleBoxActionBtns');
+  const tplSel = document.getElementById('h3ImageTemplateSelect');
+  const cleanMatteLbl = document.getElementById('lblCleanMatteWords');
   const box1Wrap = document.getElementById('videoPromptBox1Wrap');
   const box1Hdr = document.getElementById('videoPromptBox1Header');
   const box1Lbl = document.getElementById('videoPromptBox1Label');
@@ -5404,15 +5329,17 @@ function switchMiniMaxMode(mode) {
   const loraBar = document.getElementById('h3SentinelLoraBar');
   if (isImg) {
     if (loraBar) loraBar.style.display = 'none';
-    if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 原生 4K 无审查写真生图工作台';
-    if (badgeEl) badgeEl.innerText = '1680万像素4K直出 + Heretic 32B无审查编码器 + 6步极速扩散';
-    if (pSecTitle) pSecTitle.innerText = '3. 4K 写真画面提示词 / 免Mask锁脸换装指令';
+    if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 4K 写真生图 & 角色换脸换装二合一工作台';
+    if (badgeEl) badgeEl.innerText = '纯文生1680万像素4K直出 + 免Mask四宫格锁脸换装 + ArcFace二阶生物特征五官精修';
+    if (pSecTitle) pSecTitle.innerText = '2. 4K 写真画面提示词 & 换装补充要求';
     if (pSecSubHint) {
       pSecSubHint.style.display = 'inline';
-      pSecSubHint.innerText = '（已自动开启去磨砂真皮过滤；若上方上传了 <Picture 1> 并填写了换装栏，将自动合成三段式锁脸语法）';
+      pSecSubHint.innerText = '（未传上方参考图时直接按此提示词文生 4K 写真；已传参考图时作为服饰/动作/场景补充要求）';
     }
     if (fourBtns) fourBtns.style.display = 'none';
     if (singleBtns) singleBtns.style.display = 'flex';
+    if (tplSel) tplSel.style.display = 'inline-block';
+    if (cleanMatteLbl) cleanMatteLbl.style.display = 'inline-flex';
     if (box1Hdr) box1Hdr.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
     if (box2Wrap) box2Wrap.style.display = 'none';
@@ -5431,7 +5358,7 @@ function switchMiniMaxMode(mode) {
       specRow1.style.marginBottom = '0';
     }
     if (specRow2) {
-      specRow2.style.gridTemplateColumns = '1fr 205px';
+      specRow2.style.gridTemplateColumns = '1fr 215px';
     }
     if (framesInner) framesInner.style.display = 'none';
     if (sr2kLbl) sr2kLbl.style.display = 'none';
@@ -5445,18 +5372,17 @@ function switchMiniMaxMode(mode) {
     }
     if (btnImgGen) {
       btnImgGen.style.display = 'inline-flex';
-      if (btnImgGen.getAttribute('data-running') !== '1') {
-        btnImgGen.innerText = '📸 立即生成 4K 写真图片';
-        btnImgGen.style.flex = '1';
-      }
+      btnImgGen.style.flex = '1';
     }
     if (btnGen) {
       btnGen.style.display = 'none';
     }
     if (pEl) {
       pEl.rows = 3;
-      pEl.style.minHeight = '84px';
+      pEl.style.minHeight = '80px';
     }
+    syncFusionRoleDropdown();
+    renderFusionTargetCards();
   } else if (isAv) {
     if (loraBar) loraBar.style.display = 'none';
     if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
@@ -5468,6 +5394,8 @@ function switchMiniMaxMode(mode) {
     }
     if (fourBtns) fourBtns.style.display = 'none';
     if (singleBtns) singleBtns.style.display = 'flex';
+    if (tplSel) tplSel.style.display = 'none';
+    if (cleanMatteLbl) cleanMatteLbl.style.display = 'none';
     if (box1Hdr) box1Hdr.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
     if (box2Wrap) box2Wrap.style.display = 'none';
@@ -5590,31 +5518,72 @@ function toggleFusionAdvancedDrawer() {
   if (!dr) return;
   const open = dr.style.display === 'none';
   dr.style.display = open ? 'block' : 'none';
-  if (btn) btn.innerText = open ? '⚙️ 收起高级微调 ▴' : '⚙️ 高级微调 (默认自动最优) ▾';
+  if (btn) btn.innerText = open ? '⚙️ 收起微调 ▴' : '⚙️ 微调 ▾';
+}
+
+function toggleFusionSlotsGrid() {
+  const grid = document.getElementById('fusionSlotsGrid');
+  const btn = document.getElementById('btnToggleFusionSlots');
+  if (!grid) return;
+  const open = grid.style.display === 'none';
+  grid.style.display = open ? 'grid' : 'none';
+  if (btn) btn.innerText = open ? '▴ 收起' : '▾ 展开四宫格';
 }
 
 function updateFusionRunBtnLabel() {
   const btn = document.getElementById('btnRunFusionStudio');
-  if (!btn || fusionBatchRunning) return;
+  const btnImg = document.getElementById('btnImageOnlyGen');
+  const modeBadge = document.getElementById('unifiedImgModeBadge');
+  const hasFace = Boolean(fusionSlotsB64[0]);
   const hasOutfit = Boolean(fusionTargetList[0]);
   const hasPose = Boolean(fusionTargetList[1]);
   const hasScene = Boolean(fusionSlotsB64[2]);
-  const labels = ['人脸'];
-  if (hasOutfit) labels.push('服饰');
-  if (hasPose) labels.push('姿势');
-  if (hasScene) labels.push('场景');
-  if (labels.length === 4) {
-    btn.innerText = '🪄 一键四合一合成';
-    btn.title = '一键四合一合成 (人脸+服饰+姿势+场景)';
-  } else if (labels.length === 3) {
-    btn.innerText = '🪄 一键三合一合成';
-    btn.title = `一键三合一合成 (${labels.join('+')})`;
-  } else if (labels.length === 2) {
-    btn.innerText = '🪄 一键二合一合成';
-    btn.title = `一键二合一合成 (${labels.join('+')})`;
-  } else {
-    btn.innerText = '🪄 一键开始合成';
-    btn.title = '一键开始合成';
+  const anySlot = hasFace || hasOutfit || hasPose || hasScene;
+  const labels = [];
+  if (hasFace) labels.push('①人脸');
+  if (hasOutfit) labels.push('②服饰');
+  if (hasPose) labels.push('③姿势');
+  if (hasScene) labels.push('④场景');
+
+  if (modeBadge) {
+    if (anySlot) {
+      modeBadge.innerText = `🧬 已激活【像素级锁脸换装 + ArcFace 二阶五官精修】（已载入: ${labels.join(' + ')}）`;
+      modeBadge.style.background = 'rgba(16,185,129,0.18)';
+      modeBadge.style.borderColor = 'rgba(16,185,129,0.55)';
+      modeBadge.style.color = '#6ee7b7';
+    } else {
+      modeBadge.innerText = '✨ 未传图=纯文生 4K 写真（上传①人脸+任选②服饰/③姿势/④场景=自动开启像素级锁脸换装）';
+      modeBadge.style.background = 'rgba(244,114,182,0.16)';
+      modeBadge.style.borderColor = 'rgba(244,114,182,0.45)';
+      modeBadge.style.color = '#fbcfe8';
+    }
+  }
+
+  if (fusionBatchRunning) return;
+  let btnLabel = '📸 立即生成 4K 写真图片';
+  let btnTitle = '生成原生 4K 高清写真大图';
+  if (anySlot) {
+    if (labels.length === 4) {
+      btnLabel = '🪄 一键四合一锁脸合成';
+      btnTitle = '一键四合一合成 (人脸+服饰+姿势+场景)';
+    } else if (labels.length === 3) {
+      btnLabel = '🪄 一键三合一锁脸合成';
+      btnTitle = `一键三合一合成 (${labels.join('+')})`;
+    } else if (labels.length === 2) {
+      btnLabel = '🪄 一键二合一锁脸合成';
+      btnTitle = `一键二合一合成 (${labels.join('+')})`;
+    } else {
+      btnLabel = '🪄 立即锁脸换装生成';
+      btnTitle = '基于参考图进行免Mask像素级锁脸换装生成';
+    }
+  }
+  if (btn) {
+    btn.innerText = btnLabel;
+    btn.title = btnTitle;
+  }
+  if (btnImg && btnImg.getAttribute('data-running') !== '1') {
+    btnImg.innerText = btnLabel;
+    btnImg.title = btnTitle;
   }
 }
 
@@ -5713,7 +5682,12 @@ function clearAllFourFusionSlots() {
   clearFusionSlot(2);
   const propInp = document.getElementById('fusionPropsActionInput');
   if (propInp) propInp.value = '';
-  showGlobalCopyToast('🗑️ 已清空 ①人脸、②服饰、③姿势、④场景 全部 4 个槽位！');
+  const vpEl = document.getElementById('videoPrompt');
+  if (vpEl && (vpEl.value.includes('【服饰】') || vpEl.value.includes('【姿势】'))) {
+    vpEl.value = '';
+  }
+  updateFusionRunBtnLabel();
+  showGlobalCopyToast('🗑️ 已清空 ①人脸、②服饰、③姿势、④场景 全部 4 个槽位（已切回纯文生 4K 模式）！');
 }
 
 function addFusionTargetSlot() {}
@@ -6083,12 +6057,21 @@ function buildFusionRefsAndPrompt(targetListForJob) {
     return {refs, prompt};
   }
 
-  // 情形 D：仅上传了人脸/人物主照
+  // 情形 D：仅上传了人脸/人物主照（支持直接使用下方提示词框中的 <Picture 1> 锁脸模板或自定义衣服/场景要求）
+  const mainPromptTxt = (((document.getElementById('videoPrompt') || {}).value) || '').trim();
+  const effExtra = extraTxt || mainPromptTxt;
+  if (effExtra && effExtra.includes('<Picture 1>')) {
+    return {
+      refs: [faceB64],
+      prompt: effExtra,
+    };
+  }
   return {
     refs: [faceB64],
     prompt: (
       "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. " +
       "Keep <Subject 1>'s exact slim face shape, jawline contour, facial features, hairstyle, and identity from <Picture 1> 100% unchanged. " +
+      (effExtra ? `Change <Subject 1>'s clothing outfit / scene to: ${effExtra}. ` : '') +
       styleTail
     ),
   };
@@ -6296,6 +6279,7 @@ async function startFusionStudioGenerate() {
     btn.blur();
     btn.innerText = `⏳ 正在合成 (${jobTargetLists.length === 1 ? '多图合1' : '共 ' + jobTargetLists.length + ' 张'})...`;
   }
+  setVideoBtnRunningState(true, '🛑 正在合成锁脸换装大片... (点击停止)');
   if (stopBtn) stopBtn.style.display = 'inline-block';
   if (fWrap) fWrap.style.display = 'block';
   if (fBar) fBar.style.width = '8%';
@@ -6466,6 +6450,7 @@ async function startFusionStudioGenerate() {
     fusionBatchRunning = false;
     if (btn) btn.disabled = false;
     if (stopBtn) stopBtn.style.display = 'none';
+    setVideoBtnRunningState(false);
     updateFusionRunBtnLabel();
   }
 }
@@ -7671,6 +7656,7 @@ function setVideoBtnRunningState(running, customLabel) {
       btnImg.style.boxShadow = '0 6px 16px -4px rgba(236,72,153,0.45)';
       btnImg.innerText = '📸 立即生成 4K 写真图片';
     }
+    if (typeof updateFusionRunBtnLabel === 'function') updateFusionRunBtnLabel();
     if (btnFus) {
       btnFus.disabled = false;
       btnFus.innerText = '🪄 立即执行 AI 换脸 / 换装 / 场景融合';
@@ -8094,6 +8080,10 @@ function compileCurrentVideoPromptToH3SixSection(showToast = true) {
 async function startVideoGenerate(forceTarget = '') {
   const btnVid = document.getElementById('btnVideoGen');
   const btnImg = document.getElementById('btnImageOnlyGen');
+  if (fusionBatchRunning) {
+    await stopFusionBatchGenerate();
+    return;
+  }
   if ((btnVid && btnVid.getAttribute('data-running') === '1') || (btnImg && btnImg.getAttribute('data-running') === '1')) {
     await stopActiveVideoTask('video');
     return;
@@ -8125,11 +8115,31 @@ async function startVideoGenerate(forceTarget = '') {
   const prompt = document.getElementById('videoPrompt').value.trim();
   const isImgMode = (forceTarget === 'image') || (currentMiniMaxMode === 'image');
   const isAvMode = currentMiniMaxMode === 'avatar';
+  if (isImgMode) {
+    const hasAnyFusionSlot = Boolean(fusionSlotsB64[0] || fusionTargetList[0] || fusionTargetList[1] || fusionSlotsB64[2]);
+    if (hasAnyFusionSlot) {
+      const fpInp = document.getElementById('fusionPropsActionInput');
+      if (fpInp) fpInp.value = prompt;
+      const fResSel = document.getElementById('fusionResSelect');
+      const vResVal = (document.getElementById('videoRes') || {}).value || 'auto';
+      if (fResSel) {
+        fResSel.innerHTML = `<option value="${vResVal}" selected>${vResVal}</option>`;
+        fResSel.value = vResVal;
+      }
+      await startFusionStudioGenerate();
+      return;
+    }
+    if (!prompt) {
+      alert('请输入 4K 写真画面提示词（或在上方四宫格上传参考图进行换脸换装）！');
+      return;
+    }
+  }
   if (!prompt && !isImgMode) {
     alert('请输入画面提示词');
     return;
   }
-  const resVal = document.getElementById('videoRes').value || (isImgMode ? '3552x4736' : '832x480');
+  let resVal = document.getElementById('videoRes').value || (isImgMode ? '3552x4736' : '832x480');
+  if (resVal === 'auto') resVal = isImgMode ? '3552x4736' : '832x480';
   const [wStr, hStr] = resVal.split('x');
   const randSeed = document.getElementById('videoRandSeed').checked;
   const seedVal = randSeed ? -1 : (parseInt(document.getElementById('videoSeed').value || '42', 10) || 42);
@@ -9428,15 +9438,18 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
         window._lastPosewearOutfitZh = descZh || '';
       }
       const propInp = document.getElementById('fusionPropsActionInput');
+      const parts = [];
+      if (window._lastPosewearOutfitZh) parts.push(`【服饰】${window._lastPosewearOutfitZh}`);
+      if (window._lastPosewearPoseZh) parts.push(`【姿势】${window._lastPosewearPoseZh}`);
+      const joinedPrompt = parts.length ? parts.join(' ＋ ') : (descZh || '');
       if (propInp) {
-        const parts = [];
-        if (window._lastPosewearOutfitZh) parts.push(`【服饰】${window._lastPosewearOutfitZh}`);
-        if (window._lastPosewearPoseZh) parts.push(`【姿势】${window._lastPosewearPoseZh}`);
-        propInp.value = parts.length ? parts.join(' ＋ ') : (descZh || '');
+        propInp.value = joinedPrompt;
       }
-      if (currentMiniMaxMode !== 'fusion') {
-        switchMiniMaxMode('fusion');
+      if (currentMiniMaxMode !== 'image') {
+        switchMiniMaxMode('image');
       }
+      const vpEl = document.getElementById('videoPrompt');
+      if (vpEl) vpEl.value = joinedPrompt;
       const hairSel = document.getElementById('fusionHairModeSelect');
       if (hairSel) hairSel.value = 'keep_face_hair';
       document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
