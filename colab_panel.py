@@ -6579,10 +6579,15 @@ function renderLocalHistoryList() {
       : (isSr
         ? `<span style="background:rgba(139,92,246,0.22);color:#c4b5fd;border:1px solid rgba(139,92,246,0.45);padding:1px 6px;border-radius:6px;font-size:10.5px;font-weight:800;flex-shrink:0;">✨超清</span>`
         : `<button type="button" title="使用 ReCaVSR 将该视频超分至 2K 超清" onclick="event.stopPropagation();upscaleVideoByName('${escapeHtml(it.name)}')" style="background:rgba(139,92,246,0.16);color:#c4b5fd;border:1px solid rgba(139,92,246,0.42);padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;flex-shrink:0;">✨2K</button>`);
+    const thumbBorder = active ? '1.5px solid #60a5fa' : '1px solid rgba(148,163,184,0.28)';
+    const thumbUrl = `/api/local_video_thumb?name=${encodeURIComponent(it.name)}&v=${encodeURIComponent(it.size_mb || '')}`;
     return `
-      <div onclick="selectLocalHistoryItem(${idx})" style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:9px 10px;border-radius:10px;background:${rowBg};border:${rowBorder};cursor:pointer;transition:all 0.12s;">
-        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-          <span style="color:${iconColor};font-size:14px;flex-shrink:0;">${isImgFile ? '🖼️' : '🎞️'}</span>
+      <div onclick="selectLocalHistoryItem(${idx})" style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:7px 9px;border-radius:10px;background:${rowBg};border:${rowBorder};cursor:pointer;transition:all 0.12s;">
+        <div style="display:flex;align-items:center;gap:9px;min-width:0;flex:1;">
+          <div style="width:40px;height:48px;border-radius:7px;overflow:hidden;border:${thumbBorder};background:#020617;position:relative;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,0.45);">
+            <img loading="lazy" src="${thumbUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">
+            <span style="position:absolute;bottom:1px;right:1px;font-size:9px;line-height:1;padding:1px 2px;border-radius:3px;background:rgba(2,6,23,0.78);color:${iconColor};">${isImgFile ? '🖼️' : '▶️'}</span>
+          </div>
           <div style="min-width:0;">
             <div style="font-size:12.5px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}">${escapeHtml(it.short_name || it.name)}</div>
             <div style="font-size:11px;color:#94a3b8;margin-top:2px;">${escapeHtml(it.date_str || '')}</div>
@@ -10072,6 +10077,60 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 "dir": str(LOCAL_MOVIES_DIR),
                 "items": _list_local_easycolab_videos(),
             })
+            return
+
+        if self.path.startswith("/api/local_video_thumb"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            fname = os.path.basename((qs.get("name", [""])[0] or "").strip())
+            fpath = LOCAL_MOVIES_DIR / fname
+            if not fname or not fpath.is_file():
+                self.send_error(404)
+                return
+            st_info = fpath.stat()
+            ckey = f"{fname}:{int(st_info.st_mtime)}:{st_info.st_size}"
+            cache_dict = globals().setdefault("_LOCAL_THUMB_MEM_CACHE", {})
+            thumb_bytes = cache_dict.get(ckey)
+            if not thumb_bytes:
+                try:
+                    venv_sp = BASE_DIR / ".venv" / "lib" / "python3.12" / "site-packages"
+                    if venv_sp.is_dir() and str(venv_sp) not in sys.path:
+                        sys.path.insert(0, str(venv_sp))
+                    import cv2
+                    ext_low = fpath.suffix.lower()
+                    im = None
+                    if ext_low in (".png", ".jpg", ".jpeg", ".webp"):
+                        im = cv2.imread(str(fpath), cv2.IMREAD_COLOR)
+                    else:
+                        cap = cv2.VideoCapture(str(fpath))
+                        ok_f, im = cap.read()
+                        cap.release()
+                    if im is not None and im.size > 0:
+                        ih, iw = im.shape[:2]
+                        scale = min(112.0 / max(1, iw), 132.0 / max(1, ih), 1.0)
+                        nw, nh = max(16, int(round(iw * scale))), max(16, int(round(ih * scale)))
+                        im_small = cv2.resize(im, (nw, nh), interpolation=cv2.INTER_AREA)
+                        ok_enc, buf_enc = cv2.imencode(".jpg", im_small, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+                        if ok_enc:
+                            thumb_bytes = buf_enc.tobytes()
+                            if len(cache_dict) > 450:
+                                cache_dict.pop(next(iter(cache_dict)), None)
+                            cache_dict[ckey] = thumb_bytes
+                except Exception:
+                    pass
+            if not thumb_bytes:
+                ext_low = fpath.suffix.lower()
+                if ext_low in (".png", ".jpg", ".jpeg", ".webp"):
+                    thumb_bytes = fpath.read_bytes()
+                else:
+                    self.send_error(404)
+                    return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("Content-Length", str(len(thumb_bytes)))
+            self.end_headers()
+            self.wfile.write(thumb_bytes)
             return
 
         if self.path.startswith("/api/local_video_file"):
