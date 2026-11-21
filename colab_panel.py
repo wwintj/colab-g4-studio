@@ -5572,43 +5572,43 @@ function buildFusionRefsAndPrompt(targetListForJob) {
   // 将【服装/姿势目标图】放在 image_1 (<Picture 1> = 待编辑的空间与姿势底图)，将【人脸照】放在 image_2 (<Picture 2> = 脸型与五官身份源)！
   if (hasFace && targets.length === 1) {
     const poseOrOutfitB64 = targets[0];
-    const isOutfitMode = (currentFusionSubMode === 'outfit') || (hairVal === 'keep_face_hair');
+    const isOutfitMode = (currentFusionSubMode === 'tryon') || (hairVal === 'keep_face_hair');
     const personRefB64 = (isOutfitMode && fusionFaceOrigB64) ? fusionFaceOrigB64 : faceB64;
+    const outfitHint = window._lastPosewearOutfitDesc ? ` (${window._lastPosewearOutfitDesc})` : '';
     if (hasScene) {
       const refs = [poseOrOutfitB64, personRefB64, sceneB64];
-      const hairInstruction = hairVal === 'keep_target_hair'
+      const hairInstruction = (hairVal === 'keep_target_hair' && currentFusionSubMode !== 'tryon')
         ? "Keep the hairstyle and headwear from <Picture 1>, replacing only the face shape, jawline contour, and facial features with <Subject 2> from <Picture 2>."
         : "Keep <Subject 2>'s exact slim face shape, narrow jawline contour, facial features, warm expression, and full hairstyle from <Picture 2> 100% unchanged.";
       const prompt = (
-        "Edit <Picture 1>. The clothing outfit and body posture in <Picture 1> is <Subject 1>. " +
+        `Edit <Picture 1>. The clothing outfit${outfitHint} and body posture in <Picture 1> is <Subject 1>. ` +
         "The person in <Picture 2> is <Subject 2>. " +
         "The background environment and lighting in <Picture 3> is <Subject 3>. " +
-        `Generate a complete photorealistic portrait of <Subject 2> from <Picture 2> wearing the complete clothing outfit <Subject 1> from <Picture 1>, placed naturally inside <Subject 3> (<Picture 3>). ${hairInstruction} ` +
-        "If <Picture 1> is a headless garment display, naturally complete <Subject 2>'s full head, hairstyle, neck, shoulders, arms, hands, and body wearing <Subject 1>, relit naturally by <Picture 3>." +
+        `Generate a complete photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact clothing outfit <Subject 1> from <Picture 1> (do not add any extra jacket, coat, or skirt not present in <Picture 1>), placed naturally inside <Subject 3> (<Picture 3>). ${hairInstruction} ` +
+        "Naturally complete <Subject 2>'s full head, hairstyle, neck, shoulders, arms, hands, torso, and legs wearing <Subject 1>, relit naturally by <Picture 3>." +
         styleTail
       );
       return {refs, prompt};
     }
 
     const refs = [poseOrOutfitB64, personRefB64];
-    if (hairVal === 'keep_target_hair' && currentFusionSubMode !== 'outfit') {
+    if (hairVal === 'keep_target_hair' && currentFusionSubMode !== 'tryon') {
       const prompt = (
         "Edit <Picture 1>. The person in <Picture 1> is <Subject 1>. " +
         "The face in <Picture 2> is <Subject 2>. " +
         "Replace ONLY the face of <Subject 1> in <Picture 1> with the face <Subject 2> from <Picture 2>. " +
         "Keep <Subject 2>'s exact facial features, slim V-shaped oval face contour, eyes, nose, and natural smile/expression from <Picture 2>, " +
-        "while keeping EVERYTHING ELSE in <Picture 1> (the exact background scene, outdoor/indoor environment, architecture, water, bridge, trees, ambient lighting, seated/standing body pose, hand and leg positions, headwear/hat, hairstyle, complete clothing outfit, jacket/top, skirt/pants, stockings, shoes, and full camera framing) 100% preserved and unchanged." +
+        "while keeping the original background, lighting, body posture, hairstyle, and exact clothing of <Picture 1> 100% preserved and unchanged." +
         styleTail
       );
       return {refs, prompt};
     }
 
     const prompt = (
-      "Edit <Picture 1>. The clothing outfit and body posture in <Picture 1> is <Subject 1>. " +
+      `Edit <Picture 1>. The clothing outfit${outfitHint} in <Picture 1> is <Subject 1>. ` +
       "The person (exact face, facial features, slim V-shaped oval face contour, hairstyle, and natural expression) in <Picture 2> is <Subject 2>. " +
-      "Dress <Subject 2> from <Picture 2> in the exact complete clothing outfit <Subject 1> from <Picture 1>. " +
-      "If <Picture 1> is a headless clothing/mannequin display without a head or arms, naturally generate <Subject 2>'s complete head, hairstyle, neck, shoulders, arms, hands, and full body wearing <Subject 1>. " +
-      "If <Picture 1> contains a person, replace the head, face, and hairstyle with <Subject 2> from <Picture 2> while keeping the exact body pose, clothing outfit, and background of <Picture 1> 100% preserved." +
+      "Full-body photorealistic portrait of <Subject 2> from <Picture 2> wearing ONLY the exact clothing outfit <Subject 1> from <Picture 1> (do not add any extra jacket, coat, or outer skirt not present in <Picture 1>). " +
+      "Naturally complete her head, hairstyle, neck, shoulders, arms, hands, torso, and legs in a clean studio background matching <Picture 1>, keeping <Subject 2>'s exact face and hairstyle from <Picture 2> 100% unchanged." +
       styleTail
     );
     return {refs, prompt};
@@ -8257,11 +8257,12 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
       if (propInp && descZh) {
         propInp.value = descZh;
       }
+      window._lastPosewearOutfitDesc = descEn ? `${descEn} / ${descZh}` : (descZh || '');
       if (currentMiniMaxMode !== 'fusion') {
         switchMiniMaxMode('fusion');
       }
       if (_cc0ModalState.tab === 'costume' || _cc0ModalState.tab === 'anime') {
-        switchFusionSubMode('outfit');
+        switchFusionSubMode('tryon');
         const hairSel = document.getElementById('fusionHairModeSelect');
         if (hairSel) hairSel.value = 'keep_face_hair';
       }
