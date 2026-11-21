@@ -3209,8 +3209,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <input type="file" id="inpExternalVideo" accept="video/*,.mp4,.mov,.webm,.mkv" style="display:none;" onchange="handleExternalVideoImport(this)">
           <button type="button" id="btnContinueLastFrame" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
           <button type="button" id="btnReplayVideo" class="btn-outline" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="replayCurrentVideo()">🔄 重播</button>
-          <button type="button" class="btn-outline" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="revealInFinder(false)">📂 Finder</button>
-          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;text-decoration:none;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.55);color:#6ee7b7;">⬇️ 另存为</a>
+          <button type="button" class="btn-outline" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="revealInFinder(false)">📂 打开</button>
+          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;text-decoration:none;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.55);color:#6ee7b7;">⬇️ 下载</a>
         </div>
       </div>
     </div>
