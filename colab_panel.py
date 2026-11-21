@@ -2488,45 +2488,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div id="dramaCastCardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(295px, 1fr));gap:8px;max-height:210px;overflow-y:auto;padding-right:2px;"></div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1.38fr;gap:12px;align-items:stretch;">
         <!-- 左栏：既可输入原著故事与台词点上方复制给外部 AI，也可粘贴外部 AI 生成好的分镜剧本直接解析 -->
-        <div style="display:flex;flex-direction:column;gap:8px;padding-right:10px;border-right:1px solid rgba(148,163,184,0.2);">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:12.5px;font-weight:800;color:#7dd3fc;">📜 1. 在此输入您的原著故事/台词（点上方复制给AI），或粘贴 AI 生成好的分镜剧本</span>
-            <div style="display:flex;align-items:center;gap:5px;">
-              <button type="button" onclick="clearDramaScriptTextbox()" style="padding:2px 7px;font-size:11px;border-radius:4px;border:1px solid rgba(239,68,68,0.45);background:transparent;color:#fca5a5;cursor:pointer;" title="清空文本框与剧名以输入您的新故事与台词">🗑️ 清空文本框</button>
-              <input type="text" id="inpDramaProjectTitle" placeholder="剧目名称 (自动提取或手填)" style="padding:3px 8px;font-size:11.5px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;width:150px;">
+        <div style="display:flex;flex-direction:column;gap:8px;padding-right:12px;border-right:1px solid rgba(148,163,184,0.2);min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
+            <span style="font-size:12.5px;font-weight:800;color:#7dd3fc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="在此输入您的原著故事/台词（点上方复制给AI），或粘贴 AI 生成好的分镜剧本">📜 1. 输入原著故事 / 粘贴分镜剧本</span>
+            <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+              <input type="text" id="inpDramaProjectTitle" placeholder="剧目名称 (选填)" style="padding:3px 8px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;width:124px;">
+              <button type="button" onclick="clearDramaScriptTextbox()" style="padding:3px 8px;font-size:11px;border-radius:5px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer;white-space:nowrap;" title="清空文本框与剧名以输入您的新故事与台词">🗑️ 清空</button>
             </div>
           </div>
-          <textarea id="inpDramaRawScript" rows="10" placeholder="【用法 A：带您自己的故事与台词去让外部 AI 拆解分镜】&#10;1. 直接在此框（或上方紫色框）写下您的原本故事、人物设定与每一句台词；&#10;2. 点击上方「📋 一键复制【发给外部 AI 的编剧指令】」，系统会把您写的全部故事和台词 100% 打包进剪贴板（绝不篡改您的原意）；&#10;&#10;【用法 B：把外部 AI 生成好的分镜剧本粘回来】&#10;3. 将外部 AI 输出的【剧名】...【分镜】镜头01... 粘贴回此框，点击下方「🔍 智能解析剧本生成工作流节点」即可开拍！" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11.5px;line-height:1.45;resize:vertical;"></textarea>
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#fcd34d;cursor:pointer;">
+          <textarea id="inpDramaRawScript" rows="9" placeholder="【用法 A：带您自己的故事与台词去让外部 AI 拆解分镜】&#10;1. 直接在此框（或上方紫色框）写下您的原本故事、人物设定与每一句台词；&#10;2. 点击上方「📋 一键复制【发给外部 AI 的编剧指令】」，系统会把您写的全部故事和台词 100% 打包进剪贴板（绝不篡改您的原意）；&#10;&#10;【用法 B：把外部 AI 生成好的分镜剧本粘回来】&#10;3. 将外部 AI 输出的【剧名】...【分镜】镜头01... 粘贴回此框，点击下方「🔍 解析剧本生成节点」即可开拍！" style="width:100%;flex:1;min-height:190px;padding:8px 10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11.5px;line-height:1.45;resize:vertical;"></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#fcd34d;cursor:pointer;white-space:nowrap;" title="解析新剧本时自动清空上一部剧的分镜缓存素材">
               <input type="checkbox" id="chkDramaClearOldAssets" checked style="accent-color:#f59e0b;">
-              <span>🧹 解析新剧本时清空上一部剧的缓存素材</span>
+              <span>🧹 清空旧剧缓存</span>
             </label>
-            <div style="display:flex;gap:6px;">
-              <button type="button" onclick="resetDefaultDramaWorkflow()" class="btn-outline" style="padding:4px 9px;font-size:11px;color:#94a3b8;">↺ 恢复内置古装示例</button>
-              <button type="button" onclick="parseRawScriptToWorkflow()" class="btn-primary" style="padding:5px 12px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);">🔍 智能解析剧本生成工作流节点</button>
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+              <button type="button" onclick="resetDefaultDramaWorkflow()" class="btn-outline" style="padding:4px 9px;font-size:11px;color:#94a3b8;white-space:nowrap;">↺ 恢复古装示例</button>
+              <button type="button" onclick="parseRawScriptToWorkflow()" class="btn-primary" style="padding:5px 11px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);white-space:nowrap;">🔍 解析剧本生成节点</button>
             </div>
           </div>
         </div>
 
         <!-- 右栏：可视化图片节点与分镜视频节点表格 (可随时修改提示词/台词/秒数/引擎/单步重抽) -->
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-            <div style="display:flex;gap:6px;">
-              <button type="button" id="btnWfTabImg" onclick="switchDramaWfTab('img')" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #f472b6;background:rgba(244,114,182,0.18);color:#fbcfe8;cursor:pointer;">📸 定妆与首尾帧图片节点 (<span id="wfImgCount">15</span>)</button>
-              <button type="button" id="btnWfTabVid" onclick="switchDramaWfTab('vid')" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#94a3b8;cursor:pointer;">🎬 视频分镜与台词节点 (<span id="wfVidCount">11</span>)</button>
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
+            <div style="display:flex;gap:5px;flex-shrink:0;">
+              <button type="button" id="btnWfTabImg" onclick="switchDramaWfTab('img')" style="padding:4px 9px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #f472b6;background:rgba(244,114,182,0.18);color:#fbcfe8;cursor:pointer;white-space:nowrap;">📸 定妆/首尾帧节点 (<span id="wfImgCount">0</span>)</button>
+              <button type="button" id="btnWfTabVid" onclick="switchDramaWfTab('vid')" style="padding:4px 9px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#94a3b8;cursor:pointer;white-space:nowrap;">🎬 视频/台词节点 (<span id="wfVidCount">0</span>)</button>
             </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button type="button" onclick="clearAllDramaWorkflowNodes()" class="btn-outline" style="padding:4px 9px;font-size:11px;border-color:#ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;font-weight:700;" title="一键清空右侧全部图片节点、视频分镜节点与旧分镜缓存素材（保留上方已上传的角色定妆照）">🗑️ 一键清空节点</button>
-              <button type="button" onclick="addDramaWorkflowNode()" class="btn-outline" style="padding:4px 9px;font-size:11px;border-color:#10b981;color:#6ee7b7;">+ 新增当前节点</button>
-              <button type="button" onclick="saveDramaWorkflowEdits()" class="btn-primary" style="padding:4px 12px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#10b981,#059669);">💾 保存工作流修改</button>
+            <div style="display:flex;gap:5px;flex-shrink:0;">
+              <button type="button" onclick="clearAllDramaWorkflowNodes()" class="btn-outline" style="padding:4px 8px;font-size:11px;border-color:#ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;font-weight:700;white-space:nowrap;" title="一键清空右侧全部图片节点、视频分镜节点与旧分镜缓存素材（保留上方已上传的角色定妆照）">🗑️ 清空节点</button>
+              <button type="button" onclick="addDramaWorkflowNode()" class="btn-outline" style="padding:4px 8px;font-size:11px;border-color:#10b981;color:#6ee7b7;white-space:nowrap;">+ 新增节点</button>
+              <button type="button" onclick="saveDramaWorkflowEdits()" class="btn-primary" style="padding:4px 10px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#10b981,#059669);white-space:nowrap;">💾 保存修改</button>
             </div>
           </div>
 
-          <div id="wfNodesImgContainer" style="max-height:245px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px;"></div>
-          <div id="wfNodesVidContainer" style="max-height:245px;overflow-y:auto;display:none;flex-direction:column;gap:6px;padding-right:4px;"></div>
+          <div id="wfNodesImgContainer" style="flex:1;min-height:190px;max-height:245px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px;"></div>
+          <div id="wfNodesVidContainer" style="flex:1;min-height:190px;max-height:245px;overflow-y:auto;display:none;flex-direction:column;gap:6px;padding-right:2px;"></div>
         </div>
       </div>
     </div>
@@ -9077,9 +9077,9 @@ function renderDramaWfEditorTables() {
   const imgC = document.getElementById('wfNodesImgContainer');
   if (imgC) {
     if (imgTasks.length === 0) {
-      imgC.innerHTML = `<div style="padding:18px 14px;border-radius:8px;background:rgba(2,6,23,0.75);border:1px dashed #475569;color:#94a3b8;font-size:11.5px;text-align:center;line-height:1.6;">
-        ✨ 当前已清空所有图片节点（0 个定妆与首尾帧节点）。<br>
-        <span style="color:#cbd5e1;">在左侧粘贴新剧本后点击「🔍 智能解析剧本生成工作流节点」将自动拆解生成，或点右上角「+ 新增当前节点」手动添加。</span>
+      imgC.innerHTML = `<div style="flex:1;min-height:190px;padding:18px 14px;border-radius:8px;background:rgba(2,6,23,0.75);border:1px dashed #475569;color:#94a3b8;font-size:11.5px;text-align:center;line-height:1.65;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div>✨ 当前已清空所有图片节点（0 个定妆与首尾帧节点）。</div>
+        <div style="color:#cbd5e1;margin-top:4px;">在左侧粘贴新剧本后点击「🔍 解析剧本生成节点」将自动拆解生成，或点右上角「+ 新增节点」手动添加。</div>
       </div>`;
     } else {
       imgC.innerHTML = imgTasks.map((it, idx) => `
@@ -9106,9 +9106,9 @@ function renderDramaWfEditorTables() {
   const vidC = document.getElementById('wfNodesVidContainer');
   if (vidC) {
     if (vidTasks.length === 0) {
-      vidC.innerHTML = `<div style="padding:18px 14px;border-radius:8px;background:rgba(2,6,23,0.75);border:1px dashed #475569;color:#94a3b8;font-size:11.5px;text-align:center;line-height:1.6;">
-        ✨ 当前已清空所有视频分镜节点（0 个分镜）。<br>
-        <span style="color:#cbd5e1;">在左侧粘贴新剧本后点击「🔍 智能解析剧本生成工作流节点」将自动拆解生成，或点右上角「+ 新增当前节点」手动添加。</span>
+      vidC.innerHTML = `<div style="flex:1;min-height:190px;padding:18px 14px;border-radius:8px;background:rgba(2,6,23,0.75);border:1px dashed #475569;color:#94a3b8;font-size:11.5px;text-align:center;line-height:1.65;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div>✨ 当前已清空所有视频分镜节点（0 个分镜）。</div>
+        <div style="color:#cbd5e1;margin-top:4px;">在左侧粘贴新剧本后点击「🔍 解析剧本生成节点」将自动拆解生成，或点右上角「+ 新增节点」手动添加。</div>
       </div>`;
     } else {
       vidC.innerHTML = vidTasks.map((vt, idx) => `
