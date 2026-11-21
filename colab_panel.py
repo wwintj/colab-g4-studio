@@ -2752,41 +2752,41 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- MiniMax-H3-Image 4K无审查写真与免Mask锁脸换装操作区 (切换至 image 模式自动显示) -->
-  <div id="h3ImageControlRow" style="display:none;grid-template-columns:1.1fr 1.1fr;gap:12px;padding:14px;margin-bottom:16px;background:#0f172a;border:1.5px dashed #ec4899;border-radius:12px;">
-    <div style="display:flex;flex-direction:column;justify-content:space-between;">
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-          <label style="font-size:12.5px;font-weight:700;color:#f472b6;margin:0;">🖼️ 1. 参考图上传 (不传=纯文生4K写真；上传=免涂Mask锁脸换装/多图融合)</label>
-          <button type="button" onclick="clearAllH3RefImages()" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空参考图 (纯文生4K)</button>
+  <div id="h3ImageControlRow" style="display:none;grid-template-columns:1fr 1fr;gap:14px;padding:12px 14px;margin-bottom:14px;background:#0f172a;border:1.5px dashed #ec4899;border-radius:12px;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
+      <div style="display:flex;flex-direction:column;flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:nowrap;height:26px;margin-bottom:8px;">
+          <label style="font-size:12.5px;font-weight:800;color:#f472b6;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🖼️ 1. 参考图上传 <span style="font-size:11.5px;font-weight:600;color:#f9a8d4;">(不传=纯文生4K；传图=免Mask锁脸换装)</span></label>
+          <button type="button" onclick="clearAllH3RefImages()" style="height:24px;padding:0 9px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #475569;background:rgba(30,41,59,0.85);color:#cbd5e1;cursor:pointer;white-space:nowrap;flex-shrink:0;">✕ 清空参考图</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;">
-          <div style="padding:8px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
-            <div style="font-size:11px;font-weight:700;color:#fbcfe8;margin-bottom:4px;">👩 &lt;Picture 1&gt; 主人物/底图</div>
+        <div style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:8px;flex:1;">
+          <div style="padding:8px 9px;border-radius:8px;background:#1e293b;border:1px solid #334155;display:flex;flex-direction:column;justify-content:center;min-width:0;">
+            <div style="font-size:11px;font-weight:700;color:#fbcfe8;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👩 &lt;Picture 1&gt; 主人物/底图</div>
             <input type="file" id="inpH3ImgRef1" accept="image/*" onchange="handleH3RefImageSelect(0, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
-            <img id="h3ImgRef1Preview" style="display:none;margin-top:6px;width:100%;height:88px;object-fit:contain;border-radius:5px;background:#020617;">
+            <img id="h3ImgRef1Preview" style="display:none;margin-top:6px;width:100%;height:78px;object-fit:contain;border-radius:5px;background:#020617;">
           </div>
-          <div style="padding:8px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
-            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:4px;">👗 &lt;Picture 2&gt; 服饰/道具(可选)</div>
+          <div style="padding:8px 9px;border-radius:8px;background:#1e293b;border:1px solid #334155;display:flex;flex-direction:column;justify-content:center;min-width:0;">
+            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👗 &lt;Picture 2&gt; 服饰/道具</div>
             <input type="file" id="inpH3ImgRef2" accept="image/*" onchange="handleH3RefImageSelect(1, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
-            <img id="h3ImgRef2Preview" style="display:none;margin-top:6px;width:100%;height:88px;object-fit:contain;border-radius:5px;background:#020617;">
+            <img id="h3ImgRef2Preview" style="display:none;margin-top:6px;width:100%;height:78px;object-fit:contain;border-radius:5px;background:#020617;">
           </div>
-          <div style="padding:8px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
-            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:4px;">🏞️ &lt;Picture 3&gt; 新场景(可选)</div>
+          <div style="padding:8px 9px;border-radius:8px;background:#1e293b;border:1px solid #334155;display:flex;flex-direction:column;justify-content:center;min-width:0;">
+            <div style="font-size:11px;font-weight:700;color:#cbd5e1;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🏞️ &lt;Picture 3&gt; 新场景背景</div>
             <input type="file" id="inpH3ImgRef3" accept="image/*" onchange="handleH3RefImageSelect(2, this)" style="font-size:10.5px;color:var(--muted);width:100%;">
-            <img id="h3ImgRef3Preview" style="display:none;margin-top:6px;width:100%;height:88px;object-fit:contain;border-radius:5px;background:#020617;">
+            <img id="h3ImgRef3Preview" style="display:none;margin-top:6px;width:100%;height:78px;object-fit:contain;border-radius:5px;background:#020617;">
           </div>
         </div>
       </div>
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;">
-        <span id="h3ImgRefStatus" style="color:#f472b6;font-weight:600;">✨ 当前为「纯文生 4K 超清写真」模式（上传 &lt;Picture 1&gt; 即自动切换为免涂 Mask 锁脸换装）</span>
+      <div style="margin-top:8px;padding-top:7px;border-top:1px solid var(--border);display:flex;align-items:center;height:20px;font-size:11.5px;min-width:0;">
+        <span id="h3ImgRefStatus" style="color:#f472b6;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✨ 当前为「纯文生 4K 超清写真」模式（上传 &lt;Picture 1&gt; 即自动切换为免涂 Mask 锁脸换装）</span>
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;justify-content:space-between;">
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-          <label style="font-size:12.5px;font-weight:700;color:#fcd34d;margin:0;">🪄 2. 免Mask锁脸换装生成器 &amp; 4K去磨砂黄金模板</label>
-          <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="padding:3px 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11px;font-weight:700;max-width:255px;">
+    <div style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
+      <div style="display:flex;flex-direction:column;flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:nowrap;height:26px;margin-bottom:8px;">
+          <label style="font-size:12.5px;font-weight:800;color:#fcd34d;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🪄 2. 免Mask锁脸换装 &amp; 4K去磨砂黄金模板</label>
+          <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:24px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11px;font-weight:700;max-width:225px;flex-shrink:0;cursor:pointer;">
             <option value="">✨ 一键套用 4K 写真 / 锁脸换装模板...</option>
             <optgroup label="👗 免涂 Mask 锁脸换装模板 (需上传 Picture 1)">
               <option value="edit_qipao">👘 锁脸换装：黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
@@ -2802,23 +2802,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
             </optgroup>
           </select>
         </div>
-        <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
-          <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">上传 &lt;Picture 1&gt; 后，只需填写下方任意一项，后台自动合成 <code style="color:#f472b6;">Picture + Subject</code> 三段式像素级锁脸语法：</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <div>
-              <label style="font-size:11px;color:#fbcfe8;display:block;margin-bottom:2px;">👗 换成什么新衣服/穿搭 (&lt;Subject 2&gt;)</label>
-              <input id="inpH3EditOutfit" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="例如: a white lace camisole dress / 黑色真丝旗袍" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
+        <div style="padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;flex:1;display:flex;flex-direction:column;justify-content:center;">
+          <div style="font-size:11px;color:#94a3b8;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">上传 &lt;Picture 1&gt; 后填写下方任意一项，后台自动合成 <code style="color:#f472b6;">Picture + Subject</code> 三段式像素级锁脸语法：</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="min-width:0;">
+              <label style="font-size:11px;color:#fbcfe8;display:block;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👗 换成什么新衣服/穿搭 (&lt;Subject 2&gt;)</label>
+              <input id="inpH3EditOutfit" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="例如: a white lace camisole dress / 黑色真丝旗袍" style="width:100%;height:28px;box-sizing:border-box;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
             </div>
-            <div>
-              <label style="font-size:11px;color:#93c5fd;display:block;margin-bottom:2px;">🏞️ 换成什么新场景 (留空则100%保留原背景)</label>
-              <input id="inpH3EditScene" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="留空保留原背景；或填 sunlit bedroom" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
+            <div style="min-width:0;">
+              <label style="font-size:11px;color:#93c5fd;display:block;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🏞️ 换成什么新场景 (留空则100%保留原背景)</label>
+              <input id="inpH3EditScene" type="text" oninput="syncH3EditPreviewPrompt()" placeholder="留空保留原背景；或填 sunlit bedroom" style="width:100%;height:28px;box-sizing:border-box;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12px;">
             </div>
           </div>
         </div>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11.5px;color:#6ee7b7;cursor:pointer;user-select:none;">
-        <input type="checkbox" id="chkCleanMatteWords" checked style="width:13.5px;height:13.5px;accent-color:#10b981;">
-        <span>🛡️ 自动开启「去磨砂真皮过滤」（自动剔除 <code style="color:#cbd5e1;">matte skin / fine pores / film grain</code> 等导致砂纸脸的旧词）</span>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:7px;border-top:1px solid var(--border);height:20px;font-size:11.5px;color:#6ee7b7;cursor:pointer;user-select:none;min-width:0;">
+        <input type="checkbox" id="chkCleanMatteWords" checked style="width:13.5px;height:13.5px;accent-color:#10b981;flex-shrink:0;margin:0;">
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🛡️ 自动开启「去磨砂真皮过滤」（自动剔除 <code style="color:#cbd5e1;">matte skin / fine pores / film grain</code> 等导致砂纸脸的旧词）</span>
       </label>
     </div>
   </div>
@@ -3013,13 +3013,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- ==================== 第 1 行 (单独一行 100% 宽度)：☰ 镜头与多模态提示词 (内部四个框也全部各自单独一行) ==================== -->
-  <div id="promptSectionCard" style="padding:18px;margin-bottom:16px;background:#0f172a;border:1px solid var(--border);border-radius:14px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-      <div style="display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:800;color:#f8fafc;">
-        <span style="color:#3b82f6;">☰</span>
-        <span id="promptSectionTitle">镜头与多模态提示词</span>
+  <div id="promptSectionCard" style="padding:14px 16px;margin-bottom:14px;background:#0f172a;border:1px solid var(--border);border-radius:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px;margin-bottom:10px;min-width:0;">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;">
+        <span style="color:#3b82f6;font-size:15px;font-weight:800;flex-shrink:0;">☰</span>
+        <span id="promptSectionTitle" style="font-size:14.5px;font-weight:800;color:#f8fafc;white-space:nowrap;flex-shrink:0;">镜头与多模态提示词</span>
+        <span id="promptSectionSubHint" style="display:none;font-size:11.5px;font-weight:600;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
       </div>
-      <div id="fourBoxActionBtns" style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
+      <div id="fourBoxActionBtns" style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;flex-shrink:0;">
         <label id="lblAutoH3SixSection" title="系统会根据您的提示词结构自动判定：简短提示词或首帧图生视频时自动开启 H3 六段式防崩编译；若检测到您已粘贴完整的多段分镜脚本（如【0-3秒】/【画质与风格】），则自动切换为原脚本直通以 100% 保留您的自定义风格约束！" style="display:inline-flex;align-items:center;gap:5px;height:28px;box-sizing:border-box;font-size:11.5px;font-weight:700;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.45);padding:0 10px;border-radius:7px;cursor:pointer;user-select:none;white-space:nowrap;">
           <input type="checkbox" id="chkAutoH3SixSection" checked style="width:13px;height:13px;accent-color:#10b981;cursor:pointer;margin:0;">
           <span id="txtAutoH3SixSection">📜 智能H3六段式编译 (自动)</span>
@@ -3027,11 +3028,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button type="button" class="btn-outline" style="height:28px;padding:0 11px;font-size:11.5px;border-radius:7px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 结果填入四框</button>
         <button type="button" class="btn-outline" style="height:28px;padding:0 11px;font-size:11.5px;border-radius:7px;border-color:rgba(239,68,68,0.45);color:#fca5a5;white-space:nowrap;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
       </div>
+      <div id="singleBoxActionBtns" style="display:none;align-items:center;gap:6px;flex-wrap:nowrap;flex-shrink:0;">
+        <button type="button" class="btn-outline" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:6px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 填入</button>
+        <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:6px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;white-space:nowrap;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
+      </div>
     </div>
 
     <!-- 框 1 (单独一行)：主体、构图、光影与风格描述 -->
     <div id="videoPromptBox1Wrap" style="margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <div id="videoPromptBox1Header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
@@ -3087,11 +3092,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
+    <div id="specRowsContainer">
     <!-- 第 1 排横条：分辨率 | 采样步数 | 随机种子 | 批量连抽 (四项一字排开) -->
-    <div id="specRow1Grid" style="display:grid;grid-template-columns: 1.3fr 1.15fr 1fr 1.15fr;gap:12px;align-items:center;margin-bottom:10px;">
+    <div id="specRow1Grid" style="display:grid;grid-template-columns: 1.3fr 1.15fr 1fr 1.15fr;gap:10px;align-items:center;margin-bottom:10px;">
       <!-- 1. 视频分辨率 -->
-      <div style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:5px 10px;border-radius:9px;border:1px solid var(--border);">
-        <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">分辨率</span>
+      <div style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:0 10px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);min-width:0;">
+        <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;flex-shrink:0;">分辨率</span>
         <select id="videoRes" class="cu-select" style="flex:1;padding:4px 6px;font-size:12.5px;font-weight:700;border:none;background:transparent;text-align:center;text-align-last:center;min-width:0;">
           <option value="832x480" selected>832×480 (16:9 横屏·推荐)</option>
           <option value="480x832">480×832 (9:16 竖屏)</option>
@@ -3102,24 +3108,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <!-- 2. 采样步数 -->
-      <div id="stepsControlWrap" style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:6px 12px;border-radius:9px;border:1px solid var(--border);">
+      <div id="stepsControlWrap" style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:0 12px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);">
         <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">步数</span>
         <input type="range" id="videoSteps" min="10" max="60" step="2" value="30" oninput="document.getElementById('stepsValLabel').innerText = this.value + ' 步'" style="flex:1;accent-color:#3b82f6;cursor:pointer;min-width:60px;">
         <span id="stepsValLabel" style="font-size:12.5px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:36px;text-align:right;">30 步</span>
       </div>
 
       <!-- 3. 随机种子 -->
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;background:#1e293b;padding:5px 10px;border-radius:9px;border:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;background:#1e293b;padding:0 10px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);">
         <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">种子</span>
-        <input id="videoSeed" type="number" value="42" style="width:74px;padding:3px 6px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:12.5px;text-align:center;">
+        <input id="videoSeed" type="number" value="42" style="width:68px;padding:3px 6px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:12.5px;text-align:center;">
         <label style="font-size:12px;color:#f8fafc;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;white-space:nowrap;">
-          <input id="videoRandSeed" type="checkbox" checked style="width:14px;height:14px;accent-color:#3b82f6;"> 随机
+          <input id="videoRandSeed" type="checkbox" checked style="width:14px;height:14px;accent-color:#3b82f6;margin:0;"> 随机
         </label>
         <input type="hidden" id="videoFps" value="24">
       </div>
 
       <!-- 4. 批量连抽 -->
-      <div id="batchControlWrap" style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:4px 8px;border-radius:9px;border:1px solid var(--border);">
+      <div id="batchControlWrap" style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:0 8px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);">
         <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;padding-left:2px;">连抽</span>
         <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;flex:1;" id="batchCountGroup">
           <button type="button" class="batch-pill" data-batch="1" onclick="selectBatchCount(1)" style="padding:4px 0;border-radius:6px;border:none;background:#3b82f6;color:#ffffff;font-size:12px;font-weight:700;cursor:pointer;">1条</button>
@@ -3205,6 +3211,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           🎬 生成有声视频
         </button>
       </div>
+    </div>
     </div>
 
     <div id="videoProgressWrap" style="display:none;margin-top:8px;">
@@ -5385,13 +5392,18 @@ function switchMiniMaxMode(mode) {
   }
   const pEl = document.getElementById('videoPrompt');
   const pSecTitle = document.getElementById('promptSectionTitle');
+  const pSecSubHint = document.getElementById('promptSectionSubHint');
   const fourBtns = document.getElementById('fourBoxActionBtns');
+  const singleBtns = document.getElementById('singleBoxActionBtns');
   const box1Wrap = document.getElementById('videoPromptBox1Wrap');
+  const box1Hdr = document.getElementById('videoPromptBox1Header');
   const box1Lbl = document.getElementById('videoPromptBox1Label');
   const box2Wrap = document.getElementById('videoSoundBoxWrap');
   const box3Wrap = document.getElementById('videoMusicBoxWrap');
   const box4Wrap = document.getElementById('videoNegBoxWrap');
+  const specRowsCont = document.getElementById('specRowsContainer');
   const specRow1 = document.getElementById('specRow1Grid');
+  const specRow2 = document.getElementById('specRow2ActionGrid');
   const stepsWrap = document.getElementById('stepsControlWrap');
   const batchWrap = document.getElementById('batchControlWrap');
   const framesInner = document.getElementById('framesSliderInner');
@@ -5414,22 +5426,42 @@ function switchMiniMaxMode(mode) {
     if (loraBar) loraBar.style.display = 'none';
     if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 原生 4K 无审查写真生图工作台';
     if (badgeEl) badgeEl.innerText = '1680万像素4K直出 + Heretic 32B无审查编码器 + 6步极速扩散';
-    if (pSecTitle) pSecTitle.innerText = '3. 4K 写真画面提示词 / Picture + Subject 免Mask锁脸换装指令';
+    if (pSecTitle) pSecTitle.innerText = '3. 4K 写真画面提示词 / 免Mask锁脸换装指令';
+    if (pSecSubHint) {
+      pSecSubHint.style.display = 'inline';
+      pSecSubHint.innerText = '（已自动开启去磨砂真皮过滤；若上方上传了 <Picture 1> 并填写了换装栏，将自动合成三段式锁脸语法）';
+    }
     if (fourBtns) fourBtns.style.display = 'none';
+    if (singleBtns) singleBtns.style.display = 'flex';
+    if (box1Hdr) box1Hdr.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
-    if (box1Lbl) box1Lbl.innerText = '画面描述或改图指令（已自动开启去磨砂真皮过滤；若上方上传了 <Picture 1> 并填写了换装栏，将自动合成三段式锁脸语法）';
     if (box2Wrap) box2Wrap.style.display = 'none';
     if (box3Wrap) box3Wrap.style.display = 'none';
     if (box4Wrap) box4Wrap.style.display = 'none';
     if (stepsWrap) stepsWrap.style.display = 'none';
     if (batchWrap) batchWrap.style.display = 'none';
-    if (specRow1) specRow1.style.gridTemplateColumns = '1.4fr 1fr';
+    if (specRowsCont) {
+      specRowsCont.style.display = 'grid';
+      specRowsCont.style.gridTemplateColumns = '1.22fr 1.18fr';
+      specRowsCont.style.gap = '10px';
+      specRowsCont.style.alignItems = 'center';
+    }
+    if (specRow1) {
+      specRow1.style.gridTemplateColumns = '1.6fr 1fr';
+      specRow1.style.marginBottom = '0';
+    }
+    if (specRow2) {
+      specRow2.style.gridTemplateColumns = '1fr 205px';
+    }
     if (framesInner) framesInner.style.display = 'none';
     if (sr2kLbl) sr2kLbl.style.display = 'none';
-    if (pureImgTag) pureImgTag.style.display = 'inline-flex';
+    if (pureImgTag) {
+      pureImgTag.style.display = 'inline-flex';
+      pureImgTag.innerText = '🖼️ 4K原图直出';
+    }
     if (avSpecHint) {
       avSpecHint.style.display = 'block';
-      avSpecHint.innerText = '⚡ MiniMax-H3-Image：固定 6 步蒸馏 (CFG=1.0 · 免负面词)';
+      avSpecHint.innerText = '⚡ 固定 6 步极速蒸馏 (CFG=1.0 · 免负面词)';
     }
     if (btnImgGen) {
       btnImgGen.style.display = 'inline-flex';
@@ -5442,23 +5474,37 @@ function switchMiniMaxMode(mode) {
       btnGen.style.display = 'none';
     }
     if (pEl) {
-      pEl.rows = 4;
-      pEl.style.minHeight = '95px';
+      pEl.rows = 3;
+      pEl.style.minHeight = '84px';
     }
   } else if (isAv) {
     if (loraBar) loraBar.style.display = 'none';
     if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
     if (badgeEl) badgeEl.innerText = 'Whisper-v3 唇形同步 + DMD/OPSD 8步双LoRA蒸馏 + Kim_Vocal_2 人声分离';
-    if (pSecTitle) pSecTitle.innerText = '3. 纯画面与人物神态描述 Prompt（仅写镜头/表情/眼神/光影，不要把台词写在这里）';
+    if (pSecTitle) pSecTitle.innerText = '3. 纯画面与人物神态描述 Prompt';
+    if (pSecSubHint) {
+      pSecSubHint.style.display = 'inline';
+      pSecSubHint.innerText = '（仅写镜头/表情/眼神/光影；要说的话请填在上方「💬 台词配音框」，一起粘贴会自动分离）';
+    }
     if (fourBtns) fourBtns.style.display = 'none';
+    if (singleBtns) singleBtns.style.display = 'flex';
+    if (box1Hdr) box1Hdr.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
-    if (box1Lbl) box1Lbl.innerText = '画面与人物神态描述（要说的话请填在上方第 1 步黄色「💬 台词配音框」内；若一起粘贴会自动为您分离）';
     if (box2Wrap) box2Wrap.style.display = 'none';
     if (box3Wrap) box3Wrap.style.display = 'none';
     if (box4Wrap) box4Wrap.style.display = 'none';
     if (stepsWrap) stepsWrap.style.display = 'none';
     if (batchWrap) batchWrap.style.display = 'none';
-    if (specRow1) specRow1.style.gridTemplateColumns = '1.3fr 1fr';
+    if (specRowsCont) {
+      specRowsCont.style.display = 'block';
+    }
+    if (specRow1) {
+      specRow1.style.gridTemplateColumns = '1.3fr 1fr';
+      specRow1.style.marginBottom = '10px';
+    }
+    if (specRow2) {
+      specRow2.style.gridTemplateColumns = '1fr 220px';
+    }
     if (framesInner) framesInner.style.display = 'none';
     if (sr2kLbl) sr2kLbl.style.display = 'inline-flex';
     if (pureImgTag) pureImgTag.style.display = 'none';
@@ -5494,7 +5540,10 @@ function switchMiniMaxMode(mode) {
         : '32kHz 原生立体声音轨 + 32B 视觉编码器 + Sentinel7/h3 云端LoRA';
     }
     if (pSecTitle) pSecTitle.innerText = '镜头与多模态提示词';
+    if (pSecSubHint) pSecSubHint.style.display = 'none';
     if (fourBtns) fourBtns.style.display = 'flex';
+    if (singleBtns) singleBtns.style.display = 'none';
+    if (box1Hdr) box1Hdr.style.display = 'flex';
     if (box1Wrap) box1Wrap.style.marginBottom = '14px';
     if (box1Lbl) box1Lbl.innerText = '1. 主体、构图、光影与风格描述';
     if (box2Wrap) box2Wrap.style.display = 'block';
@@ -5502,7 +5551,16 @@ function switchMiniMaxMode(mode) {
     if (box4Wrap) box4Wrap.style.display = 'block';
     if (stepsWrap) stepsWrap.style.display = 'flex';
     if (batchWrap) batchWrap.style.display = 'flex';
-    if (specRow1) specRow1.style.gridTemplateColumns = '1.3fr 1.15fr 1fr 1.15fr';
+    if (specRowsCont) {
+      specRowsCont.style.display = 'block';
+    }
+    if (specRow1) {
+      specRow1.style.gridTemplateColumns = '1.3fr 1.15fr 1fr 1.15fr';
+      specRow1.style.marginBottom = '10px';
+    }
+    if (specRow2) {
+      specRow2.style.gridTemplateColumns = '1fr 220px';
+    }
     if (framesInner) framesInner.style.display = 'flex';
     if (sr2kLbl) sr2kLbl.style.display = 'inline-flex';
     if (pureImgTag) pureImgTag.style.display = 'none';
