@@ -1067,6 +1067,8 @@ def _reset_colab_cli_state():
     _LAST_CU_CACHE["timestamp"] = 0.0
     _LAST_METRICS_CACHE["data"] = None
     _LAST_METRICS_CACHE["timestamp"] = 0.0
+    _LAST_SESSIONS_CACHE["data"] = []
+    _LAST_SESSIONS_CACHE["timestamp"] = 0.0
     _ACCOUNT_INFO_CACHE["data"] = None
     _ACCOUNT_INFO_CACHE["timestamp"] = 0.0
 
@@ -1299,38 +1301,56 @@ def _query_local_gdrive_info(force: bool = False) -> Dict[str, Any]:
     return _LAST_GDRIVE_CACHE["data"] or {"bound": True, "quota": None, "drive_folders": []}
 
 
-def _list_active_sessions() -> List[Dict[str, str]]:
-    try:
-        from colab_cli.common import state
-        from colab_cli.state import SessionState
-        state._sessions = None
-        local_map, assignments = state.sync_sessions()
-        name_by_ep = {s.endpoint: s.name for s in local_map.values()}
-        sessions: List[Dict[str, str]] = []
-        for a in assignments:
-            name = name_by_ep.get(a.endpoint)
-            if not name:
-                name = "qwen38-g4"
-                s_adopted = SessionState(
-                    name=name,
-                    token=a.runtime_proxy_info.token,
-                    url=a.runtime_proxy_info.url,
-                    endpoint=a.endpoint,
-                    token_expires_at=a.runtime_proxy_info.expires_at(),
-                    variant=a.variant.name,
-                    accelerator=a.accelerator.value,
-                    machine_shape=a.machine_shape.name,
-                )
-                state.store.add(s_adopted)
-            sessions.append({
-                "name": name,
-                "endpoint": a.endpoint,
-                "gpu": a.accelerator.value.upper(),
-                "raw": f"[{name}] {a.endpoint} | Hardware: {a.accelerator.value.upper()}",
-            })
-        return sessions
-    except Exception:
-        return []
+_SESSIONS_LOCK = threading.Lock()
+_LAST_SESSIONS_CACHE: Dict[str, Any] = {
+    "timestamp": 0.0,
+    "data": [],
+}
+
+
+def _list_active_sessions(force: bool = False) -> List[Dict[str, str]]:
+    now = time.time()
+    if not force and _LAST_SESSIONS_CACHE["timestamp"] > 0 and (now - _LAST_SESSIONS_CACHE["timestamp"] < 6.0):
+        return list(_LAST_SESSIONS_CACHE["data"])
+    with _SESSIONS_LOCK:
+        now = time.time()
+        if not force and _LAST_SESSIONS_CACHE["timestamp"] > 0 and (now - _LAST_SESSIONS_CACHE["timestamp"] < 6.0):
+            return list(_LAST_SESSIONS_CACHE["data"])
+        try:
+            from colab_cli.common import state
+            from colab_cli.state import SessionState
+            state._sessions = None
+            local_map, assignments = state.sync_sessions()
+            name_by_ep = {s.endpoint: s.name for s in local_map.values()}
+            sessions: List[Dict[str, str]] = []
+            for a in assignments:
+                name = name_by_ep.get(a.endpoint)
+                if not name:
+                    name = "qwen38-g4"
+                    s_adopted = SessionState(
+                        name=name,
+                        token=a.runtime_proxy_info.token,
+                        url=a.runtime_proxy_info.url,
+                        endpoint=a.endpoint,
+                        token_expires_at=a.runtime_proxy_info.expires_at(),
+                        variant=a.variant.name,
+                        accelerator=a.accelerator.value,
+                        machine_shape=a.machine_shape.name,
+                    )
+                    state.store.add(s_adopted)
+                sessions.append({
+                    "name": name,
+                    "endpoint": a.endpoint,
+                    "gpu": a.accelerator.value.upper(),
+                    "raw": f"[{name}] {a.endpoint} | Hardware: {a.accelerator.value.upper()}",
+                })
+            _LAST_SESSIONS_CACHE["data"] = sessions
+            _LAST_SESSIONS_CACHE["timestamp"] = time.time()
+            return list(sessions)
+        except Exception:
+            if _LAST_SESSIONS_CACHE["data"] and (time.time() - _LAST_SESSIONS_CACHE["timestamp"] < 45.0):
+                return list(_LAST_SESSIONS_CACHE["data"])
+            return []
 
 
 def _query_remote_metrics(session_name: str) -> Dict[str, Any]:
@@ -1604,6 +1624,7 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
                 _DEPLOY_STATE["exit_code"] = proc.returncode
                 _DEPLOY_STATE["running"] = False
                 _LAST_METRICS_CACHE["timestamp"] = 0.0
+                _LAST_SESSIONS_CACHE["timestamp"] = 0.0
                 _save_panel_logs_snapshot()
         except Exception as e:
             with _DEPLOY_LOCK:
@@ -1931,18 +1952,67 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
 <header style="padding:14px 20px;">
   <div class="title-area">
-    <h1 style="font-size:18px;white-space:nowrap;">
-      🚀 NVIDIA RTX PRO 6000 Blackwell
-      <span id="sessionBadge" class="badge offline">检测中...</span>
+    <h1 style="font-size:18px;white-space:nowrap;display:flex;align-items:center;gap:10px;">
+      <span>🚀 NVIDIA RTX PRO 6000 Blackwell</span>
+      <span id="sessionBadge" class="badge offline">⚪ 已关机 · 0.00 CU/h</span>
     </h1>
   </div>
-  <div class="btn-group" style="align-items:center;gap:8px;">
-    <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或添加 Google Colab Pro 账号" style="padding:7px 12px;border-color:rgba(59,130,246,0.5);color:#93c5fd;">👤 <span id="headerAccountLabel">账号检测中...</span> ▾</button>
-    <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="padding:7px 12px;">🔄 刷新</button>
-    <button class="btn-success" onclick="startDeploy()" id="btnQuickStart" style="padding:7px 14px;">▶️ 一键开机</button>
-    <button class="btn-danger" onclick="stopColab()" id="btnStop" style="padding:7px 14px;">🛑 关机</button>
+  <div class="btn-group" style="align-items:center;gap:8px;flex-wrap:nowrap;">
+    <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或添加 Google Colab Pro 账号" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(59,130,246,0.5);color:#93c5fd;font-size:12.5px;font-weight:700;">👤 <span id="headerAccountLabel">账号</span> ▾</button>
+    <button class="btn-outline" onclick="openApiConfigModal()" id="btnOpenApiModal" title="查看并复制 OpenAI 兼容 API 接入参数 (本机永久固定 URL / 公网 Tunnel URL / API Key / Model ID)" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);color:#e9d5ff;font-size:12.5px;font-weight:700;">🔗 API</button>
+    <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="height:32px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:700;">🔄 刷新</button>
+    <button class="btn-success" onclick="startDeploy()" id="btnQuickStart" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;">▶️ 一键开机</button>
+    <button class="btn-danger" onclick="stopColab()" id="btnStop" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;">🛑 关机</button>
   </div>
 </header>
+<script>
+  try {
+    const _hc = JSON.parse(localStorage.getItem('easycolab_header_cache') || 'null');
+    if (_hc) {
+      const _sb = document.getElementById('sessionBadge');
+      const _al = document.getElementById('headerAccountLabel');
+      if (_sb && _hc.badgeText) { _sb.innerText = _hc.badgeText; _sb.className = _hc.badgeClass || 'badge offline'; }
+      if (_al && _hc.accountEmail) { _al.innerText = _hc.accountEmail; }
+    }
+  } catch (e) {}
+</script>
+
+<!-- OpenAI 兼容 API 接入参数弹窗 (点击顶部「🔗 API」按钮弹出) -->
+<div id="apiConfigModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,0.76);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
+  <div style="width:100%;max-width:560px;background:#1e293b;border:1px solid rgba(168,85,247,0.5);border-radius:16px;padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.75);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:15.5px;font-weight:800;color:#f8fafc;">🔗 OpenAI 兼容 API 接入参数（客户端直接填）</span>
+        <span id="llamaBadgeModal" class="badge offline" style="font-size:11px">⚪ 推理引擎已关机</span>
+      </div>
+      <button type="button" onclick="document.getElementById('apiConfigModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 关闭</button>
+    </div>
+
+    <div class="kv-row">
+      <span class="kv-label">本机永久固定 URL</span>
+      <span class="kv-val" id="fixedUrl">http://127.0.0.1:30000/v1</span>
+      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('fixedUrl')">复制</button>
+    </div>
+
+    <div class="kv-row">
+      <span class="kv-label">公网临时 Tunnel URL</span>
+      <span class="kv-val" id="tunnelUrl">--</span>
+      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('tunnelUrl')">复制</button>
+    </div>
+
+    <div class="kv-row">
+      <span class="kv-label">永久固定 API Key</span>
+      <span class="kv-val" id="apiKey">sk-colab-ed28e54eb298d0c1</span>
+      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('apiKey')">复制</button>
+    </div>
+
+    <div class="kv-row" style="margin-bottom:0;">
+      <span class="kv-label">Model ID (模型名)</span>
+      <span class="kv-val" id="modelId">huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF</span>
+      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('modelId')">复制</button>
+    </div>
+  </div>
+</div>
 
 <div class="grid-top">
   <div class="cu-card">
@@ -2047,46 +2117,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
 <div class="grid-2" style="align-items:stretch;">
   <div class="card" style="display:flex;flex-direction:column;">
-    <h2>
-      <span>🔗 OpenAI 兼容 API 接入参数（客户端直接填）</span>
-      <span id="llamaBadge" class="badge offline" style="font-size:11px">未就绪</span>
+    <h2 style="margin-bottom:10px;">
+      <span>🧠 Qwen3.8-27B 无审查提示词扩写 &amp; 对话</span>
+      <span id="llamaBadge" class="badge offline" style="font-size:11px">⚪ 推理引擎已关机</span>
     </h2>
 
-    <div class="kv-row">
-      <span class="kv-label">本机永久固定 URL</span>
-      <span class="kv-val" id="fixedUrl">http://127.0.0.1:30000/v1</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('fixedUrl')">复制</button>
-    </div>
-
-    <div class="kv-row">
-      <span class="kv-label">公网临时 Tunnel URL</span>
-      <span class="kv-val" id="tunnelUrl">--</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('tunnelUrl')">复制</button>
-    </div>
-
-    <div class="kv-row">
-      <span class="kv-label">永久固定 API Key</span>
-      <span class="kv-val" id="apiKey">sk-colab-ed28e54eb298d0c1</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('apiKey')">复制</button>
-    </div>
-
-    <div class="kv-row">
-      <span class="kv-label">Model ID (模型名)</span>
-      <span class="kv-val" id="modelId">huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('modelId')">复制</button>
-    </div>
-
-    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;flex:1;display:flex;flex-direction:column;">
+    <div style="flex:1;display:flex;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-        <label style="font-size:12.5px;font-weight:700;color:#f8fafc;">💬 输入你想生成的视频想法 (由 Qwen3.8-27B 无审查自动扩写四项提示词)：</label>
+        <label style="font-size:12.5px;font-weight:700;color:#f8fafc;">💬 输入你想生成的视频想法 (自动扩写下方四项提示词)：</label>
         <div style="display:flex;gap:6px;flex-wrap:nowrap;">
           <button class="btn-primary" style="padding:5px 11px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(true)" id="btnExpand4">✨ 生成四项提示词并填入下方</button>
           <button class="btn-outline" style="padding:5px 10px;font-size:12px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 重新填入下方四框</button>
           <button class="btn-outline" style="padding:5px 10px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(false)" id="btnChat">💬 普通对话</button>
         </div>
       </div>
-      <textarea id="chatPrompt" rows="3" placeholder="直接用中文写你想生成什么样的视频，例如：赛博朋克雨夜东京街头，穿透明雨衣的少女走向镜头..." style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;">赛博朋克雨夜东京街头，霓虹灯倒映在积水中，一个穿透明雨衣的女孩打着伞缓缓走向镜头，电影级光影。</textarea>
-      <div class="chat-out" id="chatOutput" style="flex:1;min-height:96px;max-height:240px;font-size:12px;line-height:1.55;margin-top:10px;">输入视频想法后点击「✨ 生成四项提示词并填入下方」，Qwen3.8 会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并直接填进下方四个框！</div>
+      <textarea id="chatPrompt" rows="5" placeholder="直接用中文写你想生成什么样的视频，例如：赛博朋克雨夜东京街头，穿透明雨衣的少女走向镜头..." style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+      <div class="chat-out" id="chatOutput" style="flex:1;min-height:180px;max-height:300px;font-size:12px;line-height:1.55;margin-top:10px;">输入视频想法后点击「✨ 生成四项提示词并填入下方」，Qwen3.8 会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并直接填进下方四个框！</div>
     </div>
   </div>
 
@@ -4449,10 +4495,17 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
   syncDriveFolderHighlight(folderName);
 }
 
+function openApiConfigModal() {
+  const m = document.getElementById('apiConfigModal');
+  if (m) m.style.display = 'flex';
+}
+
 async function refreshStatus(force = false) {
   const btn = document.getElementById('btnRefresh');
-  btn.disabled = true;
-  btn.innerText = '🔄 刷新中...';
+  if (force && btn) {
+    btn.disabled = true;
+    btn.innerText = '🔄 刷新中...';
+  }
   try {
     const r = await fetch('/api/status' + (force ? '?force=1' : ''));
     const d = await r.json();
@@ -4590,6 +4643,13 @@ async function refreshStatus(force = false) {
         relBtn.style.color = '#10b981';
       }
     }
+    try {
+      localStorage.setItem('easycolab_header_cache', JSON.stringify({
+        badgeText: badge ? badge.innerText : '',
+        badgeClass: badge ? badge.className : '',
+        accountEmail: (d.account_info && d.account_info.active_email) || ''
+      }));
+    } catch (e) {}
 
     const m = d.metrics;
     if (m) {
@@ -4630,12 +4690,13 @@ async function refreshStatus(force = false) {
       }
 
       const lBadge = document.getElementById('llamaBadge');
+      const lBadgeModal = document.getElementById('llamaBadgeModal');
       if (m.llama_running) {
-        lBadge.className = 'badge online';
-        lBadge.innerText = '🟢 推理引擎运行中';
+        if (lBadge) { lBadge.className = 'badge online'; lBadge.innerText = '🟢 推理引擎运行中'; }
+        if (lBadgeModal) { lBadgeModal.className = 'badge online'; lBadgeModal.innerText = '🟢 推理引擎运行中'; }
       } else {
-        lBadge.className = 'badge offline';
-        lBadge.innerText = '⚪ 推理引擎未运行';
+        if (lBadge) { lBadge.className = 'badge offline'; lBadge.innerText = '⚪ 推理引擎未运行'; }
+        if (lBadgeModal) { lBadgeModal.className = 'badge offline'; lBadgeModal.innerText = '⚪ 推理引擎未运行'; }
       }
 
       if (m.drive_folders && m.drive_folders.length > 0) {
@@ -4656,8 +4717,9 @@ async function refreshStatus(force = false) {
       document.getElementById('diskSub').innerText = '实例未启动';
       document.getElementById('diskBar').style.width = '0%';
       const lBadge = document.getElementById('llamaBadge');
-      lBadge.className = 'badge offline';
-      lBadge.innerText = '⚪ 推理引擎已关机';
+      const lBadgeModal = document.getElementById('llamaBadgeModal');
+      if (lBadge) { lBadge.className = 'badge offline'; lBadge.innerText = '⚪ 推理引擎已关机'; }
+      if (lBadgeModal) { lBadgeModal.className = 'badge offline'; lBadgeModal.innerText = '⚪ 推理引擎已关机'; }
     }
 
     const gd = d.gdrive_info;
@@ -10904,7 +10966,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/api/status"):
             force = "force=1" in self.path
-            sessions = _list_active_sessions()
+            sessions = _list_active_sessions(force=force)
             cfg = _load_endpoint_cfg()
             cu_info = _query_cu_usage(force=force)
             metrics = None
@@ -11877,6 +11939,8 @@ p.wait()
             ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             _LAST_METRICS_CACHE["data"] = None
             _LAST_METRICS_CACHE["timestamp"] = 0.0
+            _LAST_SESSIONS_CACHE["data"] = []
+            _LAST_SESSIONS_CACHE["timestamp"] = 0.0
             _LAST_CU_CACHE["timestamp"] = 0.0
             self._send_json({"ok": True, "message": f"✅ 已彻底释放并关闭实例: {', '.join(stopped)}（扣费速率已归零 0.00 CU/h）"})
             return
