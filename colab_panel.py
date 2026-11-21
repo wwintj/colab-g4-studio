@@ -1916,8 +1916,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<div class="grid-2">
-  <div class="card">
+<div class="grid-2" style="align-items:stretch;">
+  <div class="card" style="display:flex;flex-direction:column;">
     <h2>
       <span>🔗 OpenAI 兼容 API 接入参数（客户端直接填）</span>
       <span id="llamaBadge" class="badge offline" style="font-size:11px">未就绪</span>
@@ -1947,21 +1947,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('modelId')">复制</button>
     </div>
 
-    <div style="margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px;">
+    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;flex:1;display:flex;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <label style="font-size:12.5px;font-weight:700;color:#f8fafc;">💬 输入你想生成的视频想法 (由 Qwen3.8-27B 无审查自动扩写四项提示词)：</label>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn-primary" style="padding:5px 12px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(true)" id="btnExpand4">✨ 生成四项提示词并填入下方</button>
+        <div style="display:flex;gap:6px;flex-wrap:nowrap;">
+          <button class="btn-primary" style="padding:5px 11px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(true)" id="btnExpand4">✨ 生成四项提示词并填入下方</button>
           <button class="btn-outline" style="padding:5px 10px;font-size:12px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 重新填入下方四框</button>
           <button class="btn-outline" style="padding:5px 10px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(false)" id="btnChat">💬 普通对话</button>
         </div>
       </div>
-      <textarea id="chatPrompt" rows="2" placeholder="直接用中文写你想生成什么样的视频，例如：赛博朋克雨夜东京街头，穿透明雨衣的少女走向镜头..." style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;">赛博朋克雨夜东京街头，霓虹灯倒映在积水中，一个穿透明雨衣的女孩打着伞缓缓走向镜头，电影级光影。</textarea>
-      <div class="chat-out" id="chatOutput" style="min-height:84px;max-height:190px;font-size:12px;line-height:1.5;">输入视频想法后点击「✨ 生成四项提示词并填入下方」，Qwen3.8 会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并直接填进下方四个框！</div>
+      <textarea id="chatPrompt" rows="3" placeholder="直接用中文写你想生成什么样的视频，例如：赛博朋克雨夜东京街头，穿透明雨衣的少女走向镜头..." style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;">赛博朋克雨夜东京街头，霓虹灯倒映在积水中，一个穿透明雨衣的女孩打着伞缓缓走向镜头，电影级光影。</textarea>
+      <div class="chat-out" id="chatOutput" style="flex:1;min-height:96px;max-height:240px;font-size:12px;line-height:1.55;margin-top:10px;">输入视频想法后点击「✨ 生成四项提示词并填入下方」，Qwen3.8 会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并直接填进下方四个框！</div>
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" style="display:flex;flex-direction:column;">
     <h2 style="margin-bottom:10px;white-space:nowrap;">
       <span>📦 模型管理</span>
       <div style="display:inline-flex;gap:6px;flex-shrink:0;">
@@ -1971,140 +1971,140 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </h2>
 
     <!-- G4 96GB 满血模型专区 -->
-    <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:12px;" id="presetModelGrid">
-      <div class="folder-tag preset-card" id="preset_qwen_bf16" onclick="selectPresetModel('preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf')" style="margin:0;padding:8px 10px;border-color:#3b82f6;background:rgba(59,130,246,0.14);justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">🧠 Qwen3.8-27B (无审查)</div>
-          <div style="color:var(--muted);font-size:11px;">BF16 原生 + MTP加速 · 53.1 GB</div>
+    <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;margin-bottom:10px;" id="presetModelGrid">
+      <div class="folder-tag preset-card" id="preset_qwen_bf16" onclick="selectPresetModel('preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf')" style="margin:0;padding:8px 10px;border-color:#3b82f6;background:rgba(59,130,246,0.14);justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#f8fafc;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🧠 Qwen3.8-27B (无审查)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">BF16 原生 + MTP加速 · 53.1 GB</div>
         </div>
-        <span class="preset-check" style="color:#3b82f6;font-weight:700;">✔</span>
+        <span class="preset-check" style="color:#3b82f6;font-weight:700;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_minimax_h3" onclick="selectPresetModel('preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">🎬 MiniMax-H3 (33B · 无审查)</div>
-          <div style="color:var(--muted);font-size:11px;">BF16 原生 + 破限编码器 · 134 GB</div>
+      <div class="folder-tag preset-card" id="preset_minimax_h3" onclick="selectPresetModel('preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#f8fafc;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎬 MiniMax-H3 (33B · 无审查)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">BF16 原生 + 破限编码器 · 134 GB</div>
         </div>
-        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_minimax_image" onclick="selectPresetModel('preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">📸 MiniMax-H3-Image (4K无审查)</div>
-          <div style="color:var(--muted);font-size:11px;">INT8 + Heretic破限编码器 · 45.2 GB (4K生图/免Mask换装)</div>
+      <div class="folder-tag preset-card" id="preset_minimax_image" onclick="selectPresetModel('preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#f8fafc;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📸 MiniMax-H3-Image (4K无审查)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">INT8 + Heretic 32B破限 · 45.2 GB</div>
         </div>
-        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_longcat_avatar" onclick="selectPresetModel('preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#f8fafc;font-size:13px;">🎭 LongCat-Video-Avatar-1.6</div>
-          <div style="color:var(--muted);font-size:11px;">BF16 + 双LoRA + 底座 · 58.8 GB (数字人视频)</div>
+      <div class="folder-tag preset-card" id="preset_longcat_avatar" onclick="selectPresetModel('preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#f8fafc;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎭 LongCat-Video-Avatar-1.6</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">BF16 + 双LoRA蒸馏 · 58.8 GB</div>
         </div>
-        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
     </div>
 
     <!-- T4 16GB 模型区 -->
-    <div style="display:none;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:12px;" id="presetModelGridT4">
-      <div class="folder-tag preset-card" id="preset_t4_minimax_h3" onclick="selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">🎬 MiniMax-H3 (T4 量化版)</div>
-          <div style="color:var(--muted);font-size:11px;">UD-Q2_K_XL 蒸馏 · 7.5 GB (8步有声)</div>
+    <div style="display:none;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;margin-bottom:10px;" id="presetModelGridT4">
+      <div class="folder-tag preset-card" id="preset_t4_minimax_h3" onclick="selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎬 MiniMax-H3 (T4 量化版)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">UD-Q2_K_XL 蒸馏 · 7.5 GB (8步有声)</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_t4_longcat_int8" onclick="selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">🎭 LongCat-Avatar-1.6 (INT8版)</div>
-          <div style="color:var(--muted);font-size:11px;">INT8 量化主干 + 双LoRA · 14.8 GB (数字人)</div>
+      <div class="folder-tag preset-card" id="preset_t4_longcat_int8" onclick="selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎭 LongCat-Avatar-1.6 (INT8版)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">INT8 量化主干 + 双LoRA · 14.8 GB</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_t4_recavsr" onclick="selectPresetModel('preset_t4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">✨ ReCaVSR (2K/4K 视频超分)</div>
-          <div style="color:var(--muted);font-size:11px;">Wan2.2-5B 单步超分 · 10.1 GB (云盘已存)</div>
+      <div class="folder-tag preset-card" id="preset_t4_recavsr" onclick="selectPresetModel('preset_t4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✨ ReCaVSR (2K/4K 视频超分)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Wan2.2-5B 单步超分 · 10.1 GB</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
-          <div style="color:var(--muted);font-size:11px;">UD-Q3_K_XL · 12.4 GB (16G显存满速)</div>
+      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">UD-Q3_K_XL · 12.4 GB (16G满速)</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_t4_qwen38_mtp" onclick="selectPresetModel('preset_t4_qwen38_mtp', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-MTP', 'Huihui-Qwen3.8-27B-abliterated-GSQ-RCO-IQ3_S-mtp.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">⚡ Qwen3.8-27B 无审查 (MTP版)</div>
-          <div style="color:var(--muted);font-size:11px;">IQ3_S + 原生MTP投机 · 11.3 GB</div>
+      <div class="folder-tag preset-card" id="preset_t4_qwen38_mtp" onclick="selectPresetModel('preset_t4_qwen38_mtp', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-MTP', 'Huihui-Qwen3.8-27B-abliterated-GSQ-RCO-IQ3_S-mtp.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">⚡ Qwen3.8-27B 无审查 (MTP版)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">IQ3_S + 原生MTP投机 · 11.3 GB</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_t4_qwen14b" onclick="selectPresetModel('preset_t4_qwen14b', 'bartowski/huihui-ai_Qwen3-14B-abliterated-GGUF', 'Qwen3-14B-T4-Q6', 'huihui-ai_Qwen3-14B-abliterated-Q6_K.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">💎 Qwen3-14B 无审查 (Q6_K)</div>
-          <div style="color:var(--muted);font-size:11px;">准无损精度 · 11.3 GB (~50 tok/s)</div>
+      <div class="folder-tag preset-card" id="preset_t4_qwen14b" onclick="selectPresetModel('preset_t4_qwen14b', 'bartowski/huihui-ai_Qwen3-14B-abliterated-GGUF', 'Qwen3-14B-T4-Q6', 'huihui-ai_Qwen3-14B-abliterated-Q6_K.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">💎 Qwen3-14B 无审查 (Q6_K)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">准无损精度 · 11.3 GB (~50 tok/s)</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_t4_qwenvl8b" onclick="selectPresetModel('preset_t4_qwenvl8b', 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF', 'Qwen3-VL-8B-T4-Q8', '*Q8_0.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;">
-        <div>
-          <div style="font-weight:700;color:#34d399;font-size:13px;">👁️ Qwen3-VL-8B 视觉无审查</div>
-          <div style="color:var(--muted);font-size:11px;">满血 Q8_0 + 视觉 · 8.8 GB (~75 tok/s)</div>
+      <div class="folder-tag preset-card" id="preset_t4_qwenvl8b" onclick="selectPresetModel('preset_t4_qwenvl8b', 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF', 'Qwen3-VL-8B-T4-Q8', '*Q8_0.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👁️ Qwen3-VL-8B 视觉无审查</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">满血 Q8_0 + 视觉 · 8.8 GB (~75 tok/s)</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;">✔</span>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
     </div>
 
-    <div id="customPresetGrid" style="display:grid;grid-template-columns:repeat(2, 1fr);gap:8px;margin-bottom:8px;"></div>
+    <div id="customPresetGrid" style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;margin-bottom:8px;"></div>
 
-    <div onclick="openCustomHFModal()" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;margin-bottom:12px;border-radius:10px;border:1.5px dashed rgba(59,130,246,0.55);background:rgba(59,130,246,0.08);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.15)'" onmouseout="this.style.background='rgba(59,130,246,0.08)'">
-      <div style="display:flex;align-items:center;gap:10px;color:#60a5fa;font-weight:700;font-size:13.5px;">
-        <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;background:#3b82f6;color:white;font-size:15px;font-weight:800;line-height:1;">+</span>
+    <div onclick="openCustomHFModal()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;margin-bottom:10px;border-radius:10px;border:1.5px dashed rgba(59,130,246,0.55);background:rgba(59,130,246,0.08);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.15)'" onmouseout="this.style.background='rgba(59,130,246,0.08)'">
+      <div style="display:flex;align-items:center;gap:10px;color:#60a5fa;font-weight:700;font-size:13px;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:999px;background:#3b82f6;color:white;font-size:14px;font-weight:800;line-height:1;">+</span>
         <span>添加自定义 HuggingFace 模型...</span>
       </div>
-      <span style="font-family:'SF Mono',Menlo,monospace;font-size:12px;color:var(--muted);">GGUF / Safetensors</span>
+      <span style="font-family:'SF Mono',Menlo,monospace;font-size:11.5px;color:var(--muted);">GGUF / Safetensors</span>
     </div>
 
     <div style="margin-bottom:10px;">
-      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">☁️ 当前您的 Google Drive `MyDrive/models/` 下已保存的模型文件夹（点击直接选中加载）：</label>
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:5px;">☁️ 当前您的 Google Drive `MyDrive/models/` 下已保存的模型文件夹（点击直接选中加载）：</label>
       <div id="driveFoldersList" style="min-height:28px;font-size:12px;color:var(--muted);">正在读取云盘目录...</div>
     </div>
 
-    <div class="form-group">
-      <label>1. HuggingFace 仓库 ID（或直接粘贴任意 HF 模型链接）</label>
+    <div class="form-group" style="margin-bottom:10px;">
+      <label style="white-space:nowrap;">1. HuggingFace 仓库 ID（或直接粘贴任意 HF 模型链接）</label>
       <input id="inpRepo" type="text" value="huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF">
     </div>
 
-    <div style="display:grid;grid-template-columns: 1fr 1.2fr 0.7fr;gap:8px;">
-      <div class="form-group">
-        <label>2. 云盘 `MyDrive/models/` 子文件夹</label>
+    <div style="display:grid;grid-template-columns: 1.05fr 1.15fr 0.65fr;gap:8px;align-items:end;">
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="2. 云盘 MyDrive/models/ 子文件夹">2. 云盘模型子文件夹</label>
         <input id="inpFolder" type="text" value="Huihui-Qwen3.8-27B-abliterated-GGUF" oninput="syncDriveFolderHighlight(this.value.trim())">
       </div>
-      <div class="form-group">
-        <label>3. 权重文件名或通配符</label>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">3. 权重文件名或通配符</label>
         <input id="inpPattern" type="text" value="Huihui-Qwen3.8-27B-abliterated-bf16.gguf">
       </div>
-      <div class="form-group">
-        <label>4. 上下文</label>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label style="white-space:nowrap;">4. 上下文</label>
         <input id="inpCtx" type="number" value="262144">
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns: 1fr 1.25fr;gap:10px;margin-top:4px;">
-      <button class="btn-outline" style="width:100%;justify-content:center;padding:10px;border-color:rgba(16,185,129,0.5);color:#6ee7b7;" onclick="startDeploy(true)" id="btnDownloadOnly" title="该模型已保存在您的 Google Drive 云盘中；点击仅校验或补全云盘缺失文件，不加载进显存">
-        ✅ 云盘已存妥 (校验/补全文件)
+    <div style="display:grid;grid-template-columns: 0.92fr 1.28fr;gap:10px;margin-top:auto;">
+      <button class="btn-outline" style="width:100%;justify-content:center;padding:10px 8px;font-size:12.5px;white-space:nowrap;border-color:rgba(16,185,129,0.5);color:#6ee7b7;" onclick="startDeploy(true)" id="btnDownloadOnly" title="该模型已保存在您的 Google Drive 云盘中；点击仅校验或补全云盘缺失文件，不加载进显存">
+        ✅ 云盘已存妥 (校验文件)
       </button>
-      <button class="btn-primary" style="width:100%;justify-content:center;padding:10px;" onclick="startDeploy(false)" id="btnDeployForm" title="直接从您的 Google Drive 云盘极速预热并装载至 GPU 显存启动运行（无需从 HF 重新下载）">
-        🚀 从云盘加载至显存并启动 (Qwen3.8-27B)
+      <button class="btn-primary" style="width:100%;justify-content:center;padding:10px 10px;font-size:12.5px;white-space:nowrap;" onclick="startDeploy(false)" id="btnDeployForm" title="直接从您的 Google Drive 云盘极速预热并装载至 GPU 显存启动运行（无需从 HF 重新下载）">
+        🚀 从云盘加载并启动 (Qwen3.8-27B)
       </button>
     </div>
   </div>
@@ -4096,33 +4096,43 @@ function renderGroupedDriveFolders(folders, updateButtons = true) {
   savedDriveFolders.clear();
   const g4List = [];
   const t4List = [];
+  const nonModelFolders = new Set(['PoseWear-Catalog', 'MiniMax-H3_outputs', 'MiniMax-H3-LoRAs']);
   (lastDriveFoldersRaw || []).forEach(item => {
-    savedDriveFolders.add(item.folder);
+    if (!item || !item.folder || nonModelFolders.has(item.folder)) return;
     const gb = typeof item.total_gb === 'number' ? item.total_gb : 0;
+    const fileCnt = Array.isArray(item.files) ? item.files.length : 0;
+    if (fileCnt === 0 && gb <= 0.05) return;
+    savedDriveFolders.add(item.folder);
     const isT4Named = item.folder.includes('-T4-') || item.folder.endsWith('-INT8') || item.folder === 'ReCaVSR';
     if (!isT4Named && gb > 15.5) g4List.push(item);
     else t4List.push(item);
   });
+  const displayFolderNameMap = {
+    'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B-GGUF',
+    'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
+    'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar-INT8',
+  };
   const renderTag = item => {
     const hasSt = item.files.some(f => f.name.toLowerCase().includes('.safetensors'));
     const mainFile = hasSt ? '*.safetensors' : ((item.files.find(f => !f.name.toLowerCase().includes('mmproj')) || item.files[0] || {}).name || '');
-    const totGb = typeof item.total_gb === 'number' ? ` · ${item.total_gb} GB` : '';
-    const filesDesc = item.files.slice(0, 12).map(f => `${f.name} (${f.size_gb}G)`).join(', ') || '空文件夹';
+    const totGb = typeof item.total_gb === 'number' ? `${item.total_gb} GB` : '';
+    const filesDesc = `${item.folder}: ` + (item.files.slice(0, 12).map(f => `${f.name} (${f.size_gb}G)`).join(', ') || '空文件夹');
     const isAct = item.folder === curSelFolder;
     const bCol = isAct ? '#3b82f6' : 'var(--border)';
     const bgCol = isAct ? 'rgba(59,130,246,0.16)' : '#0f172a';
     const chkDisp = isAct ? 'inline' : 'none';
-    return `<div class="folder-tag" data-folder="${item.folder}" onclick="selectDriveFolder('${item.folder}', '${mainFile}')" title="${filesDesc}" style="border-color:${bCol};background:${bgCol};">
-      📁 <b>${item.folder}</b> <span style="color:var(--green)">(${item.files.length}个${totGb})</span>
-      <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:${chkDisp};margin-left:4px;">✔</span>
+    const dispName = displayFolderNameMap[item.folder] || item.folder;
+    return `<div class="folder-tag" data-folder="${item.folder}" onclick="selectDriveFolder('${item.folder}', '${mainFile}')" title="${filesDesc}" style="margin:0;padding:6px 10px;justify-content:space-between;min-width:0;border-color:${bCol};background:${bgCol};">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📁 <b>${dispName}</b></span>
+      <span style="flex-shrink:0;white-space:nowrap;font-size:11.5px;"><span style="color:var(--green)">(${item.files.length}个 · ${totGb})</span><span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:${chkDisp};margin-left:4px;">✔</span></span>
     </div>`;
   };
   let pendingG4Html = '';
   let pendingT4Html = '';
   if (curSelFolder && !savedDriveFolders.has(curSelFolder)) {
-    const pendingTag = `<div class="folder-tag" data-folder="${curSelFolder}" title="该模型尚未存入您的 Google Drive 云盘；点击下方按钮即可从 HuggingFace 下载并永久保存到云盘" style="border:1.5px dashed #3b82f6;background:rgba(59,130,246,0.14);">
-      ☁️ <b>${curSelFolder}</b> <span style="color:#93c5fd;">(尚未存云盘 · 点下方按钮下载入盘)</span>
-      <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:inline;margin-left:4px;">✔</span>
+    const pendingTag = `<div class="folder-tag" data-folder="${curSelFolder}" title="该模型尚未存入您的 Google Drive 云盘；点击下方按钮即可从 HuggingFace 下载并永久保存到云盘" style="margin:0;padding:6px 10px;justify-content:space-between;min-width:0;grid-column:1 / -1;border:1.5px dashed #3b82f6;background:rgba(59,130,246,0.14);">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">☁️ <b>${curSelFolder}</b></span>
+      <span style="color:#93c5fd;flex-shrink:0;white-space:nowrap;font-size:11.5px;">(尚未存云盘 · 点下方下载入盘) <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:inline;margin-left:4px;">✔</span></span>
     </div>`;
     if (curSelFolder.includes('-T4-') || currentPresetTier === 't4') {
       pendingT4Html = pendingTag;
@@ -4132,10 +4142,10 @@ function renderGroupedDriveFolders(folders, updateButtons = true) {
   }
   let html = '';
   if (g4List.length > 0 || pendingG4Html) {
-    html += `<div style="margin-bottom:6px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:3px;">🔥 RTX 6000 (96GB) 云盘模型：</div><div>${g4List.map(renderTag).join('')}${pendingG4Html}</div></div>`;
+    html += `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:4px;">🔥 RTX 6000 (96GB) 云盘模型：</div><div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:6px;">${g4List.map(renderTag).join('')}${pendingG4Html}</div></div>`;
   }
   if (t4List.length > 0 || pendingT4Html) {
-    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:3px;">⚡ T4 (16GB) 云盘模型：</div><div>${t4List.map(renderTag).join('')}${pendingT4Html}</div></div>`;
+    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:4px;">⚡ T4 (16GB) 云盘模型：</div><div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:6px;">${t4List.map(renderTag).join('')}${pendingT4Html}</div></div>`;
   }
   fBox.innerHTML = html || '当前 MyDrive/models/ 下暂无模型文件夹';
   if (updateButtons) syncDriveFolderHighlight(curSelFolder, false);
@@ -4157,13 +4167,13 @@ function syncDriveFolderHighlight(folderName, rerenderList = true) {
   const shortMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B',
     'MiniMax-H3': 'MiniMax-H3',
-    'MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
-    'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
-    'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar(INT8)',
-    'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4)',
-    'Qwen3.8-27B-T4-MTP': 'Qwen3.8-27B(MTP)',
+    'MiniMax-H3-Image': 'H3-Image 4K',
+    'LongCat-Video-Avatar-1.6': 'LongCat-Avatar',
+    'LongCat-Video-Avatar-1.6-INT8': 'LongCat(INT8)',
+    'Qwen3.8-27B-T4-Q3': 'Qwen3.8(T4)',
+    'Qwen3.8-27B-T4-MTP': 'Qwen3.8(MTP)',
     'Qwen3-14B-T4-Q6': 'Qwen3-14B(Q6)',
-    'Qwen3-VL-8B-T4-Q8': 'Qwen3-VL-8B(Q8)',
+    'Qwen3-VL-8B-T4-Q8': 'Qwen3-VL-8B',
     'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4)',
     'ReCaVSR': 'ReCaVSR',
   };
