@@ -3115,18 +3115,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧当前模式专属生成主按钮 -->
     <div id="specRow2ActionGrid" style="display:grid;grid-template-columns: 1fr 220px;gap:10px;align-items:center;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1e293b;padding:0 12px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);flex-wrap:nowrap;min-width:0;overflow:hidden;">
-        <div id="framesSliderInner" style="display:flex;align-items:center;gap:8px;flex:1;flex-wrap:nowrap;min-width:0;">
+        <div id="framesSliderInner" style="display:flex;align-items:center;gap:7px;flex:1;flex-wrap:nowrap;min-width:0;">
           <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;flex-shrink:0;">时长/帧数</span>
-          <input type="range" id="videoFrames" min="90" max="481" step="17" value="124" oninput="onFramesSliderChange(this.value)" style="width:105px;accent-color:#3b82f6;cursor:pointer;flex-shrink:0;">
-          <span id="framesValLabel" style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:98px;flex-shrink:0;">124 帧 · 约 5.2 秒</span>
-          <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:4px;flex:1;min-width:210px;max-width:280px;" id="durationPills">
-            <button type="button" class="dur-pill" data-frames="90" onclick="selectDurationFrames(90)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">4s</button>
-            <button type="button" class="dur-pill" data-frames="124" onclick="selectDurationFrames(124)" style="height:24px;padding:0;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#60a5fa;font-size:11.5px;font-weight:700;cursor:pointer;">5s</button>
-            <button type="button" class="dur-pill" data-frames="192" onclick="selectDurationFrames(192)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">8s</button>
-            <button type="button" class="dur-pill" data-frames="243" onclick="selectDurationFrames(243)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">10s</button>
-            <button type="button" class="dur-pill" data-frames="294" onclick="selectDurationFrames(294)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">12s</button>
-            <button type="button" class="dur-pill" data-frames="362" onclick="selectDurationFrames(362)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">15s</button>
-            <button type="button" class="dur-pill" data-frames="481" title="单次 20 秒实验档位 (建议在 832×480 / 480×832 分辨率下使用；若需 30s~60s 满血画质推荐用下方「🔗 尾帧续写」)" onclick="selectDurationFrames(481)" style="height:24px;padding:0;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">20s</button>
+          <input type="range" id="videoFrames" min="90" max="719" step="17" value="124" oninput="onFramesSliderChange(this.value, false)" style="width:95px;accent-color:#3b82f6;cursor:pointer;flex-shrink:0;">
+          <span id="framesValLabel" style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:96px;flex-shrink:0;">124 帧 · 约 5.2 秒</span>
+          <div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;" id="durationPills">
+            <button type="button" class="dur-pill" data-frames="124" onclick="selectDurationFrames(124, false)" style="height:24px;min-width:30px;padding:0 5px;border-radius:6px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#60a5fa;font-size:11.5px;font-weight:700;cursor:pointer;">5s</button>
+            <button type="button" class="dur-pill" data-frames="192" onclick="selectDurationFrames(192, false)" style="height:24px;min-width:30px;padding:0 5px;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">8s</button>
+            <button type="button" class="dur-pill" data-frames="243" onclick="selectDurationFrames(243, false)" style="height:24px;min-width:32px;padding:0 5px;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">10s</button>
+            <button type="button" class="dur-pill" data-frames="294" onclick="selectDurationFrames(294, false)" style="height:24px;min-width:32px;padding:0 5px;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">12s</button>
+            <button type="button" class="dur-pill" data-frames="362" onclick="selectDurationFrames(362, false)" style="height:24px;min-width:32px;padding:0 5px;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">15s</button>
+            <button type="button" class="dur-pill" data-frames="481" onclick="selectDurationFrames(481, false)" style="height:24px;min-width:32px;padding:0 5px;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">20s</button>
+            <button type="button" class="dur-pill" data-frames="600" onclick="selectDurationFrames(600, false)" style="height:24px;min-width:32px;padding:0 5px;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">25s</button>
+            <button type="button" class="dur-pill" data-frames="719" onclick="selectDurationFrames(719, false)" style="height:24px;min-width:32px;padding:0 5px;border-radius:6px;border:1px solid var(--border);background:#0f172a;color:#cbd5e1;font-size:11.5px;font-weight:600;cursor:pointer;">30s</button>
+            <span id="autoDurationBadge" title="根据提示词中的秒数或时间轴终点自动识别并匹配精确帧数 (17k+5)" style="display:inline-flex;align-items:center;height:24px;padding:0 7px;border-radius:6px;border:1px solid rgba(16,185,129,0.45);background:rgba(16,185,129,0.14);color:#6ee7b7;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;">🤖自动识别</span>
           </div>
         </div>
         <div id="avatarSpecHint" style="display:none;font-size:12px;font-weight:600;color:#34d399;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -5064,7 +5066,7 @@ function toggleNegPromptBox() {
   if (icon) icon.innerText = hidden ? '▾' : '▸';
 }
 
-function onFramesSliderChange(val) {
+function onFramesSliderChange(val, isAuto = false, autoSec = 0) {
   const f = parseInt(val, 10) || 124;
   const sec = (f / 24.0).toFixed(1);
   const lbl = document.getElementById('framesValLabel');
@@ -5076,12 +5078,26 @@ function onFramesSliderChange(val) {
     btn.style.color = active ? '#60a5fa' : '#cbd5e1';
     btn.style.fontWeight = active ? '700' : '600';
   });
+  const autoBadge = document.getElementById('autoDurationBadge');
+  if (autoBadge) {
+    if (isAuto && autoSec > 0) {
+      autoBadge.innerText = `🎯自动 ${autoSec}s`;
+      autoBadge.style.background = 'rgba(16,185,129,0.22)';
+      autoBadge.style.borderColor = 'rgba(16,185,129,0.6)';
+      autoBadge.style.color = '#6ee7b7';
+    } else {
+      autoBadge.innerText = '🤖自动识别';
+      autoBadge.style.background = 'rgba(148,163,184,0.12)';
+      autoBadge.style.borderColor = 'rgba(148,163,184,0.35)';
+      autoBadge.style.color = '#94a3b8';
+    }
+  }
 }
 
-function selectDurationFrames(frames) {
+function selectDurationFrames(frames, isAuto = false, autoSec = 0) {
   const slider = document.getElementById('videoFrames');
   if (slider) slider.value = String(frames);
-  onFramesSliderChange(frames);
+  onFramesSliderChange(frames, isAuto, autoSec);
 }
 
 function selectBatchCount(count) {
@@ -7570,13 +7586,20 @@ function autoSyncSpecsFromPrompt() {
       lblSix.style.borderColor = 'rgba(16,185,129,0.45)';
       lblSix.style.color = '#6ee7b7';
     }
+    const autoBadge = document.getElementById('autoDurationBadge');
+    if (autoBadge) {
+      autoBadge.innerText = '🤖自动识别';
+      autoBadge.style.background = 'rgba(148,163,184,0.12)';
+      autoBadge.style.borderColor = 'rgba(148,163,184,0.35)';
+      autoBadge.style.color = '#94a3b8';
+    }
     return;
   }
 
   // 0. 智能判定是否开启 H3 六段式防崩编译
   const hasRefFrame = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
   const isAlreadySixSec = /subject_definitions:|retention_analysis:/i.test(p1);
-  const hasMultiTimelineOrDirectorSections = /【[^】]{2,20}】/.test(p1) || ((p1.match(/(?:^|[^\d.])\d{1,2}\s*[-~–—至到]\s*\d{1,2}\s*(?:秒|s\b)/gi) || []).length >= 2);
+  const hasMultiTimelineOrDirectorSections = /【[^】]{2,20}】/.test(fullText) || ((fullText.match(/(?:^|[^\d.])\d{1,2}(?:\.\d+)?\s*(?:秒|s)?\s*[-~–—至到]\s*\d{1,2}(?:\.\d+)?\s*(?:秒|s\b)/gi) || []).length >= 2);
   if (chkSix && txtSix && lblSix) {
     if (isAlreadySixSec || (hasMultiTimelineOrDirectorSections && !hasRefFrame)) {
       chkSix.checked = false;
@@ -7625,40 +7648,40 @@ function autoSyncSpecsFromPrompt() {
     }
   }
 
-  // 2. 自动识别视频秒数 (如 "15秒" / "时长10s" / 时间轴 "0-3秒...12-15秒")
+  // 2. 自动识别视频任意秒数 (支持 3s~30s 任意时长，如 "15秒" / "25s" / 时间轴 "0.0–3.0秒...19.0–25.0秒")
   if (currentMiniMaxMode !== 'image' && currentMiniMaxMode !== 'avatar') {
     let detectedSec = 0;
-    const mExplicit = fullText.match(/(?:总?时长|视频时长|全片时长|全长|时长约?|duration)\s*[:：约为≈]?\s*(\d{1,2})(?:\.\d+)?\s*(?:秒|s\b|sec)/i)
-      || fullText.match(/(?:^|[^\d~–—.-])(\d{1,2})\s*(?:秒|s)\s*(?:视频|短片|成片|镜头|长镜头|一镜到底|竖屏|横屏|画面|片段)/i)
-      || fullText.match(/【\s*(\d{1,2})\s*(?:秒|s)\s*】/i);
+    const mExplicit = fullText.match(/(?:总?时长|视频时长|全片时长|全长|时长约?|duration)\s*[:：约为≈]?\s*(\d{1,2}(?:\.\d+)?)\s*(?:秒|s\b|sec)/i)
+      || fullText.match(/(?:^|[^\d~–—.-])(\d{1,2}(?:\.\d+)?)\s*(?:秒|s)\s*(?:视频|短片|成片|镜头|长镜头|一镜到底|竖屏|横屏|画面|片段)/i)
+      || fullText.match(/【\s*(\d{1,2}(?:\.\d+)?)\s*(?:秒|s)\s*】/i);
     if (mExplicit) {
-      const v = parseInt(mExplicit[1], 10);
-      if (v >= 3 && v <= 25) detectedSec = v;
+      const v = Math.round(parseFloat(mExplicit[1]));
+      if (v >= 3 && v <= 30) detectedSec = v;
     }
     if (!detectedSec) {
       let maxRangeEnd = 0;
-      const rangeRe = /(?:^|[^\d.])(\d{1,2})(?:\.\d+)?\s*(?:秒|s)?\s*[-~–—至到]\s*(\d{1,2})(?:\.\d+)?\s*(?:秒|s\b|sec)/gi;
+      const rangeRe = /(?:^|[^\d.])(\d{1,2}(?:\.\d+)?)\s*(?:秒|s)?\s*[-~–—至到]\s*(\d{1,2}(?:\.\d+)?)\s*(?:秒|s\b|sec)/gi;
       let mR;
       while ((mR = rangeRe.exec(fullText)) !== null) {
-        const sVal = parseInt(mR[1], 10);
-        const eVal = parseInt(mR[2], 10);
-        if (eVal > sVal && sVal >= 0 && eVal >= 3 && eVal <= 25) {
+        const sVal = parseFloat(mR[1]);
+        const eVal = parseFloat(mR[2]);
+        if (eVal > sVal && sVal >= 0 && eVal >= 3 && eVal <= 30) {
           if (eVal > maxRangeEnd) maxRangeEnd = eVal;
         }
       }
-      if (maxRangeEnd >= 3) detectedSec = maxRangeEnd;
+      if (maxRangeEnd >= 3) detectedSec = Math.round(maxRangeEnd);
     }
     if (!detectedSec) {
       const mStand = fullText.match(/(?:^|[\s，,。、；;：（(【\[])(\d{1,2})\s*(?:秒|s\b)(?!\s*(?:处|时|后|前|内|左右|开始|进入))/i);
       if (mStand) {
         const v = parseInt(mStand[1], 10);
-        if ([4, 5, 6, 8, 10, 12, 15, 20].includes(v)) detectedSec = v;
+        if (v >= 4 && v <= 30) detectedSec = v;
       }
     }
-    if (detectedSec >= 3 && detectedSec <= 25) {
-      const pillMap = {4: 90, 5: 124, 8: 192, 10: 243, 12: 294, 15: 362, 20: 481};
-      const targetFrames = pillMap[detectedSec] || Math.max(90, Math.min(481, Math.round((detectedSec * 24 - 5) / 17) * 17 + 5));
-      selectDurationFrames(targetFrames);
+    if (detectedSec >= 3 && detectedSec <= 30) {
+      const pillMap = {4: 90, 5: 124, 8: 192, 10: 243, 12: 294, 15: 362, 20: 481, 25: 600, 30: 719};
+      const targetFrames = pillMap[detectedSec] || Math.max(90, Math.min(719, Math.round((detectedSec * 24 - 5) / 17) * 17 + 5));
+      selectDurationFrames(targetFrames, true, detectedSec);
     }
   }
 }
