@@ -2553,12 +2553,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div id="dramaGachaCardsList" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(235px, 1fr));gap:10px;max-height:280px;overflow-y:auto;padding-right:4px;"></div>
     </div>
 
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-      <div id="dramaStatusText" style="font-size:12.5px;font-weight:700;color:#34d399;">✅ 已加载分镜工作流，可点上方「🤖 复制外部 AI 编剧指令」让任意 AI 写新剧本，或直接点击右侧按钮全自动开拍！</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" id="btnRemuxAutoDrama" onclick="remuxAutoDramaOnly()" class="btn-outline" style="padding:7px 12px;font-size:12px;border-color:#38bdf8;color:#7dd3fc;white-space:nowrap;">🎞️ 仅用已有分镜重新合成成片</button>
-        <button type="button" id="btnStopAutoDrama" onclick="stopAutoDramaPipeline()" class="btn-danger" style="display:none;padding:7px 14px;font-size:12.5px;font-weight:700;white-space:nowrap;">🛑 暂停自动导演 (已生成素材保留)</button>
-        <button type="button" id="btnStartAutoDrama" onclick="startAutoDramaPipeline()" style="padding:8px 18px;font-size:13px;font-weight:800;border-radius:8px;border:none;background:linear-gradient(135deg, #f59e0b, #ea580c);color:#ffffff;cursor:pointer;box-shadow:0 4px 14px rgba(245,158,11,0.35);white-space:nowrap;">🚀 一键全自动拍摄当前工作流</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:nowrap;margin-bottom:8px;">
+      <div id="dramaStatusText" style="flex:1;min-width:0;font-size:12px;font-weight:700;color:#34d399;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✅ 已加载分镜工作流，可粘贴新剧本拆解或直接点右侧按钮全自动开拍！</div>
+      <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:nowrap;">
+        <button type="button" id="btnRemuxAutoDrama" onclick="remuxAutoDramaOnly()" class="btn-outline" style="padding:7px 12px;font-size:12px;border-color:#38bdf8;color:#7dd3fc;white-space:nowrap;">🎞️ 重新合成成片</button>
+        <button type="button" id="btnStopAutoDrama" onclick="stopAutoDramaPipeline()" class="btn-danger" style="display:none;padding:7px 14px;font-size:12px;font-weight:700;white-space:nowrap;">🛑 暂停自动导演</button>
+        <button type="button" id="btnStartAutoDrama" onclick="startAutoDramaPipeline()" style="padding:8px 16px;font-size:12.5px;font-weight:800;border-radius:8px;border:none;background:linear-gradient(135deg, #f59e0b, #ea580c);color:#ffffff;cursor:pointer;box-shadow:0 4px 14px rgba(245,158,11,0.35);white-space:nowrap;">🚀 一键全自动拍摄当前工作流</button>
       </div>
     </div>
 
@@ -9040,13 +9040,19 @@ function renderDramaWfEditorTables() {
   }
   if (btnStart && !btnStart.disabled) {
     btnStart.innerText = isEmptyWf
-      ? '🚀 请先在工作台粘贴剧本并点「🔍 智能解析剧本生成工作流节点」'
-      : `🚀 一键全自动拍摄 ${projTitle || '《未命名短剧》'} (${vidTasks.length}镜 · ${totalDur}秒 · 共 ${totalSteps} 步)`;
+      ? '🚀 一键全自动拍摄 (待解析剧本)'
+      : `🚀 一键全自动拍摄 (${vidTasks.length}镜 · ${totalDur}s · 共${totalSteps}步)`;
   }
   if (btnRemux) {
     btnRemux.innerText = isEmptyWf
-      ? '🎞️ 仅用已有分镜重新合成成片'
-      : `🎞️ 仅用已有分镜重新合成成片 (${totalDur}s)`;
+      ? '🎞️ 重新合成成片'
+      : `🎞️ 重新合成成片 (${totalDur}s)`;
+  }
+  const stEl = document.getElementById('dramaStatusText');
+  if (stEl && (!btnStart || !btnStart.disabled)) {
+    stEl.innerText = isEmptyWf
+      ? '✨ 当前为 0 个节点，请在上方左侧粘贴分镜剧本后点「🔍 解析剧本生成节点」'
+      : `✅ 已就绪：${projTitle || '《未命名短剧》'} (${vidTasks.length} 镜 · ${totalDur} 秒)，点击右侧按钮即可全自动开拍！`;
   }
   if (sumEl) {
     if (isEmptyWf) {
@@ -9641,7 +9647,7 @@ async function pollAutoDramaStatus() {
     }
     const btnRemux = document.getElementById('btnRemuxAutoDrama');
     if (btnRemux) {
-      btnRemux.innerText = d.shot_count > 0 ? `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)` : '🎞️ 仅用已有分镜重新合成成片';
+      btnRemux.innerText = d.shot_count > 0 ? `🎞️ 重新合成成片 (${d.total_duration}s)` : '🎞️ 重新合成成片';
     }
     if (d.running) {
       if (videoPollTimer) {
@@ -9659,8 +9665,8 @@ async function pollAutoDramaStatus() {
       if (btnStart) {
         btnStart.disabled = true;
         btnStart.innerText = d.awaiting_confirm
-          ? `🎲 正在等待您抽卡确认 (${d.done_count || 0}/${d.total_count || 26} 步 · 请在上方横幅确认继续)...`
-          : `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26} 步 · 总进度 ${pct}%)...`;
+          ? `🎲 等待抽卡确认 (${d.done_count || 0}/${d.total_count || 26}步)...`
+          : `🎬 正在全自动拍摄中 (${d.done_count || 0}/${d.total_count || 26}步 · ${pct}%)...`;
       }
       if (btnStop) btnStop.style.display = 'inline-block';
       if (stEl && d.message) {
@@ -9698,24 +9704,23 @@ async function pollAutoDramaStatus() {
           tBar.style.width = '100%';
         }
       }
+      const shotCnt = (typeof d.shot_count === 'number') ? d.shot_count : (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.length : 0);
+      const totDur = (typeof d.total_duration === 'number') ? d.total_duration : (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.reduce((a, v) => a + (parseFloat(v.duration) || 3.0), 0).toFixed(1) : '0.0');
+      const totSt = (typeof d.total_count === 'number') ? d.total_count : 0;
       if (btnStart) {
         btnStart.disabled = false;
-        const shotCnt = (typeof d.shot_count === 'number') ? d.shot_count : (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.length : 0);
-        const totDur = (typeof d.total_duration === 'number') ? d.total_duration : (currentDramaWorkflow && currentDramaWorkflow.video_tasks ? currentDramaWorkflow.video_tasks.reduce((a, v) => a + (parseFloat(v.duration) || 3.0), 0).toFixed(1) : '0.0');
-        const totSt = (typeof d.total_count === 'number') ? d.total_count : 0;
-        const pTitle = d.title || (currentDramaWorkflow && currentDramaWorkflow.title) || '当前短剧';
         btnStart.innerText = shotCnt > 0
-          ? `🚀 一键全自动拍摄 ${pTitle} (${shotCnt}镜 · ${totDur}秒 · 共 ${totSt} 步)`
-          : '🚀 请先在工作台粘贴剧本并点「🔍 智能解析剧本生成工作流节点」';
+          ? `🚀 一键全自动拍摄 (${shotCnt}镜 · ${totDur}s · 共${totSt}步)`
+          : '🚀 一键全自动拍摄 (待解析剧本)';
       }
       const btnRemux = document.getElementById('btnRemuxAutoDrama');
       if (btnRemux) {
-        btnRemux.innerText = d.shot_count > 0 ? `🎞️ 仅用已有分镜重新合成成片 (${d.total_duration}s)` : '🎞️ 仅用已有分镜重新合成成片';
+        btnRemux.innerText = shotCnt > 0 ? `🎞️ 重新合成成片 (${totDur}s)` : '🎞️ 重新合成成片';
       }
       const hdrEl = document.getElementById('dramaTitleHeader');
       if (hdrEl) {
-        hdrEl.innerText = d.shot_count > 0
-          ? `🎬 通用分镜短剧全自动工作流引擎 · ${d.title || '《未命名短剧》'} (${d.shot_count} 镜 · ${d.total_duration} 秒)`
+        hdrEl.innerText = shotCnt > 0
+          ? `🎬 通用分镜短剧全自动工作流引擎 · ${d.title || '《未命名短剧》'} (${shotCnt} 镜 · ${totDur} 秒)`
           : '🎬 通用分镜短剧全自动工作流引擎 · 待解析新剧本 (0 镜 · 0.0 秒)';
       }
       if (btnStop) btnStop.style.display = 'none';
@@ -9723,6 +9728,11 @@ async function pollAutoDramaStatus() {
         if (stEl) {
           stEl.innerText = '❌ ' + d.error;
           stEl.style.color = '#ef4444';
+        }
+      } else if (shotCnt === 0) {
+        if (stEl) {
+          stEl.innerText = '✨ 当前为 0 个节点，请在上方左侧粘贴分镜剧本后点「🔍 解析剧本生成节点」';
+          stEl.style.color = '#34d399';
         }
       } else if (d.message) {
         if (stEl) {
