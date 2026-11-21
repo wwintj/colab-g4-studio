@@ -1961,7 +1961,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或添加 Google Colab Pro 账号" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(59,130,246,0.5);color:#93c5fd;font-size:12.5px;font-weight:700;">👤 <span id="headerAccountLabel">账号</span> ▾</button>
     <button class="btn-outline" onclick="openApiConfigModal()" id="btnOpenApiModal" title="查看并复制 OpenAI 兼容 API 接入参数 (本机永久固定 URL / 公网 Tunnel URL / API Key / Model ID)" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);color:#e9d5ff;font-size:12.5px;font-weight:700;">🔗 API</button>
     <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="height:32px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:700;">🔄 刷新</button>
-    <button class="btn-success" onclick="startDeploy()" id="btnQuickStart" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;">▶️ 一键开机</button>
+    <button class="btn-success" onclick="startDeploy(false, true)" id="btnQuickStart" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;transition:box-shadow 0.2s,transform 0.2s;">▶️ 一键开机</button>
     <button class="btn-danger" onclick="stopColab()" id="btnStop" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;">🛑 关机</button>
   </div>
 </header>
@@ -2136,14 +2136,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </div>
 
-  <div class="card" style="display:flex;flex-direction:column;">
+  <div class="card" id="modelManagerCard" style="display:flex;flex-direction:column;position:relative;">
     <h2 style="margin-bottom:10px;white-space:nowrap;">
-      <span>📦 模型管理</span>
+      <span style="display:inline-flex;align-items:center;gap:8px;">
+        <span>📦 模型管理</span>
+        <span id="modelLockBadge" onclick="notifyMachineLocked()" style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:rgba(245,158,11,0.16);color:#fbbf24;border:1px solid rgba(245,158,11,0.45);cursor:pointer;transition:all 0.2s;" title="防误触安全锁：只有点击顶部「▶️ 一键开机」启动机器后，才可切换或加载各种模型">🔒 已上锁 · 需先点「▶️ 一键开机」</span>
+      </span>
       <div style="display:inline-flex;gap:6px;flex-shrink:0;">
         <button type="button" id="tabPresetG4" onclick="switchPresetTierTab('g4')" style="padding:4px 12px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;cursor:pointer;white-space:nowrap;">🔥 RTX 6000 (96GB)</button>
         <button type="button" id="tabPresetT4" onclick="switchPresetTierTab('t4')" style="padding:4px 12px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid var(--border);background:#0f172a;color:#94a3b8;cursor:pointer;white-space:nowrap;">⚡ T4 (16GB)</button>
       </div>
     </h2>
+    <div id="machineLockToast" style="display:none;margin-bottom:8px;padding:7px 11px;border-radius:8px;background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.55);color:#fde68a;font-size:12px;font-weight:700;line-height:1.4;">
+      🔒 防误触安全锁已生效：当前机器处于关机状态，请先点击右上角绿色的「▶️ 一键开机」启动机器后，再切换或加载模型！
+    </div>
+    <div id="modelManagerBody" style="display:flex;flex-direction:column;flex:1;opacity:0.52;transition:opacity 0.2s;">
 
     <!-- G4 96GB 满血模型专区 -->
     <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;margin-bottom:10px;" id="presetModelGrid">
@@ -2281,6 +2288,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button class="btn-primary" style="width:100%;justify-content:center;padding:10px 10px;font-size:12.5px;white-space:nowrap;" onclick="startDeploy(false)" id="btnDeployForm" title="直接从您的 Google Drive 云盘极速预热并装载至 GPU 显存启动运行（无需从 HF 重新下载）">
         🚀 从云盘加载并启动 (Qwen3.8-27B)
       </button>
+    </div>
     </div>
   </div>
 </div>
@@ -4500,6 +4508,93 @@ function openApiConfigModal() {
   if (m) m.style.display = 'flex';
 }
 
+let isPowerBtnUnlocked = false;
+let isDeployTaskRunning = false;
+let _lockToastTimer = null;
+
+function isMachineUnlocked() {
+  return Boolean(isInstanceOnline || isDeployTaskRunning || isPowerBtnUnlocked);
+}
+
+function updateMachineLockUI() {
+  const unlocked = isMachineUnlocked();
+  const badge = document.getElementById('modelLockBadge');
+  const body = document.getElementById('modelManagerBody');
+  const toast = document.getElementById('machineLockToast');
+  const btnDl = document.getElementById('btnDownloadOnly');
+  const btnDep = document.getElementById('btnDeployForm');
+  if (badge) {
+    if (unlocked) {
+      badge.innerText = '🔓 已开机解锁 · 可自由切换';
+      badge.style.background = 'rgba(16,185,129,0.16)';
+      badge.style.color = '#34d399';
+      badge.style.borderColor = 'rgba(16,185,129,0.45)';
+      badge.title = '当前机器已开机解锁，可自由点击切换或加载任意模型';
+    } else {
+      badge.innerText = '🔒 已上锁 · 需先点「▶️ 一键开机」';
+      badge.style.background = 'rgba(245,158,11,0.16)';
+      badge.style.color = '#fbbf24';
+      badge.style.borderColor = 'rgba(245,158,11,0.45)';
+      badge.title = '防误触安全锁：只有点击顶部「▶️ 一键开机」启动机器后，才可切换或加载各种模型';
+    }
+  }
+  if (body) {
+    body.style.opacity = unlocked ? '1' : '0.52';
+  }
+  if (unlocked && toast) {
+    toast.style.display = 'none';
+  }
+  if (btnDl) btnDl.disabled = !unlocked;
+  if (btnDep) btnDep.disabled = !unlocked;
+}
+
+function notifyMachineLocked() {
+  if (isMachineUnlocked()) return;
+  const toast = document.getElementById('machineLockToast');
+  const qBtn = document.getElementById('btnQuickStart');
+  const badge = document.getElementById('modelLockBadge');
+  if (toast) {
+    toast.style.display = 'block';
+    if (_lockToastTimer) clearTimeout(_lockToastTimer);
+    _lockToastTimer = setTimeout(() => {
+      if (toast && !isMachineUnlocked()) toast.style.display = 'none';
+    }, 5500);
+  }
+  if (qBtn) {
+    qBtn.style.boxShadow = '0 0 0 4px rgba(16,185,129,0.55), 0 0 18px rgba(16,185,129,0.85)';
+    qBtn.style.transform = 'scale(1.06)';
+    setTimeout(() => {
+      qBtn.style.boxShadow = '';
+      qBtn.style.transform = '';
+    }, 1100);
+  }
+  if (badge) {
+    badge.style.transform = 'scale(1.06)';
+    setTimeout(() => { badge.style.transform = ''; }, 400);
+  }
+}
+
+(function initModelManagerLockInterceptor() {
+  try {
+    const _hc = JSON.parse(localStorage.getItem('easycolab_header_cache') || 'null');
+    if (_hc && _hc.badgeClass && _hc.badgeClass.includes('online')) {
+      isInstanceOnline = true;
+      isPowerBtnUnlocked = true;
+    }
+  } catch (e) {}
+  updateMachineLockUI();
+  const card = document.getElementById('modelManagerCard');
+  if (card) {
+    card.addEventListener('click', function(ev) {
+      if (!isMachineUnlocked()) {
+        ev.stopPropagation();
+        ev.preventDefault();
+        notifyMachineLocked();
+      }
+    }, true);
+  }
+})();
+
 async function refreshStatus(force = false) {
   const btn = document.getElementById('btnRefresh');
   if (force && btn) {
@@ -4620,6 +4715,7 @@ async function refreshStatus(force = false) {
     const activeModelDisplay = friendlyModelMap[rawFolder] || friendlyModelMap[folderShort] || folderShort || 'Qwen3.8-27B(无审查)';
     if (d.sessions && d.sessions.length > 0) {
       isInstanceOnline = true;
+      isPowerBtnUnlocked = true;
       if (liveUptimeSec === null) liveUptimeSec = 1;
       badge.className = 'badge online';
       badge.innerText = `🟢 运行中: ${activeModelDisplay}`;
@@ -4630,6 +4726,9 @@ async function refreshStatus(force = false) {
       }
     } else {
       isInstanceOnline = false;
+      if (!isDeployTaskRunning) {
+        isPowerBtnUnlocked = false;
+      }
       liveUptimeSec = null;
       liveBurnRate = 0.0;
       badge.className = 'badge offline';
@@ -4643,6 +4742,7 @@ async function refreshStatus(force = false) {
         relBtn.style.color = '#10b981';
       }
     }
+    updateMachineLockUI();
     try {
       localStorage.setItem('easycolab_header_cache', JSON.stringify({
         badgeText: badge ? badge.innerText : '',
@@ -4958,27 +5058,41 @@ async function pollLogs() {
       }
     }
     const st = document.getElementById('deployStateText');
+    isDeployTaskRunning = Boolean(d.running);
     if (d.running) {
+      isPowerBtnUnlocked = true;
       st.innerText = '⏳ 任务正在执行中...';
       st.style.color = '#f59e0b';
     } else if (d.exit_code === 0) {
       st.innerText = '✅ 上次任务执行成功';
       st.style.color = '#10b981';
     } else if (d.exit_code !== null) {
+      if (!isInstanceOnline) isPowerBtnUnlocked = false;
       st.innerText = `❌ 任务退出码: ${d.exit_code}`;
       st.style.color = '#ef4444';
     }
+    updateMachineLockUI();
   } catch (e) {}
 }
 
-async function startDeploy(downloadOnly = false) {
+async function startDeploy(downloadOnly = false, fromQuickStart = false) {
+  if (!fromQuickStart && !isMachineUnlocked()) {
+    notifyMachineLocked();
+    return;
+  }
+  if (fromQuickStart) {
+    isPowerBtnUnlocked = true;
+    isDeployTaskRunning = true;
+    updateMachineLockUI();
+  }
   const payload = {
     repo: document.getElementById('inpRepo').value.trim(),
     folder: document.getElementById('inpFolder').value.trim(),
     pattern: document.getElementById('inpPattern').value.trim(),
     ctx: parseInt(document.getElementById('inpCtx').value || '262144', 10),
     gpu: 'G4',
-    download_only: Boolean(downloadOnly)
+    download_only: Boolean(downloadOnly),
+    from_power_btn: Boolean(fromQuickStart)
   };
   const r = await fetch('/api/deploy', {
     method: 'POST',
@@ -4986,6 +5100,11 @@ async function startDeploy(downloadOnly = false) {
     body: JSON.stringify(payload)
   });
   const d = await r.json();
+  if (!d.ok && !isInstanceOnline) {
+    isPowerBtnUnlocked = false;
+    isDeployTaskRunning = false;
+    updateMachineLockUI();
+  }
   alert(d.message);
   pollLogs();
 }
@@ -4999,6 +5118,10 @@ async function stopColab() {
   try {
     const r = await fetch('/api/stop', {method: 'POST'});
     const d = await r.json();
+    isInstanceOnline = false;
+    isDeployTaskRunning = false;
+    isPowerBtnUnlocked = false;
+    updateMachineLockUI();
     alert(d.message);
     await refreshStatus(true);
   } finally {
@@ -6069,6 +6192,15 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
 
 async function startFusionStudioGenerate() {
   if (fusionBatchRunning) return;
+  if (!isMachineUnlocked()) {
+    notifyMachineLocked();
+    const stEl = document.getElementById('fusionStudioStatusText');
+    if (stEl) {
+      stEl.innerText = '🔒 机器处于【已关机】上锁状态！请先点击右上角「▶️ 一键开机」启动机器。';
+      stEl.style.color = '#fbbf24';
+    }
+    return;
+  }
   const btn = document.getElementById('btnRunFusionStudio');
   const stopBtn = document.getElementById('btnStopFusionStudio');
   const stEl = document.getElementById('fusionStudioStatusText');
@@ -7926,6 +8058,15 @@ async function startVideoGenerate(forceTarget = '') {
   const btnImg = document.getElementById('btnImageOnlyGen');
   if ((btnVid && btnVid.getAttribute('data-running') === '1') || (btnImg && btnImg.getAttribute('data-running') === '1')) {
     await stopActiveVideoTask('video');
+    return;
+  }
+  if (!isMachineUnlocked()) {
+    notifyMachineLocked();
+    const st = document.getElementById('videoGenStatus');
+    if (st) {
+      st.innerText = '🔒 机器处于【已关机】上锁状态！请先点击右上角「▶️ 一键开机」启动机器后，再点击生成。';
+      st.style.color = '#fbbf24';
+    }
     return;
   }
   const savedUserPrompt = (document.getElementById('videoPrompt') || {}).value || '';
@@ -11908,6 +12049,16 @@ p.wait()
             return
 
         if self.path == "/api/deploy":
+            from_power_btn = bool(payload.get("from_power_btn", False))
+            active_sessions = _list_active_sessions()
+            with _DEPLOY_LOCK:
+                deploy_running = bool(_DEPLOY_STATE.get("running"))
+            if not active_sessions and not deploy_running and not from_power_btn:
+                self._send_json({
+                    "ok": False,
+                    "message": "🔒 防误触安全锁已开启：当前机器处于【已关机】锁定状态！\n请先点击顶部标题栏的「▶️ 一键开机」启动机器后，再切换或加载模型。",
+                })
+                return
             ok, msg = _start_deploy_background(
                 repo=payload.get("repo", "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"),
                 folder=payload.get("folder", "Huihui-Qwen3.8-27B-abliterated-GGUF"),
@@ -12398,13 +12549,20 @@ p.wait()
                     target_label = "LongCat-Avatar-1.6 (INT8版)" if is_t4_account else "LongCat-Video-Avatar-1.6"
                 else:
                     target_label = "MiniMax-H3 (T4 量化版)" if is_t4_account else "MiniMax-H3"
+                with _DEPLOY_LOCK:
+                    already_deploying = bool(_DEPLOY_STATE.get("running"))
+                active_sessions = _list_active_sessions()
+                if not active_sessions and not already_deploying and not remote_already_loading:
+                    self._send_json({
+                        "ok": False,
+                        "error": "🔒 防误触安全锁：当前机器处于【已关机】锁定状态！请先点击右上角「▶️ 一键开机」启动机器后，再执行生成或切换模型。",
+                    })
+                    return
                 _append_panel_log(
                     f"⏳ [等待引擎就绪] {target_label} 正在完成显存预热，就绪后将立即执行任务..."
                     if remote_already_loading
                     else f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即执行任务..."
                 )
-                with _DEPLOY_LOCK:
-                    already_deploying = bool(_DEPLOY_STATE.get("running"))
                 if not already_deploying and not remote_already_loading:
                     if want_image:
                         _start_deploy_background(
@@ -14312,11 +14470,14 @@ def _drama_wait_for_engine(target_engine: str, repo: str, folder: str, pattern: 
     except Exception:
         pass
 
+    with _DEPLOY_LOCK:
+        already_deploying = bool(_DEPLOY_STATE.get("running"))
+    active_sessions = _list_active_sessions()
+    if not active_sessions and not already_deploying and not remote_already_loading:
+        raise RuntimeError("🔒 防误触安全锁：当前机器处于【已关机】锁定状态！请先点击右上角「▶️ 一键开机」启动机器。")
     _DRAMA_STATE["message"] = f"🔄 正在云端 G4 自动加载/切换至 {label}..."
     _append_panel_log(f"🎬 [自动导演·引擎调度] 正在自动加载/切换云端引擎至 {label} ({folder})...")
 
-    with _DEPLOY_LOCK:
-        already_deploying = bool(_DEPLOY_STATE.get("running"))
     if not already_deploying and not remote_already_loading:
         _start_deploy_background(
             repo=repo,
