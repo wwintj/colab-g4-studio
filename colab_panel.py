@@ -1630,19 +1630,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
   .badge.online { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
   .badge.offline { background: rgba(148,163,184,0.15); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.3); }
   .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
-  button {
+  button, .btn-primary, .btn-success, .btn-danger, .btn-outline {
     cursor: pointer;
     border: none;
-    border-radius: 8px;
-    padding: 9px 16px;
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.15s;
+    border-radius: 7px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    transition: all 0.15s ease;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    gap: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+    gap: 5px;
+    box-sizing: border-box;
   }
   .dur-pill, .batch-pill {
     display: flex !important;
@@ -1658,8 +1662,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
   .btn-success:hover:not(:disabled) { background: #059669; }
   .btn-danger { background: var(--red); color: white; }
   .btn-danger:hover:not(:disabled) { background: #dc2626; }
-  .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
-  .btn-outline:hover:not(:disabled) { background: rgba(255,255,255,0.06); }
+  .btn-outline { background: rgba(15,23,42,0.75); color: var(--text); border: 1px solid var(--border); border-radius: 7px; }
+  .btn-outline:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
 
   .grid-top {
     display: grid;
@@ -3145,30 +3149,30 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1;overflow:hidden;">
           <span style="color:#94a3b8;font-size:14px;flex-shrink:0;">🎞️</span>
           <span id="mmVideoMeta" title="" style="font-size:12.5px;color:#cbd5e1;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">尚未选择视频</span>
-          <span id="previewBottomShortBadge" style="display:none;background:#1e293b;color:#94a3b8;border:1px solid var(--border);padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;flex-shrink:0;">--</span>
+          <span id="previewBottomShortBadge" style="display:none;height:24px;align-items:center;background:#1e293b;color:#94a3b8;border:1px solid var(--border);padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;flex-shrink:0;">--</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
           <div id="imageActionBtns" style="display:none;align-items:center;gap:6px;">
-            <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(192,132,252,0.65);background:rgba(168,85,247,0.22);color:#e9d5ff;cursor:pointer;" title="将当前预览图直接锁定为短剧角色A/B/C/D/E的 16:9 基准定妆照">📌 锁入短剧角色</button>
-            <button type="button" onclick="sendCurrentImageToAvatar()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(16,185,129,0.55);background:rgba(16,185,129,0.2);color:#6ee7b7;cursor:pointer;" title="将当前图片直接设为 LongCat-Avatar-1.6 数字人参考图，驱动她开口说话">🎭 送入数字人说话</button>
-            <button type="button" onclick="sendCurrentImageToH3Edit()" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(236,72,153,0.55);background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;" title="将当前图片设为 &lt;Picture 1&gt;，免涂 Mask 像素级锁脸换装">👗 设为&lt;Picture 1&gt;换装</button>
+            <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(192,132,252,0.55);background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;" title="将当前预览图直接锁定为短剧角色A/B/C/D/E的 16:9 基准定妆照">📌 锁入短剧角色</button>
+            <button type="button" onclick="sendCurrentImageToAvatar()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(16,185,129,0.55);background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="将当前图片直接设为 LongCat-Avatar-1.6 数字人参考图，驱动她开口说话">🎭 送入数字人说话</button>
+            <button type="button" onclick="sendCurrentImageToH3Edit()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(236,72,153,0.55);background:rgba(236,72,153,0.18);color:#fbcfe8;cursor:pointer;" title="将当前图片设为 &lt;Picture 1&gt;，免涂 Mask 像素级锁脸换装">👗 设为&lt;Picture 1&gt;换装</button>
           </div>
-          <div id="videoUpscaleActionWrap" style="display:inline-flex;align-items:center;gap:4px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:8px;padding:2px 5px;">
-            <select id="upscalePresetSelect" class="cu-select" style="border:none;background:transparent;color:#ddd6fe;font-size:11.5px;font-weight:700;padding:2px 3px;cursor:pointer;" onchange="onUpscalePresetChange(this.value)">
+          <div id="videoUpscaleActionWrap" style="display:inline-flex;align-items:center;height:28px;gap:4px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:7px;padding:0 4px;">
+            <select id="upscalePresetSelect" class="cu-select" style="border:none;background:transparent;color:#ddd6fe;font-size:11.5px;font-weight:700;padding:0 3px;cursor:pointer;" onchange="onUpscalePresetChange(this.value)">
               <option value="2k" selected>2K (1440P)</option>
               <option value="1080p">1080P</option>
               <option value="4k">4K 极清</option>
             </select>
-            <button type="button" id="btnUpscaleVideo" onclick="upscaleCurrentVideo()" style="padding:4px 9px;font-size:12px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#ffffff;cursor:pointer;">
+            <button type="button" id="btnUpscaleVideo" onclick="upscaleCurrentVideo()" style="height:22px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:5px;border:none;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#ffffff;cursor:pointer;">
               ✨ 超分至 2K
             </button>
           </div>
-          <button type="button" id="btnH3VideoFaceFix" onclick="runH3VideoFaceFixCurrent()" title="PixelAI H3 FaceFix 算法：自动追踪视频中远景/小脸模糊崩坏帧（<=110px 满强度修复，>=180px 特写平滑衰减保留 H3 原生微表情），结合角色定妆照或视频自身清晰特写帧执行高斯轨迹平滑、遮罩加权色彩匹配与无损保留原片音轨！" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(16,185,129,0.55);background:linear-gradient(135deg,rgba(16,185,129,0.24),rgba(6,182,212,0.22));color:#6ee7b7;cursor:pointer;">🧬 H3崩脸精修</button>
+          <button type="button" id="btnH3VideoFaceFix" onclick="runH3VideoFaceFixCurrent()" title="PixelAI H3 FaceFix 算法：自动追踪视频中远景/小脸模糊崩坏帧（<=110px 满强度修复，>=180px 特写平滑衰减保留 H3 原生微表情），结合角色定妆照或视频自身清晰特写帧执行高斯轨迹平滑、遮罩加权色彩匹配与无损保留原片音轨！" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(16,185,129,0.55);background:linear-gradient(135deg,rgba(16,185,129,0.22),rgba(6,182,212,0.2));color:#6ee7b7;cursor:pointer;">🧬 H3崩脸精修</button>
           <input type="file" id="inpExternalVideo" accept="video/*,.mp4,.mov,.webm,.mkv" style="display:none;" onchange="handleExternalVideoImport(this)">
-          <button type="button" id="btnContinueLastFrame" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="padding:5px 10px;font-size:12px;font-weight:700;background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.45);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
-          <button type="button" id="btnReplayVideo" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="replayCurrentVideo()">重播</button>
-          <button type="button" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="revealInFinder(false)">Finder</button>
-          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;padding:5px 10px;font-size:12px;text-decoration:none;border-color:#10b981;color:#10b981;">⬇️ 另存为</a>
+          <button type="button" id="btnContinueLastFrame" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
+          <button type="button" id="btnReplayVideo" class="btn-outline" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="replayCurrentVideo()">🔄 重播</button>
+          <button type="button" class="btn-outline" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="revealInFinder(false)">📂 Finder</button>
+          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;text-decoration:none;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.55);color:#6ee7b7;">⬇️ 另存为</a>
         </div>
       </div>
     </div>
@@ -3187,9 +3191,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <span style="font-size:14.5px;font-weight:800;color:#f8fafc;">本地历史</span>
           <span id="localHistoryCount" style="font-size:11.5px;color:#94a3b8;">(0)</span>
         </div>
-        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-          <button type="button" title="导入本机其他视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;font-size:11.5px;font-weight:700;cursor:pointer;padding:3px 9px;border-radius:6px;white-space:nowrap;">＋ 导入视频</button>
-          <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="background:transparent;border:none;color:#94a3b8;font-size:15px;cursor:pointer;padding:2px 6px;border-radius:6px;">↻</button>
+        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+          <button type="button" title="导入本机其他视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="height:26px;padding:0 9px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#93c5fd;font-size:11px;font-weight:700;cursor:pointer;border-radius:6px;white-space:nowrap;">＋ 导入视频</button>
+          <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="height:26px;width:26px;padding:0;background:#1e293b;border:1px solid #475569;color:#cbd5e1;font-size:13px;cursor:pointer;border-radius:6px;">↻</button>
         </div>
       </div>
 
@@ -3200,20 +3204,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:11px;color:#94a3b8;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
           <span id="localSaveDirDisplay" onclick="toggleLocalSaveDirEditor()" title="点击修改默认保存文件夹（支持外置移动硬盘 / 自定义目录）" style="font-family:'SF Mono',Menlo,monospace;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:1;min-width:0;">📂 ~/Movies/EasyColab</span>
-          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
-            <button type="button" onclick="toggleLocalSaveDirEditor()" style="padding:2px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;" title="自定义或更换默认保存文件夹（可改为外置移动硬盘路径）">⚙️ 改目录</button>
-            <a href="javascript:void(0)" onclick="revealInFinder(true)" style="color:#60a5fa;text-decoration:none;font-weight:700;">打开 ↗</a>
+          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;">
+            <button type="button" onclick="toggleLocalSaveDirEditor()" style="height:24px;padding:0 8px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;" title="自定义或更换默认保存文件夹（可改为外置移动硬盘路径）">⚙️ 改目录</button>
+            <button type="button" onclick="revealInFinder(true)" style="height:24px;padding:0 8px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid rgba(59,130,246,0.5);background:rgba(59,130,246,0.16);color:#93c5fd;cursor:pointer;" title="在 Finder 中打开当前默认保存文件夹">📂 打开 ↗</button>
           </div>
         </div>
         <div id="localSaveDirEditBox" style="display:none;flex-direction:column;gap:5px;padding:7px 8px;border-radius:7px;background:#020617;border:1px solid #3b82f6;">
           <div style="display:flex;align-items:center;gap:4px;">
-            <input type="text" id="inpLocalSaveDirPath" placeholder="如 ~/Movies/EasyColab 或 /Volumes/外置硬盘/EasyColab" style="flex:1;min-width:0;padding:4px 7px;font-size:11px;font-family:'SF Mono',Menlo,monospace;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#f8fafc;">
-            <button type="button" onclick="pickNativeLocalSaveDir()" style="padding:4px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;white-space:nowrap;" title="弹出 macOS 系统原生文件夹选择器">📂 浏览</button>
+            <input type="text" id="inpLocalSaveDirPath" placeholder="如 ~/Movies/EasyColab 或 /Volumes/外置硬盘/EasyColab" style="flex:1;min-width:0;height:26px;padding:0 7px;font-size:11px;font-family:'SF Mono',Menlo,monospace;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;">
+            <button type="button" onclick="pickNativeLocalSaveDir()" style="height:26px;padding:0 8px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid rgba(56,189,248,0.5);background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;white-space:nowrap;" title="弹出 macOS 系统原生文件夹选择器">📂 浏览</button>
           </div>
           <div style="display:flex;justify-content:flex-end;align-items:center;gap:5px;">
-            <button type="button" onclick="saveCustomLocalSaveDir('~/Movies/EasyColab')" style="padding:2px 7px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">↺ 恢复默认</button>
-            <button type="button" onclick="document.getElementById('localSaveDirEditBox').style.display='none'" style="padding:2px 7px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">取消</button>
-            <button type="button" onclick="saveCustomLocalSaveDir()" style="padding:2px 9px;font-size:10.5px;font-weight:800;border-radius:4px;border:none;background:#3b82f6;color:#ffffff;cursor:pointer;">💾 保存路径</button>
+            <button type="button" onclick="saveCustomLocalSaveDir('~/Movies/EasyColab')" style="height:24px;padding:0 8px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#94a3b8;cursor:pointer;">↺ 恢复默认</button>
+            <button type="button" onclick="document.getElementById('localSaveDirEditBox').style.display='none'" style="height:24px;padding:0 8px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#94a3b8;cursor:pointer;">取消</button>
+            <button type="button" onclick="saveCustomLocalSaveDir()" style="height:24px;padding:0 10px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid rgba(59,130,246,0.5);background:#3b82f6;color:#ffffff;cursor:pointer;">💾 保存路径</button>
           </div>
         </div>
       </div>
@@ -7010,13 +7014,13 @@ function renderLocalHistoryList() {
     const badgeBg = active ? 'rgba(59,130,246,0.28)' : '#1e293b';
     const badgeColor = active ? '#60a5fa' : '#94a3b8';
     const shortBadge = it.elapsed_short
-      ? `<span style="background:${badgeBg};color:${badgeColor};padding:2px 6px;border-radius:999px;font-size:10.5px;font-weight:700;flex-shrink:0;white-space:nowrap;">${escapeHtml(it.elapsed_short)}</span>`
+      ? `<span style="display:inline-flex;align-items:center;justify-content:center;height:22px;background:${badgeBg};color:${badgeColor};border:1px solid ${active ? 'rgba(96,165,250,0.45)' : '#334155'};padding:0 6px;border-radius:6px;font-size:10px;font-weight:700;flex-shrink:0;white-space:nowrap;">${escapeHtml(it.elapsed_short)}</span>`
       : '';
     const srAction = isImgFile
-      ? `<button type="button" title="一键将该照片送入 LongCat 数字人开口说话" onclick="event.stopPropagation();selectLocalHistoryItem(${idx});sendCurrentImageToAvatar()" style="background:rgba(16,185,129,0.18);color:#6ee7b7;border:1px solid rgba(16,185,129,0.45);padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎭数字人</button>`
+      ? `<button type="button" title="一键将该照片送入 LongCat 数字人开口说话" onclick="event.stopPropagation();selectLocalHistoryItem(${idx});sendCurrentImageToAvatar()" style="height:22px;background:rgba(16,185,129,0.18);color:#6ee7b7;border:1px solid rgba(16,185,129,0.45);padding:0 6px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎭数字人</button>`
       : (isSr
-        ? `<span style="background:rgba(139,92,246,0.22);color:#c4b5fd;border:1px solid rgba(139,92,246,0.45);padding:1px 5px;border-radius:6px;font-size:10px;font-weight:800;flex-shrink:0;white-space:nowrap;">✨超清</span>`
-        : `<button type="button" title="使用 ReCaVSR 将该视频超分至 2K 超清" onclick="event.stopPropagation();upscaleVideoByName('${escapeHtml(it.name)}')" style="background:rgba(139,92,246,0.16);color:#c4b5fd;border:1px solid rgba(139,92,246,0.42);padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">✨2K</button>`);
+        ? `<span style="display:inline-flex;align-items:center;justify-content:center;height:22px;background:rgba(139,92,246,0.22);color:#c4b5fd;border:1px solid rgba(139,92,246,0.45);padding:0 6px;border-radius:6px;font-size:10px;font-weight:700;flex-shrink:0;white-space:nowrap;">✨超清</span>`
+        : `<button type="button" title="使用 ReCaVSR 将该视频超分至 2K 超清" onclick="event.stopPropagation();upscaleVideoByName('${escapeHtml(it.name)}')" style="height:22px;background:rgba(139,92,246,0.16);color:#c4b5fd;border:1px solid rgba(139,92,246,0.42);padding:0 6px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">✨2K</button>`);
     const thumbBorder = active ? '1.5px solid #60a5fa' : '1px solid rgba(148,163,184,0.28)';
     const thumbUrl = `/api/local_video_thumb?name=${encodeURIComponent(it.name)}&v=${encodeURIComponent(it.size_mb || '')}`;
     return `
