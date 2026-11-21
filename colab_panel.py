@@ -3078,7 +3078,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <!-- 新增排：✨ H3 专属 LoRA 增强插件槽 (Sentinel7/h3 420+款云端直连 · 支持根据提示词自动智能匹配 · 0本地硬盘占用) -->
     <div id="h3SentinelLoraBar" style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;background:linear-gradient(135deg,rgba(30,41,59,0.96),rgba(59,7,100,0.68));padding:5px 10px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid rgba(192,132,252,0.65);margin-bottom:10px;min-width:0;">
       <span style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:6px;background:linear-gradient(135deg,#9333ea,#4f46e5);color:#ffffff;font-size:12px;font-weight:800;white-space:nowrap;flex-shrink:0;box-shadow:0 2px 8px rgba(147,51,234,0.4);">✨ H3云端LoRA插件</span>
-      <select id="h3SentinelLoraSelect" onchange="onH3SentinelLoraChange(this.value)" style="flex:1;min-width:210px;height:26px;padding:0 8px;font-size:12.5px;font-weight:700;border-radius:6px;border:1px solid #c084fc;background:#0f172a;color:#ffffff;cursor:pointer;">
+      <select id="h3SentinelLoraSelect" onchange="onH3SentinelLoraChange(this.value)" style="flex:1;width:0;min-width:170px;height:26px;padding:0 8px;font-size:12.5px;font-weight:700;border-radius:6px;border:1px solid #c084fc;background:#0f172a;color:#ffffff;cursor:pointer;">
         <option value="AUTO" selected>🤖 【智能自动匹配】根据提示词自动选择最优 LoRA 插件 (推荐)</option>
         <option value="">🚫 【纯原生基座】不挂载额外 LoRA (通用风景 / 动漫 / 常规叙事)</option>
         <option value="3039167/3453951/minimax-sensual-v0.1.safetensors">💋 【性感写真·纯欲眼神】MiniMax Sensual v0.1 (暧昧对视 / 网红自拍 / 呼吸感)</option>
@@ -7553,7 +7553,85 @@ function autoDetectBestH3SentinelLora() {
   return { path: '', label: '🎯 自动匹配: 🚫 原生基座直出 (无需额外LoRA)', weight: '0.85' };
 }
 
+function autoSyncSpecsFromPrompt() {
+  const p1 = ((document.getElementById('videoPrompt') || {}).value || '').trim();
+  const p2 = ((document.getElementById('videoSoundPrompt') || {}).value || '').trim();
+  const p3 = ((document.getElementById('videoMusicPrompt') || {}).value || '').trim();
+  const fullText = `${p1}\n${p2}\n${p3}`.trim();
+  if (!fullText) return;
+
+  // 1. 自动识别画幅比例 (9:16 竖屏 / 16:9 横屏 / 1:1 方形 / 3:4 / 2:3 / 4:3)
+  const resSel = document.getElementById('videoRes');
+  if (resSel) {
+    if (currentMiniMaxMode === 'image') {
+      if (/(?:^|[^\d])9\s*[:：\/]\s*16(?:[^\d]|$)|竖屏|手机前置|自拍竖屏/i.test(fullText)) {
+        resSel.value = '3072x5472';
+      } else if (/(?:^|[^\d])16\s*[:：\/]\s*9(?:[^\d]|$)|横屏|电影宽屏|widescreen/i.test(fullText)) {
+        resSel.value = '5472x3072';
+      } else if (/(?:^|[^\d])3\s*[:：\/]\s*4(?:[^\d]|$)/i.test(fullText)) {
+        resSel.value = '3552x4736';
+      } else if (/(?:^|[^\d])2\s*[:：\/]\s*3(?:[^\d]|$)/i.test(fullText)) {
+        resSel.value = '3360x5024';
+      } else if (/(?:^|[^\d])4\s*[:：\/]\s*3(?:[^\d]|$)/i.test(fullText)) {
+        resSel.value = '4736x3552';
+      } else if (/(?:比例|画幅|构图)\s*[:：]?\s*1\s*[:：]\s*1\b|1\s*[:：]\s*1\s*(?:方形|正方形|画幅|比例)/i.test(fullText)) {
+        resSel.value = '4096x4096';
+      }
+    } else {
+      if (/720\s*[x×*]\s*1280/i.test(fullText)) {
+        resSel.value = '720x1280';
+      } else if (/1280\s*[x×*]\s*720/i.test(fullText)) {
+        resSel.value = '1280x720';
+      } else if (/480\s*[x×*]\s*832|(?:^|[^\d])9\s*[:：\/]\s*16(?:[^\d]|$)|竖屏|竖版|竖幅|抖音网红|手机前置|自拍竖屏|vertical\s*video|portrait\s*orientation/i.test(fullText)) {
+        if (resSel.value !== '720x1280') resSel.value = '480x832';
+      } else if (/832\s*[x×*]\s*480|(?:^|[^\d])16\s*[:：\/]\s*9(?:[^\d]|$)|横屏|横版|宽幅横屏|电影宽屏|widescreen|landscape\s*orientation/i.test(fullText)) {
+        if (resSel.value !== '1280x720') resSel.value = '832x480';
+      } else if (/640\s*[x×*]\s*640|(?:比例|画幅|构图)\s*[:：]?\s*1\s*[:：]\s*1\b|1\s*[:：]\s*1\s*(?:方形|正方形|画幅|比例)/i.test(fullText)) {
+        resSel.value = '640x640';
+      }
+    }
+  }
+
+  // 2. 自动识别视频秒数 (如 "15秒" / "时长10s" / 时间轴 "0-3秒...12-15秒")
+  if (currentMiniMaxMode !== 'image' && currentMiniMaxMode !== 'avatar') {
+    let detectedSec = 0;
+    const mExplicit = fullText.match(/(?:总?时长|视频时长|全片时长|全长|时长约?|duration)\s*[:：约为≈]?\s*(\d{1,2})(?:\.\d+)?\s*(?:秒|s\b|sec)/i)
+      || fullText.match(/(?:^|[^\d~–—.-])(\d{1,2})\s*(?:秒|s)\s*(?:视频|短片|成片|镜头|长镜头|一镜到底|竖屏|横屏|画面|片段)/i)
+      || fullText.match(/【\s*(\d{1,2})\s*(?:秒|s)\s*】/i);
+    if (mExplicit) {
+      const v = parseInt(mExplicit[1], 10);
+      if (v >= 3 && v <= 25) detectedSec = v;
+    }
+    if (!detectedSec) {
+      let maxRangeEnd = 0;
+      const rangeRe = /(?:^|[^\d.])(\d{1,2})(?:\.\d+)?\s*(?:秒|s)?\s*[-~–—至到]\s*(\d{1,2})(?:\.\d+)?\s*(?:秒|s\b|sec)/gi;
+      let mR;
+      while ((mR = rangeRe.exec(fullText)) !== null) {
+        const sVal = parseInt(mR[1], 10);
+        const eVal = parseInt(mR[2], 10);
+        if (eVal > sVal && sVal >= 0 && eVal >= 3 && eVal <= 25) {
+          if (eVal > maxRangeEnd) maxRangeEnd = eVal;
+        }
+      }
+      if (maxRangeEnd >= 3) detectedSec = maxRangeEnd;
+    }
+    if (!detectedSec) {
+      const mStand = fullText.match(/(?:^|[\s，,。、；;：（(【\[])(\d{1,2})\s*(?:秒|s\b)(?!\s*(?:处|时|后|前|内|左右|开始|进入))/i);
+      if (mStand) {
+        const v = parseInt(mStand[1], 10);
+        if ([4, 5, 6, 8, 10, 12, 15, 20].includes(v)) detectedSec = v;
+      }
+    }
+    if (detectedSec >= 3 && detectedSec <= 25) {
+      const pillMap = {4: 90, 5: 124, 8: 192, 10: 243, 12: 294, 15: 362, 20: 481};
+      const targetFrames = pillMap[detectedSec] || Math.max(90, Math.min(481, Math.round((detectedSec * 24 - 5) / 17) * 17 + 5));
+      selectDurationFrames(targetFrames);
+    }
+  }
+}
+
 function updateH3AutoLoraPreview() {
+  autoSyncSpecsFromPrompt();
   const sel = document.getElementById('h3SentinelLoraSelect');
   const badge = document.getElementById('h3AutoLoraMatchBadge');
   if (!sel || !badge) return;
