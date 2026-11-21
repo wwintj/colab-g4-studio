@@ -2410,33 +2410,37 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <!-- 默认展开：通用剧本解析器 + 外部AI提示词生成器 + 可视化角色/分镜工作流节点编辑器 -->
     <div id="dramaWorkflowEditorDrawer" style="display:block;margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(2,6,23,0.82);border:1px solid #38bdf8;">
       <!-- 顶部：外部在线 AI (ChatGPT / Claude / DeepSeek / Gemini / Kimi) 编剧指令一键生成器 -->
-      <div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(88,28,135,0.22);border:1px dashed #a855f7;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:6px;flex:1;flex-wrap:wrap;">
-          <span style="font-size:12px;font-weight:800;color:#e9d5ff;white-space:nowrap;">🤖 让外部 AI 帮写分镜剧本：</span>
-          <input type="text" id="inpAiIdeaTheme" placeholder="输入一句话剧情/题材（如：古装仙侠雪夜竹林定情 / 现代豪门雨夜重逢，留空也可）" style="flex:1;min-width:210px;padding:4px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
-          <select id="selAiTargetDur" style="padding:4px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;">
-            <option value="不限总时长（由剧情节奏自然决定镜头数与秒数）" selected>⏱️ 不限总时长 (按剧情自由决定)</option>
-            <option value="约 15 秒（建议 4~6 个分镜）">⏱️ 约 15 秒 (4~6 镜)</option>
-            <option value="约 30 秒（建议 8~12 个分镜）">⏱️ 约 30 秒 (8~12 镜)</option>
-            <option value="约 45 秒（建议 12~16 个分镜）">⏱️ 约 45 秒 (12~16 镜)</option>
-            <option value="约 60 秒 1分钟（建议 16~22 个分镜）">⏱️ 约 60 秒 (16~22 镜)</option>
-            <option value="约 90 秒 1分半（建议 24~30 个分镜）">⏱️ 约 90 秒 (24~30 镜)</option>
-            <option value="约 120 秒 2分钟（建议 32~40 个分镜）">⏱️ 约 120 秒 (32~40 镜)</option>
-          </select>
-          <select id="selAiVisualStyle" style="padding:4px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
-            <option value="写实真人电影级质感，85mm f/1.4散景(Bokeh)，真实细腻皮肤纹理，自然柔和光影" selected>🎥 写实真人电影级 (#105 f/1.4散景)</option>
-            <option value="写实真人电影级质感，电影青橙色调(Teal and orange, 阴影偏青、肤色与高光偏暖橙)，85mm f/1.4大光圈散景，轻微胶片颗粒(Film grain)">🎬 电影青橙色调 (#117 Teal & Orange)</option>
-            <option value="写实真人电影级质感，伦勃朗戏剧布光(Rembrandt lighting, 侧上方45度主光，背光脸颊留三角亮区)，低调暗调光影(Low-key lighting)，高对比度电影叙事">🕯️ 伦勃朗暗调悬疑/情感 (#101+#114)</option>
-            <option value="写实真人电影级质感，黄金时刻低角度暖阳逆光(Golden hour backlighting, 发丝边缘发亮轮廓光 Rim light)，温暖镜头眩光与柔美散景">🌅 黄金时刻唯美逆光 (#097+#103)</option>
-            <option value="写实真人电影级质感，蓝调时刻(Blue hour, 日落后深蓝天空与室内暖黄灯光冷暖交织)，大光圈夜景圆润散景光斑">🌃 蓝调时刻都市冷暖 (#104+#105)</option>
-            <option value="唯美中国古装仙侠剧质感，精致古装汉服与发髻配饰，电影级逆光发丝轮廓光(Backlighting & Rim light)与柔美浅景深">🏮 中国古装/仙侠剧 (#097逆光轮廓)</option>
+      <div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(88,28,135,0.22);border:1px dashed #a855f7;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap;">
+        <span style="font-size:12px;font-weight:800;color:#e9d5ff;white-space:nowrap;flex-shrink:0;">🤖 让外部 AI 帮写分镜剧本：</span>
+        <input type="text" id="inpAiIdeaTheme" placeholder="输入一句话剧情/题材（如：古装仙侠雪夜竹林定情 / 现代豪门雨夜重逢，留空也可）" style="flex:1;min-width:120px;padding:5px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;">
+        <select id="selAiTargetDur" style="padding:5px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;flex-shrink:0;">
+          <option value="不限总时长（由剧情节奏自然决定镜头数与秒数）" selected>⏱️ 不限总时长 (按剧情自由决定)</option>
+          <option value="约 15 秒（建议 4~6 个分镜）">⏱️ 约 15 秒 (4~6 镜)</option>
+          <option value="约 30 秒（建议 8~12 个分镜）">⏱️ 约 30 秒 (8~12 镜)</option>
+          <option value="约 45 秒（建议 12~16 个分镜）">⏱️ 约 45 秒 (12~16 镜)</option>
+          <option value="约 60 秒 1分钟（建议 16~22 个分镜）">⏱️ 约 60 秒 (16~22 镜)</option>
+          <option value="约 90 秒 1分半（建议 24~30 个分镜）">⏱️ 约 90 秒 (24~30 镜)</option>
+          <option value="约 120 秒 2分钟（建议 32~40 个分镜）">⏱️ 约 120 秒 (32~40 镜)</option>
+        </select>
+        <select id="selAiVisualStyle" style="padding:5px 8px;font-size:11.5px;border-radius:5px;border:1px solid #6b21a8;background:#0f172a;color:#f8fafc;font-weight:600;flex-shrink:0;">
+          <optgroup label="🎬 影视实拍质感">
+            <option value="写实真人电影级质感，85mm f/1.4散景(Bokeh)，真实细腻皮肤纹理，自然柔和光影" selected>🎥 写实真人电影级</option>
             <option value="现代都市高质感影视剧，时尚精致妆造，电影级都市光影与85mm浅景深散景">🏙️ 现代都市影视剧</option>
-            <option value="新海诚高画质唯美2D动漫电影风格，绚丽黄金时刻光影与细腻人物表情">🌸 唯美2D动漫电影</option>
-            <option value="东方传统水墨画风格(Ink wash painting / sumi-e)，浓淡墨色晕染与宣纸留白意境">[#195] 东方水墨画风 (Ink Wash)</option>
-            <option value="唯美水彩画风格(Watercolor illustration)，柔和色彩晕染与纸纹留白质感">[#193] 唯美水彩手绘 (Watercolor)</option>
-          </select>
-        </div>
-        <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;transition:all 0.2s;">📋 一键复制【发给外部 AI 的编剧指令】</button>
+            <option value="唯美中国古装仙侠剧质感，精致古装汉服与发髻配饰，电影级逆光发丝轮廓光(Backlighting & Rim light)与柔美浅景深">🏮 中国古装/仙侠剧</option>
+          </optgroup>
+          <optgroup label="💡 电影光影与色调 (Motion-Prompt)">
+            <option value="写实真人电影级质感，电影青橙色调(Teal and orange, 阴影偏青、肤色与高光偏暖橙)，85mm f/1.4大光圈散景，轻微胶片颗粒(Film grain)">🎞️ 电影青橙色调 (Teal & Orange)</option>
+            <option value="写实真人电影级质感，伦勃朗戏剧布光(Rembrandt lighting, 侧上方45度主光，背光脸颊留三角亮区)，低调暗调光影(Low-key lighting)，高对比度电影叙事">🕯️ 伦勃朗暗调悬疑/深情</option>
+            <option value="写实真人电影级质感，黄金时刻低角度暖阳逆光(Golden hour backlighting, 发丝边缘发亮轮廓光 Rim light)，温暖镜头眩光与柔美散景">🌅 黄金时刻唯美逆光</option>
+            <option value="写实真人电影级质感，蓝调时刻(Blue hour, 日落后深蓝天空与室内暖黄灯光冷暖交织)，大光圈夜景圆润散景光斑">🌃 蓝调时刻都市冷暖</option>
+          </optgroup>
+          <optgroup label="🎨 动漫与艺术画风 (Motion-Prompt)">
+            <option value="新海诚高画质唯美2D动漫电影风格，绚丽黄金时刻光影与细腻人物表情">🌸 唯美 2D 动漫电影</option>
+            <option value="东方传统水墨画风格(Ink wash painting / sumi-e)，浓淡墨色晕染与宣纸留白意境">🖌️ 东方传统水墨画风</option>
+            <option value="唯美水彩画风格(Watercolor illustration)，柔和色彩晕染与纸纹留白质感">🎨 唯美水彩手绘插画</option>
+          </optgroup>
+        </select>
+        <button type="button" id="btnCopyExtAiDrawer" onclick="copyExternalAiScriptPrompt(this)" style="padding:5px 12px;font-size:11.5px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all 0.2s;">📋 一键复制【发给外部 AI 的编剧指令】</button>
       </div>
 
       <!-- 中部：🎭 剧组多角色 (A / B / C / D / E...) 定妆照上传 + 5条黄金标准生图词复制 + 专属固定音色绑定 -->
