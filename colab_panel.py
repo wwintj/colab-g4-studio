@@ -3156,7 +3156,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- ==================== 第 3 行 (单独一行 100% 宽度，1:1 复刻原版 EasyColab 预览图)：▶️ 生成结果预览 (左大屏) + 🕒 本地历史 (右列表) ==================== -->
-  <div style="display:grid;grid-template-columns: minmax(0, 2.8fr) minmax(265px, 1fr);gap:16px;align-items:stretch;width:100%;box-sizing:border-box;">
+  <div style="display:grid;grid-template-columns: minmax(0, 2.55fr) minmax(300px, 1.05fr);gap:16px;align-items:stretch;width:100%;box-sizing:border-box;">
     <!-- 左卡片：▶️ 生成结果预览 (超大屏 16:9 画面) -->
     <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;">
       <!-- 顶部标题栏：左「▶️ 生成结果预览」，右「⏱ 生成耗时 8分31.9秒」蓝色胶囊 -->
@@ -3216,14 +3216,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
 
     <!-- 右卡片：🕒 本地历史 (支持自定义默认保存目录) -->
-    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:14px 14px 12px 14px;display:flex;flex-direction:column;min-width:0;overflow:hidden;">
+    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:18px 14px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;">
       <style>
         #mmHistoryList::-webkit-scrollbar { width: 5px; }
         #mmHistoryList::-webkit-scrollbar-track { background: transparent; }
         #mmHistoryList::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
         #mmHistoryList::-webkit-scrollbar-thumb:hover { background: #475569; }
       </style>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:nowrap;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:nowrap;">
         <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
           <span style="color:#3b82f6;font-size:15px;">🕒</span>
           <span style="font-size:14.5px;font-weight:800;color:#f8fafc;">本地历史</span>
@@ -3235,16 +3235,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
       </div>
 
-      <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:6px;max-height:515px;overflow-y:auto;padding-right:4px;flex:1;scrollbar-width:thin;scrollbar-color:#334155 transparent;">
+      <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:6px;max-height:520px;overflow-y:auto;padding-right:4px;flex:1;scrollbar-width:thin;scrollbar-color:#334155 transparent;">
         <div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">正在扫描...</div>
       </div>
 
-      <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:11px;color:#94a3b8;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
+      <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:11px;color:#94a3b8;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;height:28px;">
           <span id="localSaveDirDisplay" onclick="toggleLocalSaveDirEditor()" title="点击修改默认保存文件夹（支持外置移动硬盘 / 自定义目录）" style="font-family:'SF Mono',Menlo,monospace;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:1;min-width:0;">📂 ~/Movies/EasyColab</span>
           <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;">
-            <button type="button" onclick="toggleLocalSaveDirEditor()" style="height:24px;padding:0 8px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;" title="自定义或更换默认保存文件夹（可改为外置移动硬盘路径）">⚙️ 改目录</button>
-            <button type="button" onclick="revealInFinder(true)" style="height:24px;padding:0 8px;font-size:10.5px;font-weight:700;border-radius:6px;border:1px solid rgba(59,130,246,0.5);background:rgba(59,130,246,0.16);color:#93c5fd;cursor:pointer;" title="在 Finder 中打开当前默认保存文件夹">📂 打开 ↗</button>
+            <button type="button" onclick="toggleLocalSaveDirEditor()" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;" title="自定义或更换默认保存文件夹（可改为外置移动硬盘路径）">⚙️ 改目录</button>
+            <button type="button" onclick="revealInFinder(true)" style="height:26px;padding:0 8px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid rgba(59,130,246,0.5);background:rgba(59,130,246,0.16);color:#93c5fd;cursor:pointer;" title="在 Finder 中打开当前默认保存文件夹">📂 打开 ↗</button>
           </div>
         </div>
         <div id="localSaveDirEditBox" style="display:none;flex-direction:column;gap:5px;padding:7px 8px;border-radius:7px;background:#020617;border:1px solid #3b82f6;">
