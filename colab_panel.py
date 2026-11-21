@@ -2963,14 +2963,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span style="color:#3b82f6;">☰</span>
         <span id="promptSectionTitle">镜头与多模态提示词</span>
       </div>
-      <div id="fourBoxActionBtns" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <label title="开启后：生成视频时自动将您的提示词编译为 MiniMax-H3 官方六段式结构 (subject_definitions + retention_analysis: fully_preserved + detailed_description)，显著增强跨帧锁脸与防变形能力" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.45);padding:4px 10px;border-radius:7px;cursor:pointer;user-select:none;">
-          <input type="checkbox" id="chkAutoH3SixSection" checked style="width:13px;height:13px;accent-color:#10b981;cursor:pointer;">
-          <span>📜 自动H3六段式防崩编译</span>
+      <div id="fourBoxActionBtns" style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
+        <label id="lblAutoH3SixSection" title="系统会根据您的提示词结构自动判定：简短提示词或首帧图生视频时自动开启 H3 六段式防崩编译；若检测到您已粘贴完整的多段分镜脚本（如【0-3秒】/【画质与风格】），则自动切换为原脚本直通以 100% 保留您的自定义风格约束！" style="display:inline-flex;align-items:center;gap:5px;height:28px;box-sizing:border-box;font-size:11.5px;font-weight:700;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.45);padding:0 10px;border-radius:7px;cursor:pointer;user-select:none;white-space:nowrap;">
+          <input type="checkbox" id="chkAutoH3SixSection" checked style="width:13px;height:13px;accent-color:#10b981;cursor:pointer;margin:0;">
+          <span id="txtAutoH3SixSection">📜 智能H3六段式编译 (自动)</span>
         </label>
-        <button type="button" onclick="compileCurrentVideoPromptToH3SixSection(true)" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;" title="立即将当前输入框内容转换为 MiniMax-H3 官方原生六段式结构并预览">🪄 转为H3六段式</button>
-        <button type="button" class="btn-outline" style="padding:4px 11px;font-size:11.5px;border-color:#3b82f6;color:#93c5fd;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 结果填入四框</button>
-        <button type="button" class="btn-outline" style="padding:4px 11px;font-size:11.5px;border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
+        <button type="button" class="btn-outline" style="height:28px;padding:0 11px;font-size:11.5px;border-radius:7px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 结果填入四框</button>
+        <button type="button" class="btn-outline" style="height:28px;padding:0 11px;font-size:11.5px;border-radius:7px;border-color:rgba(239,68,68,0.45);color:#fca5a5;white-space:nowrap;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
       </div>
     </div>
 
@@ -7558,7 +7557,39 @@ function autoSyncSpecsFromPrompt() {
   const p2 = ((document.getElementById('videoSoundPrompt') || {}).value || '').trim();
   const p3 = ((document.getElementById('videoMusicPrompt') || {}).value || '').trim();
   const fullText = `${p1}\n${p2}\n${p3}`.trim();
-  if (!fullText) return;
+  const chkSix = document.getElementById('chkAutoH3SixSection');
+  const txtSix = document.getElementById('txtAutoH3SixSection');
+  const lblSix = document.getElementById('lblAutoH3SixSection');
+  if (!fullText) {
+    if (chkSix) chkSix.checked = true;
+    if (txtSix) txtSix.innerText = '📜 智能H3六段式编译 (自动)';
+    if (lblSix) {
+      lblSix.style.background = 'rgba(16,185,129,0.14)';
+      lblSix.style.borderColor = 'rgba(16,185,129,0.45)';
+      lblSix.style.color = '#6ee7b7';
+    }
+    return;
+  }
+
+  // 0. 智能判定是否开启 H3 六段式防崩编译
+  const hasRefFrame = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
+  const isAlreadySixSec = /subject_definitions:|retention_analysis:/i.test(p1);
+  const hasMultiTimelineOrDirectorSections = /【[^】]{2,20}】/.test(p1) || ((p1.match(/(?:^|[^\d.])\d{1,2}\s*[-~–—至到]\s*\d{1,2}\s*(?:秒|s\b)/gi) || []).length >= 2);
+  if (chkSix && txtSix && lblSix) {
+    if (isAlreadySixSec || (hasMultiTimelineOrDirectorSections && !hasRefFrame)) {
+      chkSix.checked = false;
+      txtSix.innerText = '📜 H3六段式 (已自动直通·保留原分镜脚本)';
+      lblSix.style.background = 'rgba(56,189,248,0.14)';
+      lblSix.style.borderColor = 'rgba(56,189,248,0.45)';
+      lblSix.style.color = '#bae6fd';
+    } else {
+      chkSix.checked = true;
+      txtSix.innerText = hasRefFrame ? '📜 H3六段式 (已自动开启·首帧锁脸)' : '📜 H3六段式 (已自动开启·防崩编译)';
+      lblSix.style.background = 'rgba(16,185,129,0.16)';
+      lblSix.style.borderColor = 'rgba(16,185,129,0.5)';
+      lblSix.style.color = '#6ee7b7';
+    }
+  }
 
   // 1. 自动识别画幅比例 (9:16 竖屏 / 16:9 横屏 / 1:1 方形 / 3:4 / 2:3 / 4:3)
   const resSel = document.getElementById('videoRes');
@@ -7653,16 +7684,21 @@ function updateH3AutoLoraPreview() {
     const strInp = document.getElementById('h3SentinelLoraStrength');
     if (strInp) strInp.value = matched.weight;
     const chkGolden = document.getElementById('chkH3SentinelAutoGoldenSpec');
-    if (chkGolden && chkGolden.checked) {
-      const stSlider = document.getElementById('videoSteps');
-      const stLbl = document.getElementById('stepsValLabel');
-      if (stSlider) stSlider.value = '18';
-      if (stLbl) stLbl.innerText = '18 步';
-    }
+    if (chkGolden) chkGolden.checked = true;
+    const stSlider = document.getElementById('videoSteps');
+    const stLbl = document.getElementById('stepsValLabel');
+    if (stSlider) stSlider.value = '18';
+    if (stLbl) stLbl.innerText = '18 步';
   } else {
     badge.style.background = 'rgba(59,130,246,0.16)';
     badge.style.borderColor = 'rgba(59,130,246,0.45)';
     badge.style.color = '#93c5fd';
+    const stSlider = document.getElementById('videoSteps');
+    const stLbl = document.getElementById('stepsValLabel');
+    if (stSlider && stSlider.value === '18') {
+      stSlider.value = '30';
+      if (stLbl) stLbl.innerText = '30 步';
+    }
   }
 }
 
