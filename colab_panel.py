@@ -3182,35 +3182,35 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <img id="mmImagePreview" alt="Generated Image" style="display:none;width:100%;height:520px;border-radius:12px;background:#000000;object-fit:contain;">
       </div>
 
-      <!-- 底部文件信息栏：单行紧凑对齐 -->
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px;margin-top:12px;padding-top:4px;">
-        <div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1;overflow:hidden;">
+      <!-- 底部文件信息栏：单行两端对齐，左侧标题完整显示不截断 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:8px;margin-top:12px;padding-top:4px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           <span style="color:#94a3b8;font-size:14px;flex-shrink:0;">🎞️</span>
-          <span id="mmVideoMeta" title="" style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">尚未选择视频</span>
-          <span id="previewBottomShortBadge" style="display:none;height:24px;align-items:center;background:#1e293b;color:#94a3b8;border:1px solid var(--border);padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;flex-shrink:0;">--</span>
+          <span id="mmVideoMeta" title="" style="font-size:13px;font-weight:700;color:#f8fafc;white-space:nowrap;flex-shrink:0;">尚未选择视频</span>
+          <span id="previewBottomShortBadge" style="display:none;"></span>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
-          <div id="imageActionBtns" style="display:none;align-items:center;gap:6px;">
-            <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(192,132,252,0.55);background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;" title="将当前预览图直接锁定为短剧角色A/B/C/D/E的 16:9 基准定妆照">📌 锁入短剧角色</button>
-            <button type="button" onclick="sendCurrentImageToAvatar()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(16,185,129,0.55);background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="将当前图片直接设为 LongCat-Avatar-1.6 数字人参考图，驱动她开口说话">🎭 送入数字人说话</button>
-            <button type="button" onclick="sendCurrentImageToH3Edit()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(236,72,153,0.55);background:rgba(236,72,153,0.18);color:#fbcfe8;cursor:pointer;" title="将当前图片设为 &lt;Picture 1&gt;，免涂 Mask 像素级锁脸换装">👗 设为&lt;Picture 1&gt;换装</button>
+        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;">
+          <div id="imageActionBtns" style="display:none;align-items:center;gap:5px;">
+            <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="height:28px;padding:0 9px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(192,132,252,0.55);background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;" title="将当前预览图直接锁定为短剧角色A/B/C/D/E的 16:9 基准定妆照">📌 锁入短剧角色</button>
+            <button type="button" onclick="sendCurrentImageToAvatar()" style="height:28px;padding:0 9px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(16,185,129,0.55);background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="将当前图片直接设为 LongCat-Avatar-1.6 数字人参考图，驱动她开口说话">🎭 送入数字人说话</button>
+            <button type="button" onclick="sendCurrentImageToH3Edit()" style="height:28px;padding:0 9px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(236,72,153,0.55);background:rgba(236,72,153,0.18);color:#fbcfe8;cursor:pointer;" title="将当前图片设为 &lt;Picture 1&gt;，免涂 Mask 像素级锁脸换装">👗 设为&lt;Picture 1&gt;换装</button>
           </div>
-          <div id="videoUpscaleActionWrap" style="display:inline-flex;align-items:center;height:28px;gap:4px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:7px;padding:0 4px;">
-            <select id="upscalePresetSelect" class="cu-select" style="border:none;background:transparent;color:#ddd6fe;font-size:11.5px;font-weight:700;padding:0 3px;cursor:pointer;" onchange="onUpscalePresetChange(this.value)">
-              <option value="2k" selected>2K (1440P)</option>
+          <div id="videoUpscaleActionWrap" style="display:inline-flex;align-items:center;height:28px;gap:3px;background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.45);border-radius:7px;padding:0 4px;">
+            <select id="upscalePresetSelect" class="cu-select" style="border:none;background:transparent;color:#ddd6fe;font-size:11.5px;font-weight:700;padding:0 2px;cursor:pointer;" onchange="onUpscalePresetChange(this.value)">
+              <option value="2k" selected>2K超清</option>
               <option value="1080p">1080P</option>
-              <option value="4k">4K 极清</option>
+              <option value="4k">4K极清</option>
             </select>
-            <button type="button" id="btnUpscaleVideo" onclick="upscaleCurrentVideo()" style="height:22px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:5px;border:none;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#ffffff;cursor:pointer;">
+            <button type="button" id="btnUpscaleVideo" onclick="upscaleCurrentVideo()" style="height:22px;padding:0 7px;font-size:11.5px;font-weight:700;border-radius:5px;border:none;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#ffffff;cursor:pointer;">
               ✨ 超分至 2K
             </button>
           </div>
-          <button type="button" id="btnH3VideoFaceFix" onclick="runH3VideoFaceFixCurrent()" title="PixelAI H3 FaceFix 算法：自动追踪视频中远景/小脸模糊崩坏帧（<=110px 满强度修复，>=180px 特写平滑衰减保留 H3 原生微表情），结合角色定妆照或视频自身清晰特写帧执行高斯轨迹平滑、遮罩加权色彩匹配与无损保留原片音轨！" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(16,185,129,0.55);background:linear-gradient(135deg,rgba(16,185,129,0.22),rgba(6,182,212,0.2));color:#6ee7b7;cursor:pointer;">🧬 H3崩脸精修</button>
+          <button type="button" id="btnH3VideoFaceFix" onclick="runH3VideoFaceFixCurrent()" title="PixelAI H3 FaceFix 算法：自动追踪视频中远景/小脸模糊崩坏帧（<=110px 满强度修复，>=180px 特写平滑衰减保留 H3 原生微表情），结合角色定妆照或视频自身清晰特写帧执行高斯轨迹平滑、遮罩加权色彩匹配与无损保留原片音轨！" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(16,185,129,0.55);background:linear-gradient(135deg,rgba(16,185,129,0.22),rgba(6,182,212,0.2));color:#6ee7b7;cursor:pointer;">🧬 H3崩脸精修</button>
           <input type="file" id="inpExternalVideo" accept="video/*,.mp4,.mov,.webm,.mkv" style="display:none;" onchange="handleExternalVideoImport(this)">
-          <button type="button" id="btnContinueLastFrame" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
-          <button type="button" id="btnReplayVideo" class="btn-outline" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="replayCurrentVideo()">🔄 重播</button>
-          <button type="button" class="btn-outline" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="revealInFinder(false)">📂 Finder</button>
-          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;height:28px;padding:0 10px;font-size:11.5px;font-weight:700;border-radius:7px;text-decoration:none;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.55);color:#6ee7b7;">⬇️ 另存为</a>
+          <button type="button" id="btnContinueLastFrame" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
+          <button type="button" id="btnReplayVideo" class="btn-outline" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="replayCurrentVideo()">🔄 重播</button>
+          <button type="button" class="btn-outline" style="height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;background:#1e293b;border:1px solid #475569;color:#e2e8f0;" onclick="revealInFinder(false)">📂 Finder</button>
+          <a id="mmVideoDownload" href="#" download="minimax_h3_output.mp4" class="btn-outline" style="display:none;height:28px;padding:0 8px;font-size:11.5px;font-weight:700;border-radius:7px;text-decoration:none;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.55);color:#6ee7b7;">⬇️ 另存为</a>
         </div>
       </div>
     </div>
@@ -7264,20 +7264,19 @@ function selectLocalHistoryItem(idx) {
     metaEl.title = `${it.name}${it.date_str ? ' · ' + it.date_str : ''}`;
   }
   if (topBadge) {
+    const sizePart = it.size_mb ? ` · ${it.size_mb} MB` : '';
     if (it.elapsed_long) {
-      topBadge.innerText = `⏱ ${it.elapsed_long}`;
+      topBadge.innerText = `⏱ ${it.elapsed_long}${sizePart}`;
+      topBadge.style.display = 'inline-flex';
+    } else if (it.size_mb) {
+      topBadge.innerText = `📦 ${it.size_mb} MB`;
       topBadge.style.display = 'inline-flex';
     } else {
       topBadge.style.display = 'none';
     }
   }
   if (botBadge) {
-    if (it.size_mb) {
-      botBadge.innerText = `${it.size_mb} MB`;
-      botBadge.style.display = 'inline-flex';
-    } else {
-      botBadge.style.display = 'none';
-    }
+    botBadge.style.display = 'none';
   }
 }
 
