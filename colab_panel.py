@@ -3015,6 +3015,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
               ✨ 超分至 2K
             </button>
           </div>
+          <button type="button" id="btnH3VideoFaceFix" onclick="runH3VideoFaceFixCurrent()" title="PixelAI H3 FaceFix 算法：自动追踪视频中远景/小脸模糊崩坏帧（<=110px 满强度修复，>=180px 特写平滑衰减保留 H3 原生微表情），结合角色定妆照或视频自身清晰特写帧执行高斯轨迹平滑、遮罩加权色彩匹配与无损保留原片音轨！" style="padding:5px 10px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid rgba(16,185,129,0.55);background:linear-gradient(135deg,rgba(16,185,129,0.24),rgba(6,182,212,0.22));color:#6ee7b7;cursor:pointer;">🧬 H3崩脸精修</button>
           <input type="file" id="inpExternalVideo" accept="video/*,.mp4,.mov,.webm,.mkv" style="display:none;" onchange="handleExternalVideoImport(this)">
           <button type="button" id="btnContinueLastFrame" class="btn-outline" title="截取当前视频最后一帧作为「首帧参考图」，无缝续写下一段视频" style="padding:5px 10px;font-size:12px;font-weight:700;background:rgba(59,130,246,0.14);border-color:rgba(59,130,246,0.45);color:#93c5fd;" onclick="continueFromCurrentVideoLastFrame()">🔗 尾帧续写</button>
           <button type="button" id="btnReplayVideo" class="btn-outline" style="padding:5px 10px;font-size:12px;font-weight:700;background:#1e293b;border-color:#334155;color:#e2e8f0;" onclick="replayCurrentVideo()">重播</button>
@@ -6650,6 +6651,7 @@ function _updatePreviewMediaMode(fname, url) {
   const imgPrev = document.getElementById('mmImagePreview');
   const imgBtns = document.getElementById('imageActionBtns');
   const srWrap = document.getElementById('videoUpscaleActionWrap');
+  const btnFaceFix = document.getElementById('btnH3VideoFaceFix');
   const btnCont = document.getElementById('btnContinueLastFrame');
   const btnRep = document.getElementById('btnReplayVideo');
   if (isImg) {
@@ -6657,6 +6659,7 @@ function _updatePreviewMediaMode(fname, url) {
     if (imgPrev) { imgPrev.src = url; imgPrev.style.display = 'block'; }
     if (imgBtns) imgBtns.style.display = 'inline-flex';
     if (srWrap) srWrap.style.display = 'none';
+    if (btnFaceFix) btnFaceFix.style.display = 'none';
     if (btnCont) btnCont.style.display = 'none';
     if (btnRep) btnRep.style.display = 'none';
   } else {
@@ -6670,8 +6673,67 @@ function _updatePreviewMediaMode(fname, url) {
     }
     if (imgBtns) imgBtns.style.display = 'none';
     if (srWrap) srWrap.style.display = 'inline-flex';
+    if (btnFaceFix) btnFaceFix.style.display = 'inline-flex';
     if (btnCont) btnCont.style.display = 'inline-flex';
     if (btnRep) btnRep.style.display = 'inline-flex';
+  }
+}
+
+async function runH3VideoFaceFixCurrent() {
+  if (!currentSelectedVideoName || /\.(png|jpe?g|webp)$/i.test(currentSelectedVideoName)) {
+    alert('请先在右侧「本地历史」中选择一条要修复远景人脸的视频 (.mp4)！');
+    return;
+  }
+  const btn = document.getElementById('btnH3VideoFaceFix');
+  const st = document.getElementById('videoGenStatus');
+  const origTxt = btn ? btn.innerText : '🧬 H3崩脸精修';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = '⏳ H3崩脸精修中...';
+  }
+  if (st) {
+    st.innerText = `🧬 正在对 ${currentSelectedVideoName} 执行 PixelAI H3 FaceFix (远景小脸满修 + 近景平滑衰减 + 轨迹防抖 + 原生音轨保留)...`;
+    st.style.color = '#34d399';
+  }
+  try {
+    const refFaceB64 = (typeof fusionFaceOrigB64 !== 'undefined' && fusionFaceOrigB64)
+      ? fusionFaceOrigB64
+      : ((typeof fusionSlotsB64 !== 'undefined' && fusionSlotsB64[0]) ? fusionSlotsB64[0] : '');
+    const r = await fetch('/api/video_h3_facefix', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: currentSelectedVideoName,
+        face_b64: refFaceB64,
+        full_fix_below_px: 110,
+        no_fix_above_px: 180,
+      }),
+    });
+    const d = await r.json();
+    if (!d || !d.ok) {
+      alert('H3 视频崩脸精修失败: ' + ((d && d.error) || '未知错误'));
+      if (st) {
+        st.innerText = '❌ H3 视频崩脸精修失败: ' + ((d && d.error) || '未知错误');
+        st.style.color = '#ef4444';
+      }
+      return;
+    }
+    if (st) {
+      st.innerText = d.message || `✅ H3 视频崩脸精修完成：${d.filename}`;
+      st.style.color = '#10b981';
+    }
+    showGlobalCopyToast(d.message || `✅ H3 视频崩脸精修完成：${d.filename}`);
+    await loadLocalVideoHistory(false);
+    if (d.filename) {
+      playHistoryVideo(d.filename);
+    }
+  } catch (e) {
+    alert('请求 H3 视频崩脸精修异常: ' + e);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = origTxt;
+    }
   }
 }
 
@@ -9559,17 +9621,125 @@ def _ensure_biometric_swap_engine():
         return app, swapper, gfpgan_sess
 
 
+def _pixelai_smoothstep(x: float) -> float:
+    """PixelAI Labs H3 Face Size Fade 三次 Hermite 平滑曲线 (ComfyUI-H3-FaceFix-PixelAILabs)"""
+    x = max(0.0, min(1.0, float(x)))
+    return x * x * (3.0 - 2.0 * x)
+
+
+def _pixelai_h3_face_size_fade(
+    face_h: float,
+    src_h: float,
+    full_fix_below_px: float = 110.0,
+    no_fix_above_px: float = 180.0,
+    reference_height: float = 1080.0,
+    min_close_weight: float = 0.0,
+) -> float:
+    """
+    自适应人脸尺寸衰减算法 (PixelAIH3FaceSizeFade)：
+    - 远景/全身小脸 (face_h <= lo): 1.0 满强度修复 MiniMax-H3 远景小脸模糊/崩坏；
+    - 中景推镜过渡区 (lo < face_h < hi): _smoothstep 平滑过渡，推镜/拉镜零跳变；
+    - 特写大脸 (face_h >= hi): 衰减至 min_close_weight，保留 H3 原生微表情与细腻皮肤，避免过度磨皮或额外皱纹。
+    """
+    scale = (float(src_h) / float(reference_height)) if reference_height > 0 else 1.0
+    lo = float(full_fix_below_px) * scale
+    hi = max(lo + 1.0, float(no_fix_above_px) * scale)
+    s = _pixelai_smoothstep((float(face_h) - lo) / (hi - lo))
+    return float(1.0 - s * (1.0 - float(min_close_weight)))
+
+
+def _blend_single_face_h3_fix(
+    tgt_bgr,
+    tgt_f,
+    src_f,
+    swapper,
+    gfpgan_sess,
+    smoothed_kps=None,
+    blend_opacity: float = 1.0,
+):
+    """
+    融合 PixelAI H3 FaceSizeFade + Carasibana H3FaceStitch 的单帧人脸精修与贴回算法：
+    1. 按人脸高度自适应调节 GFPGAN 细节重绘权重（小脸满血修复模糊五官，大脸特写轻度润色保留原生毛孔）；
+    2. 遮罩加权均值/标准差色彩匹配 (Mask-Weighted LAB Mean/Std Colour Match)，杜绝发丝或背景像素污染肤色统计；
+    3. 源像素级自适应羽化半径 (Source-Pixel Relative Feathering)，消除远景小脸贴回硬边。
+    """
+    import cv2
+    import numpy as np
+    from insightface.utils import face_align
+
+    kps_use = smoothed_kps if smoothed_kps is not None else tgt_f.kps
+    M = face_align.estimate_norm(kps_use, 512)
+    orig_aligned = cv2.warpAffine(tgt_bgr, M, (512, 512), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
+
+    swapped_full = swapper.get(tgt_bgr, tgt_f, src_f, paste_back=True)
+    swapped_aligned = cv2.warpAffine(swapped_full, M, (512, 512), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
+
+    rgb = cv2.cvtColor(swapped_aligned, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    inp = ((rgb - 0.5) / 0.5).transpose(2, 0, 1)[None, ...]
+    with _BIOMETRIC_SWAP_LOCK:
+        out = gfpgan_sess.run(None, {"input": inp})[0][0]
+    out_rgb = ((out.transpose(1, 2, 0) * 0.5 + 0.5).clip(0.0, 1.0) * 255.0).astype(np.uint8)
+    gfp_bgr = cv2.cvtColor(out_rgb, cv2.COLOR_RGB2BGR)
+
+    h, w = tgt_bgr.shape[:2]
+    face_h = float(tgt_f.bbox[3] - tgt_f.bbox[1])
+    # PixelAI FaceSizeFade: 小脸(远景/全身)给予高 GFPGAN 清晰度补偿(0.78)，大脸(特写)降至 0.44 保留 H3 原生微表情与肌理
+    size_fade = _pixelai_h3_face_size_fade(face_h, float(h), 110.0, 180.0, 1080.0, 0.0)
+    gfp_weight = float(0.44 + 0.34 * size_fade)
+    detail_bgr = cv2.addWeighted(gfp_bgr, gfp_weight, swapped_aligned, 1.0 - gfp_weight, 0)
+
+    # 源像素级自适应羽化遮罩 (Carasibana H3FaceStitch: 保证远景小脸与近景大脸在源画面上拥有恒定物理羽化过渡宽度)
+    mask2d = np.zeros((512, 512), dtype=np.float32)
+    cv2.ellipse(mask2d, (256, 276), (156, 178), 0, 0, 360, 1.0, -1)
+    src_feather_px = 6.5
+    f_can = int(round(src_feather_px * (512.0 / max(face_h, 24.0))))
+    f_can = max(20, min(68, f_can))
+    k_blur = f_can * 2 + 1
+    mask2d = cv2.GaussianBlur(mask2d, (k_blur, k_blur), f_can * 0.45).clip(0.0, 1.0)
+
+    # 遮罩加权 2D LAB 色彩匹配 (Carasibana H3FaceStitch weighted colour_match)
+    orig_lab = cv2.cvtColor(orig_aligned, cv2.COLOR_BGR2LAB).astype(np.float32)
+    det_lab = cv2.cvtColor(detail_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    wsum = float(mask2d.sum()) + 1e-6
+    for c in range(3):
+        o_ch = orig_lab[:, :, c]
+        d_ch = det_lab[:, :, c]
+        o_m = float((o_ch * mask2d).sum() / wsum)
+        d_m = float((d_ch * mask2d).sum() / wsum)
+        o_s = float(np.sqrt(((o_ch - o_m) ** 2 * mask2d).sum() / wsum)) + 1e-5
+        d_s = float(np.sqrt(((d_ch - d_m) ** 2 * mask2d).sum() / wsum)) + 1e-5
+        target_m = o_m * 0.80 + d_m * 0.20
+        target_s = o_s * 0.78 + d_s * 0.22
+        det_lab[:, :, c] = (d_ch - d_m) * (target_s / d_s) + target_m
+
+    orig_L_low = cv2.GaussianBlur(orig_lab[:, :, 0], (0, 0), 38)
+    det_L_low = cv2.GaussianBlur(det_lab[:, :, 0], (0, 0), 38)
+    det_lab[:, :, 0] = det_lab[:, :, 0] - det_L_low + (orig_L_low * 0.72 + det_L_low * 0.28)
+    relit_bgr = cv2.cvtColor(det_lab.clip(0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    mask3d = (mask2d * float(blend_opacity))[..., None]
+    IM = cv2.invertAffineTransform(M)
+    warped_face = cv2.warpAffine(relit_bgr, IM, (w, h), flags=cv2.INTER_CUBIC)
+    warped_mask = cv2.warpAffine(mask3d, IM, (w, h), flags=cv2.INTER_CUBIC)
+    if warped_mask.ndim == 2:
+        warped_mask = warped_mask[..., None]
+    final_bgr = (
+        warped_face.astype(np.float32) * warped_mask
+        + tgt_bgr.astype(np.float32) * (1.0 - warped_mask)
+    ).clip(0, 255).astype(np.uint8)
+    return final_bgr
+
+
 def _run_local_biometric_faceswap(face_b64: str, target_img_bytes: bytes) -> Optional[bytes]:
     """
-    使用 ArcFace 512维生物特征向量 (buffalo_l + inswapper_128) + 2D 空间 LAB 环境光影色温匹配 + 自适应 GFPGANv1.4
-    执行 1:1 真实感人脸替换/五官锁定（100% 保留目标图背景、服饰、帽子、发丝与光影色温，同时 99.9% 还原本人五官神态）。
+    使用 ArcFace 512维生物特征向量 (buffalo_l + inswapper_128) + PixelAI H3 FaceSizeFade 自适应重绘 +
+    Carasibana 遮罩加权 2D LAB 光影匹配，执行 1:1 真实感人脸替换与远景小脸精修。
     """
     venv_sp = BASE_DIR / ".venv" / "lib" / "python3.12" / "site-packages"
     if venv_sp.is_dir() and str(venv_sp) not in sys.path:
         sys.path.insert(0, str(venv_sp))
     import cv2
     import numpy as np
-    from insightface.utils import face_align
 
     app, swapper, gfpgan_sess = _ensure_biometric_swap_engine()
 
@@ -9578,7 +9748,6 @@ def _run_local_biometric_faceswap(face_b64: str, target_img_bytes: bytes) -> Opt
     src_bgr = cv2.imdecode(src_arr, cv2.IMREAD_COLOR)
     if src_bgr is None:
         return None
-    # 若人脸图被裁切得特别紧（四周没有留白，RetinaFace 难以检测边界框），自动在四周加 35% 镜像/浅灰留白以保证 100% 检出 512 维特征
     sh, sw = src_bgr.shape[:2]
     pad_y, pad_x = int(sh * 0.35), int(sw * 0.35)
     src_padded = cv2.copyMakeBorder(src_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101)
@@ -9598,61 +9767,253 @@ def _run_local_biometric_faceswap(face_b64: str, target_img_bytes: bytes) -> Opt
     src_f = max(src_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
     tgt_f = max(tgt_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
 
-    M = face_align.estimate_norm(tgt_f.kps, 512)
-    orig_aligned = cv2.warpAffine(tgt_bgr, M, (512, 512), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
-
-    swapped_full = swapper.get(tgt_bgr, tgt_f, src_f, paste_back=True)
-    swapped_aligned = cv2.warpAffine(swapped_full, M, (512, 512), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REFLECT)
-
-    rgb = cv2.cvtColor(swapped_aligned, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-    inp = ((rgb - 0.5) / 0.5).transpose(2, 0, 1)[None, ...]
-    with _BIOMETRIC_SWAP_LOCK:
-        out = gfpgan_sess.run(None, {"input": inp})[0][0]
-    out_rgb = ((out.transpose(1, 2, 0) * 0.5 + 0.5).clip(0.0, 1.0) * 255.0).astype(np.uint8)
-    gfp_bgr = cv2.cvtColor(out_rgb, cv2.COLOR_RGB2BGR)
-
-    face_w = float(tgt_f.bbox[2] - tgt_f.bbox[0])
-    img_w = float(tgt_bgr.shape[1])
-    rel_size = face_w / max(1.0, img_w)
-    gfp_weight = float(np.clip(0.42 + rel_size * 1.15, 0.48, 0.76))
-    detail_bgr = cv2.addWeighted(gfp_bgr, gfp_weight, swapped_aligned, 1.0 - gfp_weight, 0)
-
-    # 2D 空间 LAB 环境光影与色温匹配：彻底消除白底证件照强光导致的“贴纸假脸感”
-    orig_lab = cv2.cvtColor(orig_aligned, cv2.COLOR_BGR2LAB).astype(np.float32)
-    det_lab = cv2.cvtColor(detail_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
-    roi_y, roi_x = slice(110, 410), slice(120, 392)
-    for c in range(3):
-        o_m = orig_lab[roi_y, roi_x, c].mean()
-        o_s = orig_lab[roi_y, roi_x, c].std() + 1e-5
-        d_m = det_lab[roi_y, roi_x, c].mean()
-        d_s = det_lab[roi_y, roi_x, c].std() + 1e-5
-        target_m = o_m * 0.78 + d_m * 0.22
-        target_s = o_s * 0.75 + d_s * 0.25
-        det_lab[:, :, c] = (det_lab[:, :, c] - d_m) * (target_s / d_s) + target_m
-
-    orig_L_low = cv2.GaussianBlur(orig_lab[:, :, 0], (0, 0), 38)
-    det_L_low = cv2.GaussianBlur(det_lab[:, :, 0], (0, 0), 38)
-    det_lab[:, :, 0] = det_lab[:, :, 0] - det_L_low + (orig_L_low * 0.72 + det_L_low * 0.28)
-    relit_bgr = cv2.cvtColor(det_lab.clip(0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
-
-    # 防遮挡内脸羽化蒙版（保护额头帽檐、刘海与两侧发丝 100% 不被涂抹）
-    mask = np.zeros((512, 512), dtype=np.float32)
-    cv2.ellipse(mask, (256, 276), (156, 178), 0, 0, 360, 1.0, -1)
-    mask = cv2.GaussianBlur(mask, (65, 65), 24)[..., None]
-
-    IM = cv2.invertAffineTransform(M)
-    h, w = tgt_bgr.shape[:2]
-    warped_face = cv2.warpAffine(relit_bgr, IM, (w, h), flags=cv2.INTER_CUBIC)
-    warped_mask = cv2.warpAffine(mask, IM, (w, h), flags=cv2.INTER_CUBIC)[..., None]
-    final_bgr = (
-        warped_face.astype(np.float32) * warped_mask
-        + tgt_bgr.astype(np.float32) * (1.0 - warped_mask)
-    ).clip(0, 255).astype(np.uint8)
+    final_bgr = _blend_single_face_h3_fix(
+        tgt_bgr=tgt_bgr,
+        tgt_f=tgt_f,
+        src_f=src_f,
+        swapper=swapper,
+        gfpgan_sess=gfpgan_sess,
+        smoothed_kps=None,
+        blend_opacity=1.0,
+    )
 
     ok_enc, enc_buf = cv2.imencode(".jpg", final_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 96])
     if not ok_enc:
         return None
     return enc_buf.tobytes()
+
+
+def _run_h3_video_facefix(
+    video_path: Path,
+    ref_face_b64: str = "",
+    full_fix_below_px: int = 110,
+    no_fix_above_px: int = 180,
+) -> Dict[str, Any]:
+    """
+    PixelAI Labs ComfyUI-H3-FaceFix + Carasibana ComfyUI-H3-FaceRefine 本机免重绘极速实现 (0MB 额外体积)：
+    - 自动追踪视频每一帧中的目标人物面部，通过高斯核平滑 5 点关键点轨迹消除高速运动抖动；
+    - 通过 PixelAIH3FaceSizeFade (110px -> 180px @ 1080p 自适应 _smoothstep 曲线) 对远景崩坏小脸 100% 满强度修复，
+      对近景特写平滑衰减以保留 MiniMax-H3 原生微表情与皮肤细节；
+    - 对转头/遮挡漏检帧自动执行 Carasibana fade_out 渐隐过渡，杜绝硬切闪烁；
+    - 无损保留原视频立体声效与配音 (-c:a copy)。
+    """
+    venv_sp = BASE_DIR / ".venv" / "lib" / "python3.12" / "site-packages"
+    if venv_sp.is_dir() and str(venv_sp) not in sys.path:
+        sys.path.insert(0, str(venv_sp))
+    import cv2
+    import numpy as np
+
+    app, swapper, gfpgan_sess = _ensure_biometric_swap_engine()
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"无法打开视频文件: {video_path.name}")
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 24.0)
+    frames = []
+    while True:
+        ret, frm = cap.read()
+        if not ret or frm is None:
+            break
+        frames.append(frm)
+    cap.release()
+    if not frames:
+        raise RuntimeError("视频帧为空")
+
+    src_h, src_w = frames[0].shape[:2]
+    src_f = None
+    using_external_ref = False
+
+    # 1. 优先使用传入的角色人脸照或短剧角色 A 定妆照
+    cand_bgr_list = []
+    if ref_face_b64:
+        try:
+            raw_b = base64.b64decode(ref_face_b64.split(",", 1)[-1])
+            im_ref = cv2.imdecode(np.frombuffer(raw_b, dtype=np.uint8), cv2.IMREAD_COLOR)
+            if im_ref is not None:
+                cand_bgr_list.append(im_ref)
+        except Exception:
+            pass
+    for role_fn in ("char_A_closeup.jpg", "char_A_half.jpg"):
+        rp = DRAMA_WORK_DIR / role_fn
+        if rp.is_file():
+            try:
+                im_r = cv2.imdecode(np.frombuffer(rp.read_bytes(), dtype=np.uint8), cv2.IMREAD_COLOR)
+                if im_r is not None:
+                    cand_bgr_list.append(im_r)
+            except Exception:
+                pass
+
+    for c_bgr in cand_bgr_list:
+        sh, sw = c_bgr.shape[:2]
+        pad_y, pad_x = int(sh * 0.35), int(sw * 0.35)
+        c_pad = cv2.copyMakeBorder(c_bgr, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REFLECT_101)
+        f_list = app.get(c_bgr) or app.get(c_pad)
+        if f_list:
+            src_f = max(f_list, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+            using_external_ref = True
+            break
+
+    # 2. 第一遍扫描：逐帧检测人脸 + ArcFace 身份匹配
+    n_frames = len(frames)
+    per_frame_face = [None] * n_frames
+    best_self_face = None
+    best_self_area = -1.0
+
+    ref_emb = getattr(src_f, "normed_embedding", None) if src_f is not None else None
+    for idx, frm in enumerate(frames):
+        detected = app.get(frm)
+        if not detected:
+            continue
+        chosen = None
+        if ref_emb is not None:
+            best_sim = -1.0
+            for f in detected:
+                emb = getattr(f, "normed_embedding", None)
+                if emb is not None:
+                    sim = float(np.dot(emb, ref_emb))
+                    if sim > best_sim:
+                        best_sim = sim
+                        chosen = f
+            if best_sim < 0.18:
+                chosen = max(detected, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        else:
+            chosen = max(detected, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        per_frame_face[idx] = chosen
+        area = float((chosen.bbox[2] - chosen.bbox[0]) * (chosen.bbox[3] - chosen.bbox[1]))
+        if area > best_self_area:
+            best_self_area = area
+            best_self_face = chosen
+
+    if src_f is None:
+        src_f = best_self_face
+    if src_f is None:
+        raise RuntimeError("视频中未检测到可追踪的人脸帧")
+
+    # 3. 关键点轨迹高斯平滑 + 漏检帧 fade_out 渐隐权重 + PixelAIH3FaceSizeFade 自适应尺寸衰减
+    kps_arr = np.zeros((n_frames, 5, 2), dtype=np.float32)
+    valid_mask = np.zeros(n_frames, dtype=bool)
+    face_heights = []
+    for i, f in enumerate(per_frame_face):
+        if f is not None:
+            kps_arr[i] = np.asarray(f.kps, dtype=np.float32)
+            valid_mask[i] = True
+            face_heights.append(float(f.bbox[3] - f.bbox[1]))
+
+    if not face_heights:
+        raise RuntimeError("视频中未能提取到有效人脸轨迹")
+
+    # 线性插值填补 <=5 帧的短暂遮挡/眨眼空隙，再用 5 帧高斯窗口平滑关键点轨迹防止高速运动抖动
+    valid_indices = np.where(valid_mask)[0]
+    for p_idx in range(5):
+        for xy in range(2):
+            series = kps_arr[:, p_idx, xy]
+            interp_s = np.interp(np.arange(n_frames), valid_indices, series[valid_indices])
+            kernel = np.array([0.1, 0.2, 0.4, 0.2, 0.1], dtype=np.float32)
+            padded_s = np.pad(interp_s, (2, 2), mode="edge")
+            kps_arr[:, p_idx, xy] = np.convolve(padded_s, kernel, mode="valid")
+
+    # 计算每帧的 PixelAIH3FaceSizeFade 权重与漏检边缘 fade_out
+    min_close_w = 0.55 if using_external_ref else 0.0
+    frame_weights = np.zeros(n_frames, dtype=np.float32)
+    fades_report = []
+    for i in range(n_frames):
+        f = per_frame_face[i]
+        if f is None:
+            continue
+        fh = float(f.bbox[3] - f.bbox[1])
+        fade_w = _pixelai_h3_face_size_fade(
+            face_h=fh,
+            src_h=float(src_h),
+            full_fix_below_px=float(full_fix_below_px),
+            no_fix_above_px=float(no_fix_above_px),
+            reference_height=1080.0,
+            min_close_weight=min_close_w,
+        )
+        # 检查距离最近漏检帧的步数，实现 Carasibana fade_out 渐隐防闪烁
+        dist_to_gap = 4
+        for step_d in (1, 2, 3):
+            if (i - step_d >= 0 and not valid_mask[i - step_d]) or (i + step_d < n_frames and not valid_mask[i + step_d]):
+                dist_to_gap = min(dist_to_gap, step_d)
+        gap_ramp = float(dist_to_gap) / 4.0
+        frame_weights[i] = fade_w * gap_ramp
+        fades_report.append(fade_w)
+
+    # 4. 第二遍逐帧融合与遮罩加权色彩匹配
+    fixed_count = 0
+    out_frames = []
+    for i, frm in enumerate(frames):
+        f = per_frame_face[i]
+        w_op = float(frame_weights[i])
+        if f is not None and w_op > 0.015:
+            out_frm = _blend_single_face_h3_fix(
+                tgt_bgr=frm,
+                tgt_f=f,
+                src_f=src_f,
+                swapper=swapper,
+                gfpgan_sess=gfpgan_sess,
+                smoothed_kps=kps_arr[i],
+                blend_opacity=w_op,
+            )
+            out_frames.append(out_frm)
+            fixed_count += 1
+        else:
+            out_frames.append(frm)
+
+    # 5. 编码视频并无损复制原视频音频 (-c:a copy)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    stem = re.sub(r"_dur\d+s.*$", "", video_path.stem)
+    out_name = f"{stem}_h3_facefix_{ts}.mp4"
+    out_path = LOCAL_MOVIES_DIR / out_name
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf_v:
+        tmp_vid = tf_v.name
+    try:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        vw = cv2.VideoWriter(tmp_vid, fourcc, fps, (src_w, src_h))
+        for frm in out_frames:
+            vw.write(frm)
+        vw.release()
+
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-v", "error",
+                "-i", tmp_vid,
+                "-i", str(video_path),
+                "-map", "0:v:0",
+                "-map", "1:a?",
+                "-c:v", "libx264",
+                "-crf", "17",
+                "-preset", "fast",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "copy",
+                str(out_path),
+            ],
+            check=True,
+            timeout=180,
+        )
+    finally:
+        try:
+            os.unlink(tmp_vid)
+        except Exception:
+            pass
+
+    scale = float(src_h) / 1080.0
+    lo_px = full_fix_below_px * scale
+    hi_px = max(lo_px + 1.0, no_fix_above_px * scale)
+    full_cnt = sum(1 for x in fades_report if x >= 0.99)
+    none_cnt = sum(1 for x in fades_report if x <= min_close_w + 0.01)
+    fading_cnt = max(0, len(fades_report) - full_cnt - none_cnt)
+    report_str = (
+        f"[PixelAI FaceSizeFade] {n_frames}帧 (检出{len(face_heights)}帧, 脸高 {min(face_heights):.0f}~{max(face_heights):.0f}px, "
+        f"衰减区间 {lo_px:.0f}->{hi_px:.0f}px): 远景满修 {full_cnt}帧, 平滑过渡 {fading_cnt}帧, 近景保留 {none_cnt}帧"
+    )
+    return {
+        "ok": True,
+        "filename": out_name,
+        "frames_total": n_frames,
+        "frames_fixed": fixed_count,
+        "report": report_str,
+    }
 
 
 class PanelRequestHandler(BaseHTTPRequestHandler):
@@ -11233,9 +11594,38 @@ p.wait()
                         fp.write_bytes(swapped_bytes)
                         refined.append(clean_fn)
                 if refined:
-                    _append_panel_log(f"🧬 [二阶 ArcFace 生物特征五官精修] 已对 {', '.join(refined)} 完成 512 维真实五官锁定与环境光融合")
+                    _append_panel_log(f"🧬 [二阶 ArcFace 生物特征五官精修 + PixelAI FaceSizeFade] 已对 {', '.join(refined)} 完成 512 维真实五官锁定与遮罩加权环境光融合")
                 self._send_json({"ok": True, "refined": refined})
             except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/video_h3_facefix":
+            fname = os.path.basename(str(payload.get("name") or "").strip())
+            face_b64 = str(payload.get("face_b64") or "").strip()
+            full_fix_below = int(payload.get("full_fix_below_px") or 110)
+            no_fix_above = int(payload.get("no_fix_above_px") or 180)
+            vpath = LOCAL_MOVIES_DIR / fname
+            if not fname or not vpath.is_file():
+                self._send_json({"ok": False, "error": f"本地未找到视频文件: {fname}"})
+                return
+            t0 = time.time()
+            try:
+                _append_panel_log(f"🧬 [PixelAI H3 Video FaceFix] 开始追踪并精修视频远景人脸: {fname} (衰减区间 {full_fix_below}px->{no_fix_above}px @1080p)...")
+                res = _run_h3_video_facefix(
+                    video_path=vpath,
+                    ref_face_b64=face_b64,
+                    full_fix_below_px=full_fix_below,
+                    no_fix_above_px=no_fix_above,
+                )
+                dt = round(time.time() - t0, 1)
+                msg = f"✅ [PixelAI H3 视频崩脸精修] 完成！{res['report']} · 耗时 {dt}s -> {res['filename']}"
+                _append_panel_log(msg)
+                res["elapsed_s"] = dt
+                res["message"] = msg
+                self._send_json(res)
+            except Exception as e:
+                _append_panel_log(f"❌ [PixelAI H3 视频崩脸精修失败] {e}")
                 self._send_json({"ok": False, "error": str(e)})
             return
 
