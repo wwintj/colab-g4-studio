@@ -2205,17 +2205,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <!-- 槽位 ①：🧑 人脸照片 (必填) -->
       <div style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #a855f7;display:flex;flex-direction:column;gap:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
-          <div style="display:flex;align-items:center;gap:4px;min-width:0;">
-            <span id="fusionSlot1Title" style="font-size:12.5px;font-weight:900;color:#e9d5ff;white-space:nowrap;">🧑 ① 人脸照片</span>
-            <span id="fusionFaceFocusBadge" style="display:none;font-size:10px;padding:0px 5px;border-radius:999px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;white-space:nowrap;">🎯已聚焦</span>
-          </div>
+          <span id="fusionSlot1Title" style="font-size:12.5px;font-weight:900;color:#e9d5ff;white-space:nowrap;">🧑 ① 人脸照片</span>
           <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
             <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_SLOT_0', 'portrait')" style="padding:2px 6px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;" title="从内置 1,499 张 CC0 高清演员正脸库点选">👩 脸库(1499)</button>
-            <button type="button" id="btnToggleFusionFaceCrop" onclick="toggleFusionFaceCropMode()" style="display:none;padding:2px 5px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="在『聚焦脸部特写』与『全身未裁切原图』之间一键切换">↺原图</button>
             <button type="button" onclick="clearFusionSlot(0)" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;" title="清空人脸槽">✕</button>
           </div>
         </div>
         <label style="position:relative;height:172px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <span id="fusionFaceFocusBadge" style="display:none;position:absolute;top:6px;left:6px;z-index:3;font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(2,6,23,0.84);color:#6ee7b7;border:1px solid #10b981;font-weight:700;white-space:nowrap;pointer-events:none;backdrop-filter:blur(4px);">🎯已自动聚焦脸部</span>
+          <button type="button" id="btnToggleFusionFaceCrop" onclick="event.preventDefault();event.stopPropagation();toggleFusionFaceCropMode();" style="display:none;position:absolute;bottom:6px;right:6px;z-index:3;padding:2px 8px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(2,6,23,0.86);color:#7dd3fc;cursor:pointer;white-space:nowrap;backdrop-filter:blur(4px);" title="在『聚焦脸部特写』与『全身未裁切原图』之间一键切换">↺ 切回全身原图</button>
           <img id="fusionSlot1Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
           <div id="fusionSlot1Empty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:8px;">
             <div style="font-size:26px;margin-bottom:4px;">🧑</div>
