@@ -2184,118 +2184,139 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- 第 6 大功能：🪄 极简傻瓜式「换脸 · 换装 · 场景融合」工坊 (支持多图动态增删、左右双图一键拆分、一次批量合成全部) -->
+  <!-- 第 6 大功能：🪄 四合一角色自由组装台（①人脸 + ②服饰 + ③姿势 + ④场景 同屏直出） -->
   <div id="fusionStudioRow" style="display:none;padding:14px 16px;margin-bottom:16px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(46,16,101,0.85) 100%);border:1.5px solid #c084fc;border-radius:12px;">
-    <!-- 第 1 步：选模式 (3 个直观大按钮) -->
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+    <!-- 顶部极简标题栏：已将 换装 / 换脸 / 姿势 / 融景 四大功能彻底整合为同一套 4 槽位自由组装流水线 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span style="font-size:14px;font-weight:900;color:#f3e8ff;">🪄 选择合成模式：</span>
-        <button type="button" id="btnFusionModeTryon" onclick="switchFusionSubMode('tryon')" style="padding:6px 14px;font-size:12.5px;font-weight:800;border-radius:8px;border:1.5px solid #c084fc;background:linear-gradient(135deg,#9333ea,#c026d3);color:#ffffff;cursor:pointer;">👗 1. 人脸 + 服装合成</button>
-        <button type="button" id="btnFusionModeFaceswap" onclick="switchFusionSubMode('faceswap')" style="padding:6px 14px;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;cursor:pointer;">🎭 2. 人脸替换他人照片 (换脸)</button>
-        <button type="button" id="btnFusionModeScenefuse" onclick="switchFusionSubMode('scenefuse')" style="padding:6px 14px;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;cursor:pointer;">🏞️ 3. 融入场景照片</button>
+        <span style="font-size:14.5px;font-weight:900;color:#f3e8ff;">🪄 四合一角色自由组装台</span>
+        <span style="font-size:11.5px;padding:2px 10px;border-radius:999px;background:rgba(168,85,247,0.22);border:1px solid rgba(192,132,252,0.45);color:#e9d5ff;font-weight:700;">
+          ①人脸(必填) ＋ ②服饰(选填) ＋ ③姿势(选填) ＋ ④场景(选填) ➔ 按需任选 2~4 项自动合成 1 张大片
+        </span>
       </div>
-      <button type="button" onclick="toggleFusionAdvancedDrawer()" id="btnToggleFusionAdv" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:rgba(15,23,42,0.8);color:#cbd5e1;cursor:pointer;">⚙️ 高级微调 (默认自动最优) ▾</button>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button type="button" onclick="clearAllFourFusionSlots()" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer;" title="一键清空全部 4 个槽位">🗑️ 清空四槽</button>
+        <button type="button" onclick="toggleFusionAdvancedDrawer()" id="btnToggleFusionAdv" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #475569;background:rgba(15,23,42,0.8);color:#cbd5e1;cursor:pointer;">⚙️ 高级微调 (默认自动最优) ▾</button>
+      </div>
     </div>
 
-    <!-- 第 2 步：上传图片框 (左侧固定人脸主照；中间支持服装+姿势 1~N 张；右侧支持可选场景图实现 4合1) -->
-    <div id="fusionSlotsGrid" style="display:grid;grid-template-columns:0.95fr 1.45fr 0.9fr;gap:12px;margin-bottom:12px;">
-      <!-- 框 1：🧑 上传人脸照片 (上传全身/半身照自动识别人脸并聚焦裁切脸部特写) -->
-      <div style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #a855f7;display:flex;flex-direction:column;gap:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
-          <div style="display:flex;align-items:center;gap:5px;">
-            <span id="fusionSlot1Title" style="font-size:13px;font-weight:800;color:#e9d5ff;">🧑 第一步：上传人脸照片</span>
-            <span id="fusionFaceFocusBadge" style="display:none;font-size:10.5px;padding:1px 6px;border-radius:999px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;">🎯已自动聚焦脸部</span>
+    <!-- 核心四宫格同屏组装区：① 人脸 | ② 服饰 | ③ 姿势 | ④ 场景 (每项独立一框，互不覆盖，零重复按钮) -->
+    <div id="fusionSlotsGrid" style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:10px;margin-bottom:12px;">
+      <!-- 槽位 ①：🧑 人脸照片 (必填) -->
+      <div style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #a855f7;display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
+          <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+            <span id="fusionSlot1Title" style="font-size:12.5px;font-weight:900;color:#e9d5ff;white-space:nowrap;">🧑 ① 人脸照片</span>
+            <span id="fusionFaceFocusBadge" style="display:none;font-size:10px;padding:0px 5px;border-radius:999px;background:rgba(16,185,129,0.22);color:#6ee7b7;border:1px solid #10b981;font-weight:700;white-space:nowrap;">🎯已聚焦</span>
           </div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_SLOT_0')" style="padding:2px 7px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.18);color:#e9d5ff;cursor:pointer;" title="从内置 1,499 张 CC0 高清 AI 演员正脸库中直接点选一张人脸">👩 CC0脸库(1499)</button>
-            <button type="button" id="btnToggleFusionFaceCrop" onclick="toggleFusionFaceCropMode()" style="display:none;padding:2px 7px;font-size:10.5px;font-weight:700;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="在『聚焦脸部特写』与『全身未裁切原图』之间一键切换">↺ 切回原图</button>
-            <button type="button" onclick="clearFusionSlot(0)" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空</button>
+          <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_SLOT_0', 'portrait')" style="padding:2px 6px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;" title="从内置 1,499 张 CC0 高清演员正脸库点选">👩 脸库(1499)</button>
+            <button type="button" id="btnToggleFusionFaceCrop" onclick="toggleFusionFaceCropMode()" style="display:none;padding:2px 5px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="在『聚焦脸部特写』与『全身未裁切原图』之间一键切换">↺原图</button>
+            <button type="button" onclick="clearFusionSlot(0)" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;" title="清空人脸槽">✕</button>
           </div>
         </div>
-        <label style="position:relative;height:165px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+        <label style="position:relative;height:172px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
           <img id="fusionSlot1Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
-          <div id="fusionSlot1Empty" style="text-align:center;color:#94a3b8;font-size:12px;padding:10px;">
-            <div style="font-size:28px;margin-bottom:4px;">🧑</div>
-            <div style="color:#e9d5ff;font-weight:700;">点击上传【目标人脸/全身照片】</div>
-            <div style="font-size:11px;color:#64748b;margin-top:2px;">传全身照也会自动识别人脸并放大聚焦到脸部特写</div>
+          <div id="fusionSlot1Empty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:8px;">
+            <div style="font-size:26px;margin-bottom:4px;">🧑</div>
+            <div style="color:#e9d5ff;font-weight:800;">点击上传【人脸照片】</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">或点右上角「👩 脸库(1499)」选演员</div>
           </div>
           <input type="file" id="inpFusionSlot1" accept="image/*" style="display:none;" onchange="onFusionSlotFileChange(0, this)">
         </label>
       </div>
 
-      <!-- 框 2 (支持动态 1~N 张自由增删)：👗 上传服装图 + 💃 姿势图 / 🖼️ 上传被换脸照片列表 -->
-      <div id="fusionSlot2Card" style="padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #ec4899;display:flex;flex-direction:column;gap:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span id="fusionSlot2Title" style="font-size:13px;font-weight:800;color:#fbcfe8;">👗 第二步：选服装 + 选姿势 (可同时叠加)</span>
-            <span id="fusionTargetCountBadge" style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(236,72,153,0.2);color:#f9a8d4;font-weight:700;">1 个槽位</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_TARGET', 'costume')" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #f472b6;background:linear-gradient(135deg,rgba(236,72,153,0.28),rgba(168,85,247,0.22));color:#fbcfe8;cursor:pointer;" title="从衣姿库点选 1,407 套真人服装或 1,320 套动漫服装（含 18+ 开关）">👗 选服装(2727套)</button>
-            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_TARGET', 'pose')" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #38bdf8;background:linear-gradient(135deg,rgba(56,189,248,0.25),rgba(99,102,241,0.22));color:#bae6fd;cursor:pointer;" title="从衣姿库点选 288组×5机位=1,440张 姿势动作图，自动与服装合并为 1 张！">💃 选姿势(1440式)</button>
-            <select id="fusionMultiActionMode" onchange="updateFusionRunBtnLabel()" style="display:none;padding:2px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #c084fc;background:#0f172a;color:#e9d5ff;" title="当上传了 2 张以上参考图时的合成方式">
-              <option value="combine" selected>🧩 多图合并为1张 (服装+姿势合为1张)</option>
-              <option value="batch">🗂️ 逐张批量生成 (每张图各出1张成片)</option>
-            </select>
-            <button type="button" onclick="addFusionTargetSlot()" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="增加一个新的照片槽位（支持 2张、3张或任意多张）">➕ 新增槽位</button>
-            <label style="padding:2px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="在文件选择器中一次按住 Command/Shift 勾选多张照片批量导入">
-              📂 批量导入
-              <input type="file" accept="image/*" multiple style="display:none;" onchange="onFusionMultiFilesSelect(this)">
-            </label>
-            <button type="button" onclick="clearAllFusionTargets()" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空</button>
+      <!-- 槽位 ②：👗 服饰穿搭 / 被换脸目标图 (选填) -->
+      <div id="fusionSlot2Card" style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #ec4899;display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
+          <span id="fusionSlot2Title" style="font-size:12.5px;font-weight:900;color:#fbcfe8;white-space:nowrap;">👗 ② 服饰穿搭 <span style="font-size:10.5px;color:#f472b6;font-weight:600;">(选填)</span></span>
+          <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_OUTFIT', 'costume')" style="padding:2px 6px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #f472b6;background:linear-gradient(135deg,rgba(236,72,153,0.28),rgba(168,85,247,0.22));color:#fbcfe8;cursor:pointer;" title="从衣姿库点选 1,407 套真人服装或 1,320 套动漫服装（含 18+ 开关）">👗 服装库(2727)</button>
+            <button type="button" onclick="clearFusionOutfitSlot()" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;" title="清空服饰槽">✕</button>
           </div>
         </div>
-        <!-- 动态照片槽位容器：1张时占满，2~N张时自动并排网格展示，每张均可独立上传、左右拆双图或点 ✕ 删除 -->
-        <div id="fusionTargetCardsGrid" style="display:grid;grid-template-columns:1fr;gap:8px;max-height:190px;overflow-y:auto;padding-right:2px;"></div>
+        <label style="position:relative;height:172px;border-radius:8px;border:1.5px dashed #be185d;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <img id="fusionOutfitImg" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
+          <div id="fusionOutfitEmpty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:8px;">
+            <div style="font-size:26px;margin-bottom:4px;">👗</div>
+            <div style="color:#fbcfe8;font-weight:800;">点击上传【服饰/被换脸照】</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">传真人穿搭照也会自动剥离原模特头脸</div>
+          </div>
+          <input type="file" id="inpFusionOutfit" accept="image/*" style="display:none;" onchange="onFusionDedicatedSlotFileChange(0, this)">
+        </label>
       </div>
 
-      <!-- 框 3：🏞️ 上传场景照片 (在“1. 人脸+服装”与“3. 融入场景”模式下均显示，支持 人脸+服饰+姿势+场景 4合1！) -->
-      <div id="fusionSlot3Card" style="display:flex;padding:10px 12px;border-radius:10px;background:rgba(2,6,23,0.85);border:1px solid #38bdf8;flex-direction:column;gap:6px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span id="fusionSlot3Title" style="font-size:13px;font-weight:800;color:#bae6fd;">🏞️ 第三步：场景环境图 (选填·4合1)</span>
-          <button type="button" onclick="clearFusionSlot(2)" style="padding:2px 8px;font-size:11px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕ 清空</button>
+      <!-- 槽位 ③：💃 姿势动作 (选填) -->
+      <div id="fusionPoseCard" style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #38bdf8;display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
+          <span style="font-size:12.5px;font-weight:900;color:#bae6fd;white-space:nowrap;">💃 ③ 姿势动作 <span style="font-size:10.5px;color:#38bdf8;font-weight:600;">(选填)</span></span>
+          <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_POSE', 'pose')" style="padding:2px 6px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #38bdf8;background:linear-gradient(135deg,rgba(56,189,248,0.26),rgba(99,102,241,0.22));color:#bae6fd;cursor:pointer;" title="从衣姿库点选 288组×5机位=1,440式 姿势动作图">💃 姿势库(1440)</button>
+            <button type="button" onclick="clearFusionPoseSlot()" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;" title="清空姿势槽">✕</button>
+          </div>
         </div>
-        <label style="position:relative;height:165px;border-radius:8px;border:1.5px dashed #0284c7;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+        <label style="position:relative;height:172px;border-radius:8px;border:1.5px dashed #0284c7;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <img id="fusionPoseImg" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
+          <div id="fusionPoseEmpty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:8px;">
+            <div style="font-size:26px;margin-bottom:4px;">💃</div>
+            <div style="color:#bae6fd;font-weight:800;">点击上传【姿势参考图】</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">不传则默认保持②号图原有动作姿势</div>
+          </div>
+          <input type="file" id="inpFusionPose" accept="image/*" style="display:none;" onchange="onFusionDedicatedSlotFileChange(1, this)">
+        </label>
+      </div>
+
+      <!-- 槽位 ④：🏞️ 场景环境 (选填) -->
+      <div id="fusionSlot3Card" style="display:flex;padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #10b981;flex-direction:column;gap:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
+          <span id="fusionSlot3Title" style="font-size:12.5px;font-weight:900;color:#a7f3d0;white-space:nowrap;">🏞️ ④ 场景环境 <span style="font-size:10.5px;color:#34d399;font-weight:600;">(选填)</span></span>
+          <button type="button" onclick="clearFusionSlot(2)" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;" title="清空场景槽">✕</button>
+        </div>
+        <label style="position:relative;height:172px;border-radius:8px;border:1.5px dashed #059669;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
           <img id="fusionSlot3Img" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
-          <div id="fusionSlot3Empty" style="text-align:center;color:#94a3b8;font-size:12px;padding:10px;">
+          <div id="fusionSlot3Empty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:8px;">
             <div style="font-size:26px;margin-bottom:4px;">🏞️</div>
-            <div id="fusionSlot3MainHint" style="color:#bae6fd;font-weight:700;">点击上传【场景环境图】(选填)</div>
-            <div id="fusionSlot3SubHint" style="font-size:10.5px;color:#64748b;margin-top:2px;">不传=纯净背景；传图=人脸+服饰+姿势+场景 4合1</div>
+            <div id="fusionSlot3MainHint" style="color:#a7f3d0;font-weight:800;">点击上传【场景环境图】</div>
+            <div id="fusionSlot3SubHint" style="font-size:10.5px;color:#64748b;margin-top:3px;">不传=纯净棚拍背景；传图=融入实景光影</div>
           </div>
           <input type="file" id="inpFusionSlot3" accept="image/*" style="display:none;" onchange="onFusionSlotFileChange(2, this)">
         </label>
       </div>
     </div>
 
-    <!-- 第 3 步 (仅一行极简操作栏)：一句话补充要求(选填) + 发型选择(默认保留右侧时尚发型) + 画幅(默认自动跟随原图比例) + 🪄 一键开始合成 + 停止 + 锁入短剧角色 -->
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <input type="text" id="fusionPropsActionInput" placeholder="💬 补充要求 (选填，不填即自动合成；也可写如：保留白吊带与高腰牛仔裤坐姿、拿威士忌杯...)" style="flex:1;min-width:210px;padding:8px 12px;font-size:12.5px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
-      <select id="fusionHairModeSelect" style="padding:8px 10px;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid #ec4899;background:#0f172a;color:#fbcfe8;" title="选择合成后使用哪张图的发型">
-        <option value="keep_target_hair" selected>👑 用右侧目标图的发型 (只换脸·推荐)</option>
-        <option value="keep_face_hair">💇 用左侧人脸照的发型 (连头发一起换)</option>
+    <!-- 隐藏兼容节点，确保旧逻辑引用不报错 -->
+    <select id="fusionMultiActionMode" style="display:none;"><option value="combine" selected>combine</option></select>
+    <div id="fusionTargetCardsGrid" style="display:none;"></div>
+
+    <!-- 底部单行紧凑控制栏：补充要求 + 发型模式 + 比例 + 角色定妆 + 一键合成 (全部一行对齐，不换行) -->
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;">
+      <input type="text" id="fusionPropsActionInput" placeholder="💬 补充要求 (选填，不填即自动按上方槽位合成)..." style="flex:1;min-width:140px;padding:7px 10px;font-size:12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;">
+      <select id="fusionHairModeSelect" style="padding:7px 8px;font-size:12px;font-weight:700;border-radius:8px;border:1px solid #ec4899;background:#0f172a;color:#fbcfe8;flex-shrink:0;" title="选择合成后使用哪张图的发型">
+        <option value="keep_face_hair" selected>💇 用①人脸照发型 (连头发一起换)</option>
+        <option value="keep_target_hair">👑 用②目标图发型 (只换脸保原发型)</option>
       </select>
-      <select id="fusionResSelect" style="padding:8px 10px;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid #c084fc;background:#0f172a;color:#f8fafc;">
-        <option value="auto" selected>📐 自动匹配参考图比例 (推荐)</option>
-        <option value="1152x2048">📱 9:16 竖屏写真 (1152×2048)</option>
-        <option value="2048x1152">📺 16:9 横屏剧集 (2048×1152)</option>
-        <option value="3552x4736">🖼️ 3:4 4K超清竖版 (3552×4736)</option>
+      <select id="fusionResSelect" style="padding:7px 8px;font-size:12px;font-weight:700;border-radius:8px;border:1px solid #c084fc;background:#0f172a;color:#f8fafc;flex-shrink:0;">
+        <option value="auto" selected>📐 自动比例</option>
+        <option value="1152x2048">📱 9:16 竖屏 (1152×2048)</option>
+        <option value="2048x1152">📺 16:9 横屏 (2048×1152)</option>
+        <option value="3552x4736">🖼️ 3:4 4K超清 (3552×4736)</option>
       </select>
-      <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="padding:8px 20px;font-size:13.5px;font-weight:900;border-radius:8px;border:none;background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 6px 18px -4px rgba(236,72,153,0.55);white-space:nowrap;">
-        🪄 一键开始合成
-      </button>
-      <button type="button" id="btnStopFusionStudio" onclick="stopFusionBatchGenerate()" style="display:none;padding:8px 14px;font-size:12.5px;font-weight:800;border-radius:8px;border:1px solid #ef4444;background:rgba(239,68,68,0.22);color:#fca5a5;cursor:pointer;white-space:nowrap;">
-        🛑 停止合成
-      </button>
-      <div style="display:flex;align-items:center;gap:4px;background:rgba(15,23,42,0.9);padding:4px 8px;border-radius:8px;border:1px solid rgba(16,185,129,0.4);">
-        <select id="selFusionTargetRole" style="padding:3px 5px;font-size:11.5px;font-weight:700;border-radius:5px;border:1px solid #10b981;background:#020617;color:#a7f3d0;">
+      <div style="display:flex;align-items:center;gap:4px;background:rgba(15,23,42,0.9);padding:4px 7px;border-radius:8px;border:1px solid rgba(16,185,129,0.4);flex-shrink:0;">
+        <select id="selFusionTargetRole" style="padding:3px 4px;font-size:11.5px;font-weight:700;border-radius:5px;border:1px solid #10b981;background:#020617;color:#a7f3d0;">
           <option value="A">角色A</option>
           <option value="B">角色B</option>
           <option value="C">角色C</option>
           <option value="D">角色D</option>
           <option value="E">角色E</option>
         </select>
-        <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:4px 8px;font-size:11.5px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;" title="把生成好的图直接设为短剧对应角色定妆照">📌设为角色定妆</button>
+        <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="padding:3px 7px;font-size:11.5px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把生成好的图直接设为短剧对应角色定妆照">📌设为定妆</button>
       </div>
+      <button type="button" id="btnRunFusionStudio" onclick="startFusionStudioGenerate()" style="padding:7px 16px;font-size:13px;font-weight:900;border-radius:8px;border:none;background:linear-gradient(135deg,#a855f7,#ec4899,#f59e0b);color:#ffffff;cursor:pointer;box-shadow:0 6px 18px -4px rgba(236,72,153,0.55);white-space:nowrap;flex-shrink:0;">
+        🪄 一键开始合成
+      </button>
+      <button type="button" id="btnStopFusionStudio" onclick="stopFusionBatchGenerate()" style="display:none;padding:7px 12px;font-size:12px;font-weight:800;border-radius:8px;border:1px solid #ef4444;background:rgba(239,68,68,0.22);color:#fca5a5;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+        🛑 停止
+      </button>
     </div>
 
     <!-- 角色合成专属实时进度条与状态提示 (绝不跳回 01 标签页) -->
@@ -5117,125 +5138,131 @@ function toggleFusionAdvancedDrawer() {
 function updateFusionRunBtnLabel() {
   const btn = document.getElementById('btnRunFusionStudio');
   if (!btn || fusionBatchRunning) return;
-  const filledCnt = fusionTargetList.filter(Boolean).length;
+  const hasOutfit = Boolean(fusionTargetList[0]);
+  const hasPose = Boolean(fusionTargetList[1]);
   const hasScene = Boolean(fusionSlotsB64[2]);
-  const multiMode = ((document.getElementById('fusionMultiActionMode') || {}).value || 'combine');
-  if (filledCnt >= 2 && multiMode === 'batch') {
-    btn.innerText = `🪄 一键批量合成全部 (共 ${filledCnt} 张)`;
-  } else if (filledCnt >= 2 && multiMode === 'combine') {
-    if (hasScene) {
-      btn.innerText = `🪄 一键四合一合成 (人脸+服饰+姿势+场景 ➔ 1张)`;
-    } else {
-      btn.innerText = `🪄 一键三合一合成 (人脸+服饰+姿势 ➔ 1张)`;
-    }
-  } else if (filledCnt === 1 && hasScene) {
-    btn.innerText = '🪄 一键三合一合成 (人脸+服饰+场景 ➔ 1张)';
+  const labels = ['人脸'];
+  if (hasOutfit) labels.push('服饰');
+  if (hasPose) labels.push('姿势');
+  if (hasScene) labels.push('场景');
+  if (labels.length === 4) {
+    btn.innerText = '🪄 一键四合一合成 (人脸+服饰+姿势+场景)';
+  } else if (labels.length === 3) {
+    btn.innerText = `🪄 一键三合一合成 (${labels.join('+')})`;
+  } else if (labels.length === 2) {
+    btn.innerText = `🪄 一键二合一合成 (${labels.join('+')})`;
   } else {
     btn.innerText = '🪄 一键开始合成';
   }
 }
 
 function renderFusionTargetCards() {
-  const grid = document.getElementById('fusionTargetCardsGrid');
-  const badge = document.getElementById('fusionTargetCountBadge');
-  const multiSel = document.getElementById('fusionMultiActionMode');
-  if (!grid) return;
-  if (!Array.isArray(fusionTargetList) || fusionTargetList.length === 0) {
-    fusionTargetList = [''];
+  if (!Array.isArray(fusionTargetList)) {
+    fusionTargetList = ['', ''];
   }
-  while (fusionTargetSlotKinds.length < fusionTargetList.length) {
+  while (fusionTargetList.length < 2) {
+    fusionTargetList.push('');
+  }
+  while (fusionTargetSlotKinds.length < 2) {
     fusionTargetSlotKinds.push('');
   }
-  const totalSlots = fusionTargetList.length;
-  const filledCnt = fusionTargetList.filter(Boolean).length;
-  if (badge) {
-    badge.innerText = totalSlots > 1 ? `已传 ${filledCnt} / ${totalSlots} 张` : (filledCnt ? '已传 1 张' : '1 个槽位');
+  // 若旧存档中第0槽是姿势、第1槽是服饰，自动归位到 [0=服饰, 1=姿势]
+  if (fusionTargetSlotKinds[0] === 'pose' && fusionTargetSlotKinds[1] !== 'pose') {
+    const tmpImg = fusionTargetList[0];
+    fusionTargetList[0] = fusionTargetList[1] || '';
+    fusionTargetList[1] = tmpImg || '';
+    fusionTargetSlotKinds[0] = 'costume';
+    fusionTargetSlotKinds[1] = 'pose';
   }
-  if (multiSel) {
-    multiSel.style.display = totalSlots >= 2 ? 'inline-block' : 'none';
-  }
-  if (totalSlots === 1) {
-    grid.style.gridTemplateColumns = '1fr';
-  } else if (totalSlots === 2) {
-    grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-  } else {
-    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(155px, 1fr))';
-  }
-  const isSwap = currentFusionSubMode === 'faceswap';
-  const isScene = currentFusionSubMode === 'scenefuse';
-  const cardIcon = isSwap ? '🖼️' : '👗';
-  const cardTitlePrefix = isSwap ? '被换脸图' : '服装/姿势图';
-  const emptyHint = isSwap
-    ? '点击上传【被替换的目标照片】'
-    : (isScene ? '点击上传【服装或姿势图】(可选)' : '点击上传【服装或姿势参考图】');
-  const subHint = totalSlots === 1
-    ? '可点上方「👗 选服装」+「💃 选姿势」自动并排叠加合并为 1 张成片！'
-    : '支持服装+姿势多图合并为 1 张，或点右上角 ✕ 删除此槽位';
+  if (fusionTargetList[0]) fusionTargetSlotKinds[0] = 'costume';
+  if (fusionTargetList[1]) fusionTargetSlotKinds[1] = 'pose';
 
-  grid.innerHTML = fusionTargetList.map((b64, idx) => {
-    const hasImg = Boolean(b64);
-    const kind = fusionTargetSlotKinds[idx] || '';
-    const slotLabel = kind === 'pose'
-      ? `💃 姿势动作图 #${idx + 1}`
-      : (kind === 'costume' ? `👗 服饰穿搭图 #${idx + 1}` : `${cardIcon} ${cardTitlePrefix} #${idx + 1}`);
-    const cardHeight = totalSlots === 1 ? '165px' : '136px';
-    return `
-      <div style="padding:6px 8px;border-radius:8px;background:#0f172a;border:1.5px ${hasImg ? (kind === 'pose' ? 'solid #38bdf8' : 'solid #ec4899') : 'dashed #be185d'};display:flex;flex-direction:column;gap:4px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
-          <span style="font-size:11px;font-weight:800;color:${kind === 'pose' ? '#bae6fd' : '#fbcfe8'};">${slotLabel}</span>
-          <div style="display:flex;align-items:center;gap:3px;">
-            ${hasImg ? `<button type="button" onclick="splitFusionTargetCardLeftRight(${idx})" style="padding:1px 6px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#7dd3fc;cursor:pointer;" title="如果这张图是左右并排的两张照片截图（如推特/小红书双图），点击即可自动左、右一分为二拆成 2 个槽位！">✂️左右拆2张</button>` : ''}
-            <button type="button" onclick="removeFusionTargetSlot(${idx})" style="padding:1px 6px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid rgba(239,68,68,0.5);background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="${totalSlots > 1 ? '删除此照片槽位' : '清空此槽位照片'}">✕</button>
-          </div>
-        </div>
-        <label style="position:relative;height:${cardHeight};border-radius:6px;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
-          ${hasImg
-            ? `<img src="${b64}" style="width:100%;height:100%;object-fit:contain;display:block;">`
-            : `<div style="text-align:center;color:#94a3b8;font-size:11.5px;padding:8px;">
-                <div style="font-size:24px;margin-bottom:2px;">${cardIcon}</div>
-                <div style="color:#fbcfe8;font-weight:700;">${emptyHint} #${idx + 1}</div>
-                <div style="font-size:10px;color:#64748b;margin-top:2px;">${subHint}</div>
-              </div>`
-          }
-          <input type="file" accept="image/*" multiple style="display:none;" onchange="onFusionTargetCardFileChange(${idx}, this)">
-        </label>
-      </div>
-    `;
-  }).join('');
-  fusionSlotsB64[1] = fusionTargetList.find(Boolean) || '';
+  const outImg = document.getElementById('fusionOutfitImg');
+  const outEmp = document.getElementById('fusionOutfitEmpty');
+  if (fusionTargetList[0]) {
+    if (outImg) { outImg.src = fusionTargetList[0]; outImg.style.display = 'block'; }
+    if (outEmp) outEmp.style.display = 'none';
+  } else {
+    if (outImg) { outImg.src = ''; outImg.style.display = 'none'; }
+    if (outEmp) outEmp.style.display = 'block';
+  }
+
+  const poseImg = document.getElementById('fusionPoseImg');
+  const poseEmp = document.getElementById('fusionPoseEmpty');
+  if (fusionTargetList[1]) {
+    if (poseImg) { poseImg.src = fusionTargetList[1]; poseImg.style.display = 'block'; }
+    if (poseEmp) poseEmp.style.display = 'none';
+  } else {
+    if (poseImg) { poseImg.src = ''; poseImg.style.display = 'none'; }
+    if (poseEmp) poseEmp.style.display = 'block';
+  }
+
+  fusionSlotsB64[1] = fusionTargetList[0] || fusionTargetList[1] || '';
   updateFusionRunBtnLabel();
   if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
 }
 
-function addFusionTargetSlot() {
-  fusionTargetList.push('');
-  fusionTargetSlotKinds.push('');
-  renderFusionTargetCards();
-  showGlobalCopyToast(`➕ 已新增「槽位 #${fusionTargetList.length}」！可放入姿势图或配饰图合并生成，也可批量生成`);
+function onFusionDedicatedSlotFileChange(slotIdx, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  if (!file) return;
+  if (slotIdx === 0) {
+    _clearStaleLibraryOutfitPromptOnUpload();
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    while (fusionTargetList.length < 2) fusionTargetList.push('');
+    while (fusionTargetSlotKinds.length < 2) fusionTargetSlotKinds.push('');
+    fusionTargetList[slotIdx] = ev.target.result || '';
+    fusionTargetSlotKinds[slotIdx] = slotIdx === 1 ? 'pose' : 'costume';
+    renderFusionTargetCards();
+  };
+  reader.readAsDataURL(file);
 }
 
-function removeFusionTargetSlot(idx) {
-  if (fusionTargetList.length <= 1) {
-    fusionTargetList = [''];
-    fusionTargetSlotKinds = [''];
-  } else {
-    fusionTargetList.splice(idx, 1);
-    fusionTargetSlotKinds.splice(idx, 1);
+function clearFusionOutfitSlot() {
+  window._lastPosewearOutfitDesc = '';
+  window._lastPosewearOutfitZh = '';
+  fusionTargetList[0] = '';
+  fusionTargetSlotKinds[0] = '';
+  const inp = document.getElementById('inpFusionOutfit');
+  if (inp) inp.value = '';
+  _clearStaleLibraryOutfitPromptOnUpload();
+  renderFusionTargetCards();
+}
+
+function clearFusionPoseSlot() {
+  window._lastPosewearPoseDesc = '';
+  window._lastPosewearPoseZh = '';
+  fusionTargetList[1] = '';
+  fusionTargetSlotKinds[1] = '';
+  const inp = document.getElementById('inpFusionPose');
+  if (inp) inp.value = '';
+  const propInp = document.getElementById('fusionPropsActionInput');
+  if (propInp && propInp.value) {
+    propInp.value = propInp.value.replace(/(\s*＋\s*)?【姿势】[^＋]+/g, '').trim();
   }
   renderFusionTargetCards();
 }
 
-function clearAllFusionTargets() {
-  window._lastPosewearOutfitDesc = '';
-  window._lastPosewearOutfitZh = '';
-  window._lastPosewearPoseDesc = '';
-  window._lastPosewearPoseZh = '';
-  window._isHeadlessCostumeTarget = false;
+function clearAllFourFusionSlots() {
+  clearFusionSlot(0);
+  clearFusionOutfitSlot();
+  clearFusionPoseSlot();
+  clearFusionSlot(2);
   const propInp = document.getElementById('fusionPropsActionInput');
   if (propInp) propInp.value = '';
-  fusionTargetList = [''];
-  fusionTargetSlotKinds = [''];
-  renderFusionTargetCards();
+  showGlobalCopyToast('🗑️ 已清空 ①人脸、②服饰、③姿势、④场景 全部 4 个槽位！');
+}
+
+function addFusionTargetSlot() {}
+function removeFusionTargetSlot(idx) {
+  if (idx === 1) clearFusionPoseSlot();
+  else clearFusionOutfitSlot();
+}
+
+function clearAllFusionTargets() {
+  clearFusionOutfitSlot();
+  clearFusionPoseSlot();
 }
 
 function _clearStaleLibraryOutfitPromptOnUpload() {
@@ -5253,96 +5280,11 @@ function _clearStaleLibraryOutfitPromptOnUpload() {
 }
 
 function onFusionTargetCardFileChange(slotIdx, inputEl) {
-  const files = inputEl && inputEl.files ? Array.from(inputEl.files) : [];
-  if (!files.length) return;
-  _clearStaleLibraryOutfitPromptOnUpload();
-  while (fusionTargetSlotKinds.length < fusionTargetList.length) {
-    fusionTargetSlotKinds.push('');
-  }
-  if (files.length === 1) {
-    const reader = new FileReader();
-    reader.onload = ev => {
-      fusionTargetList[slotIdx] = ev.target.result || '';
-      if (fusionTargetSlotKinds[slotIdx] !== 'pose') {
-        fusionTargetSlotKinds[slotIdx] = 'costume';
-      }
-      const multiSel = document.getElementById('fusionMultiActionMode');
-      if (multiSel && fusionTargetList.filter(Boolean).length >= 2 && currentFusionSubMode !== 'faceswap') {
-        multiSel.value = 'combine';
-      }
-      renderFusionTargetCards();
-    };
-    reader.readAsDataURL(files[0]);
-    return;
-  }
-  // 如果用户在单个卡片里一次框选了多张照片，自动把第 1 张放入当前卡，其余自动追加新卡片！
-  Promise.all(files.map(f => new Promise(res => {
-    const r = new FileReader();
-    r.onload = e => res(e.target.result || '');
-    r.readAsDataURL(f);
-  }))).then(dataUrls => {
-    const valid = dataUrls.filter(Boolean);
-    if (!valid.length) return;
-    fusionTargetList.splice(slotIdx, 1, ...valid);
-    fusionTargetSlotKinds.splice(slotIdx, 1, ...valid.map(() => 'costume'));
-    renderFusionTargetCards();
-    showGlobalCopyToast(`📂 已一次性导入 ${valid.length} 张照片！`);
-  });
+  onFusionDedicatedSlotFileChange(slotIdx, inputEl);
 }
 
-function onFusionMultiFilesSelect(inputEl) {
-  const files = inputEl && inputEl.files ? Array.from(inputEl.files) : [];
-  if (!files.length) return;
-  _clearStaleLibraryOutfitPromptOnUpload();
-  Promise.all(files.map(f => new Promise(res => {
-    const r = new FileReader();
-    r.onload = e => res(e.target.result || '');
-    r.readAsDataURL(f);
-  }))).then(dataUrls => {
-    const valid = dataUrls.filter(Boolean);
-    if (!valid.length) return;
-    const existingFilled = fusionTargetList.filter(Boolean);
-    fusionTargetList = existingFilled.concat(valid);
-    renderFusionTargetCards();
-    showGlobalCopyToast(`📂 已批量导入 ${valid.length} 张照片（当前共 ${fusionTargetList.length} 张）！`);
-  });
-  inputEl.value = '';
-}
-
-function splitFusionTargetCardLeftRight(idx) {
-  const srcB64 = fusionTargetList[idx];
-  if (!srcB64) return;
-  const img = new Image();
-  img.onload = () => {
-    const w = img.naturalWidth || img.width;
-    const h = img.naturalHeight || img.height;
-    if (w < 40 || h < 40) return;
-    // 自动切除社交平台双联截图四周的白边/圆角与中间白缝
-    const topY = Math.floor(h * 0.045);
-    const cropH = Math.floor(h * 0.91);
-    const leftX = Math.floor(w * 0.035);
-    const leftW = Math.floor(w * 0.452);
-    const rightX = Math.ceil(w * 0.513);
-    const rightW = Math.floor(w * 0.452);
-
-    const c1 = document.createElement('canvas');
-    c1.width = leftW;
-    c1.height = cropH;
-    c1.getContext('2d').drawImage(img, leftX, topY, leftW, cropH, 0, 0, leftW, cropH);
-    const leftB64 = c1.toDataURL('image/jpeg', 0.95);
-
-    const c2 = document.createElement('canvas');
-    c2.width = rightW;
-    c2.height = cropH;
-    c2.getContext('2d').drawImage(img, rightX, topY, rightW, cropH, 0, 0, rightW, cropH);
-    const rightB64 = c2.toDataURL('image/jpeg', 0.95);
-
-    fusionTargetList.splice(idx, 1, leftB64, rightB64);
-    renderFusionTargetCards();
-    showGlobalCopyToast('✂️ 已将该左右双联截图拆分为 #1、#2 两张无白边独立竖版照片！点击「🪄 一键批量合成全部」即可一次生成两张');
-  };
-  img.src = srcB64;
-}
+function onFusionMultiFilesSelect(inputEl) {}
+function splitFusionTargetCardLeftRight(idx) {}
 
 function detectImageAspectRes(dataUrl) {
   return new Promise(resolve => {
@@ -5368,57 +5310,7 @@ function detectImageAspectRes(dataUrl) {
 }
 
 function switchFusionSubMode(subMode) {
-  currentFusionSubMode = subMode;
-  try { localStorage.setItem('easycolab_fusion_submode', subMode); } catch (e) {}
-  if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
-  const bTry = document.getElementById('btnFusionModeTryon');
-  const bSwap = document.getElementById('btnFusionModeFaceswap');
-  const bScene = document.getElementById('btnFusionModeScenefuse');
-  const activeStyle = 'padding:6px 14px;font-size:12.5px;font-weight:800;border-radius:8px;border:1.5px solid #c084fc;background:linear-gradient(135deg,#9333ea,#c026d3);color:#ffffff;cursor:pointer;';
-  const idleStyle = 'padding:6px 14px;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;cursor:pointer;';
-  if (bTry) bTry.style.cssText = subMode === 'tryon' ? activeStyle : idleStyle;
-  if (bSwap) bSwap.style.cssText = subMode === 'faceswap' ? activeStyle : idleStyle;
-  if (bScene) bScene.style.cssText = subMode === 'scenefuse' ? activeStyle : idleStyle;
-
-  const grid = document.getElementById('fusionSlotsGrid');
-  const s3Card = document.getElementById('fusionSlot3Card');
-  const s1Title = document.getElementById('fusionSlot1Title');
-  const s2Title = document.getElementById('fusionSlot2Title');
-  const s3Title = document.getElementById('fusionSlot3Title');
-  const s3Main = document.getElementById('fusionSlot3MainHint');
-  const framingSel = document.getElementById('fusionFramingSelect');
-  const lightSel = document.getElementById('fusionLightingSelect');
-  const hairSel = document.getElementById('fusionHairModeSelect');
-
-  if (subMode === 'faceswap') {
-    if (grid) grid.style.gridTemplateColumns = '1fr 1.65fr';
-    if (s3Card) s3Card.style.display = 'none';
-    if (s1Title) s1Title.innerText = '🧑 第一步：上传我的人脸照片';
-    if (s2Title) s2Title.innerText = '🖼️ 第二步：上传被换脸的目标照片 (支持多张)';
-    if (framingSel) framingSel.value = 'keep_target_frame';
-    if (lightSel) lightSel.value = 'keep_target_light';
-    if (hairSel) hairSel.value = 'keep_target_hair';
-  } else if (subMode === 'scenefuse') {
-    if (grid) grid.style.gridTemplateColumns = '0.95fr 1.45fr 0.9fr';
-    if (s3Card) s3Card.style.display = 'flex';
-    if (s1Title) s1Title.innerText = '🧑 第一步：上传人物/人脸照片';
-    if (s2Title) s2Title.innerText = '👗 第二步：选服装 + 选姿势 (可选)';
-    if (s3Title) s3Title.innerText = '🏞️ 第三步：上传场景照片';
-    if (s3Main) s3Main.innerText = '点击上传【场景环境照片】';
-    if (framingSel) framingSel.value = 'keep_target_frame';
-    if (lightSel) lightSel.value = 'clear_35mm_scene';
-    if (hairSel) hairSel.value = 'keep_face_hair';
-  } else {
-    if (grid) grid.style.gridTemplateColumns = '0.95fr 1.45fr 0.9fr';
-    if (s3Card) s3Card.style.display = 'flex';
-    if (s1Title) s1Title.innerText = '🧑 第一步：上传人脸照片';
-    if (s2Title) s2Title.innerText = '👗 第二步：选服装 + 选姿势 (可同时叠加)';
-    if (s3Title) s3Title.innerText = '🏞️ 第三步：场景环境图 (选填·4合1)';
-    if (s3Main) s3Main.innerText = '点击上传【场景环境图】(选填)';
-    if (framingSel) framingSel.value = 'keep_target_frame';
-    if (lightSel) lightSel.value = 'keep_target_light';
-    if (hairSel) hairSel.value = 'keep_face_hair';
-  }
+  currentFusionSubMode = 'tryon';
   renderFusionTargetCards();
 }
 
@@ -8178,8 +8070,9 @@ function renderCc0PortraitGalleryModal() {
   const targetOptsHtml = [
     ...castRoles.map(c => `<option value="${escapeHtmlAttr(c.id)}" ${_cc0ModalState.target === c.id ? 'selected' : ''}>🎬 短剧【角色${escapeHtmlAttr(c.id)}${c.name ? ' · ' + escapeHtmlAttr(c.name) : ''}】(选人像=锁脸定妆；选服装=填入穿搭描述)</option>`),
     `<option value="NEW_ROLE" ${_cc0ModalState.target === 'NEW_ROLE' ? 'selected' : ''}>➕ 新增一个短剧角色并应用</option>`,
-    `<option value="FUSION_SLOT_0" ${_cc0ModalState.target === 'FUSION_SLOT_0' ? 'selected' : ''}>🧑 送入【02 · 角色合成】第一步：人脸照片槽</option>`,
-    `<option value="FUSION_TARGET" ${_cc0ModalState.target === 'FUSION_TARGET' ? 'selected' : ''}>👗 送入【02 · 角色合成】第二步：服装/姿势目标图槽</option>`,
+    `<option value="FUSION_SLOT_0" ${_cc0ModalState.target === 'FUSION_SLOT_0' ? 'selected' : ''}>🧑 送入【02 · 角色合成】① 人脸照片槽</option>`,
+    `<option value="FUSION_OUTFIT" ${(_cc0ModalState.target === 'FUSION_OUTFIT' || _cc0ModalState.target === 'FUSION_TARGET') ? 'selected' : ''}>👗 送入【02 · 角色合成】② 服饰穿搭槽</option>`,
+    `<option value="FUSION_POSE" ${_cc0ModalState.target === 'FUSION_POSE' ? 'selected' : ''}>💃 送入【02 · 角色合成】③ 姿势动作槽</option>`,
   ].join('');
 
   const topMainTabs = [
@@ -8382,58 +8275,23 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
       alert('选用素材失败: ' + ((d && d.error) || '未知错误'));
       return;
     }
-    if (target === 'FUSION_SLOT_0') {
+    if (target === 'FUSION_SLOT_0' || (_cc0ModalState.tab === 'portrait' && (target === 'FUSION_OUTFIT' || target === 'FUSION_POSE' || target === 'FUSION_TARGET'))) {
       if (d.image_b64) {
         await autoDetectAndFocusFaceSlot0(d.image_b64);
       }
       document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
-      showGlobalCopyToast('✅ 已将所选 CC0 高清演员正脸载入【第一步：人脸槽】并自动聚焦五官！');
+      showGlobalCopyToast('✅ 已将所选 CC0 高清演员正脸载入【① 人脸槽】并自动聚焦五官！');
       return;
     }
-    if (target === 'FUSION_TARGET') {
-      const isPosePick = (_cc0ModalState.tab === 'pose');
+    if (target === 'FUSION_TARGET' || target === 'FUSION_OUTFIT' || target === 'FUSION_POSE') {
+      const isPosePick = (_cc0ModalState.tab === 'pose') || (target === 'FUSION_POSE' && _cc0ModalState.tab !== 'costume' && _cc0ModalState.tab !== 'anime');
+      const slotIdx = isPosePick ? 1 : 0;
       const pickKind = isPosePick ? 'pose' : 'costume';
-      while (fusionTargetSlotKinds.length < fusionTargetList.length) {
-        fusionTargetSlotKinds.push('');
-      }
+      while (fusionTargetList.length < 2) fusionTargetList.push('');
+      while (fusionTargetSlotKinds.length < 2) fusionTargetSlotKinds.push('');
       if (d.image_b64) {
-        let targetSlotIdx = -1;
-        // 1. 优先替换同类型槽位 (例如已选过服饰则更新服饰槽，已选过姿势则更新姿势槽)
-        for (let i = 0; i < fusionTargetList.length; i++) {
-          if (fusionTargetSlotKinds[i] === pickKind) {
-            targetSlotIdx = i;
-            break;
-          }
-        }
-        // 2. 否则寻找空白槽位
-        if (targetSlotIdx === -1) {
-          for (let i = 0; i < fusionTargetList.length; i++) {
-            if (!fusionTargetList[i]) {
-              targetSlotIdx = i;
-              break;
-            }
-          }
-        }
-        // 3. 若当前已有不同类型参考图（如 #1 已选了服饰，现在又选了姿势），自动开辟第 2 个槽位并排叠加，绝不覆盖！
-        if (targetSlotIdx === -1) {
-          if (pickKind === 'costume' && fusionTargetSlotKinds[0] === 'pose') {
-            fusionTargetList.unshift(d.image_b64);
-            fusionTargetSlotKinds.unshift('costume');
-            targetSlotIdx = 0;
-          } else {
-            fusionTargetList.push(d.image_b64);
-            fusionTargetSlotKinds.push(pickKind);
-            targetSlotIdx = fusionTargetList.length - 1;
-          }
-        } else {
-          fusionTargetList[targetSlotIdx] = d.image_b64;
-          fusionTargetSlotKinds[targetSlotIdx] = pickKind;
-        }
-        // 当同时存在 2 张以上参考图（如 服饰 + 姿势）时，自动切换为「🧩 多图合并为1张」模式！
-        const multiSel = document.getElementById('fusionMultiActionMode');
-        if (multiSel && fusionTargetList.filter(Boolean).length >= 2) {
-          multiSel.value = 'combine';
-        }
+        fusionTargetList[slotIdx] = d.image_b64;
+        fusionTargetSlotKinds[slotIdx] = pickKind;
         renderFusionTargetCards();
       }
       if (isPosePick) {
@@ -8453,13 +8311,10 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
       if (currentMiniMaxMode !== 'fusion') {
         switchMiniMaxMode('fusion');
       }
-      switchFusionSubMode('tryon');
       const hairSel = document.getElementById('fusionHairModeSelect');
       if (hairSel) hairSel.value = 'keep_face_hair';
       document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
-      const filledCount = fusionTargetList.filter(Boolean).length;
-      const modeTip = filledCount >= 2 ? '（已自动开启 🧩服装+姿势多图合1）' : '';
-      showGlobalCopyToast(`✅ 已载入${isPosePick ? '姿势' : '服饰'}「${(descZh || '').slice(0, 22)}」${modeTip}！`);
+      showGlobalCopyToast(`✅ 已载入至【${isPosePick ? '③ 姿势动作槽' : '② 服饰穿搭槽'}】：「${(descZh || '').slice(0, 22)}」！`);
       return;
     }
     dramaCastPhotoCacheBust = Date.now();
@@ -11966,13 +11821,13 @@ p.wait()
                 req_im = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
                 raw_bytes = urllib.request.urlopen(req_im, timeout=25).read()
 
-                if target in ("FUSION_SLOT_0", "FUSION_TARGET"):
+                if target in ("FUSION_SLOT_0", "FUSION_TARGET", "FUSION_OUTFIT", "FUSION_POSE"):
                     from PIL import Image
                     im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
                     buf = io.BytesIO()
                     im.save(buf, format="JPEG", quality=95)
                     b64_str = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-                    slot_lbl = "第一步：人脸槽" if target == "FUSION_SLOT_0" else "第二步：服装/姿势目标图槽"
+                    slot_lbl = "① 人脸槽" if target == "FUSION_SLOT_0" else ("③ 姿势动作槽" if target == "FUSION_POSE" else "② 服饰穿搭槽")
                     _append_panel_log(f"👗 [衣姿PoseWear库] 已加载高清参考图 #{item_id} 至【02 · 角色合成】{slot_lbl}")
                     self._send_json({"ok": True, "target": target, "id": item_id, "image_b64": b64_str})
                     return
