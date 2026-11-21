@@ -2228,6 +2228,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span id="fusionTargetCountBadge" style="font-size:11px;padding:1px 7px;border-radius:999px;background:rgba(236,72,153,0.2);color:#f9a8d4;font-weight:700;">1 个槽位</span>
           </div>
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_TARGET', 'costume')" style="padding:2px 8px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #f472b6;background:linear-gradient(135deg,rgba(236,72,153,0.25),rgba(168,85,247,0.22));color:#fbcfe8;cursor:pointer;" title="从内置衣姿 PoseWear 库中直接点选 1,407 套真人服装、1,320 套动漫服装或 288×5 多角度姿势图（含 18+ 开关）">👗 服装与姿势库(4160+)</button>
             <select id="fusionMultiActionMode" onchange="updateFusionRunBtnLabel()" style="display:none;padding:2px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #c084fc;background:#0f172a;color:#e9d5ff;" title="当上传了 2 张以上照片时的合成方式">
               <option value="batch" selected>🗂️ 逐张批量生成 (每张图各出1张成片)</option>
               <option value="combine">🧩 多图合并为1张 (如:上衣+下装合为1张)</option>
@@ -2452,7 +2453,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
             <span style="font-size:11px;color:#94a3b8;">点「🎲 抽卡」可随时让云端 AI 捏脸（哪怕不写提示词也可一键二次、三次、无限次抽卡并在 #1~#N 历史抽卡间自由切换），或点「📤 传照」上传锁死</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <button type="button" onclick="openCc0PortraitGalleryModal((dramaCastState && dramaCastState[0] ? dramaCastState[0].id : 'A'))" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #c084fc;background:linear-gradient(135deg,rgba(147,51,234,0.28),rgba(236,72,153,0.22));color:#f3e8ff;cursor:pointer;" title="打开内置 1,499 张 CC0 高清 AI 演员正脸与穿搭造型库（免启动云端 GPU 秒级选角锁脸）">👩 CC0演员脸库 (1499张·免算力秒选)</button>
+            <button type="button" onclick="openCc0PortraitGalleryModal((dramaCastState && dramaCastState[0] ? dramaCastState[0].id : 'A'), 'portrait')" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #c084fc;background:linear-gradient(135deg,rgba(147,51,234,0.28),rgba(236,72,153,0.22));color:#f3e8ff;cursor:pointer;" title="打开内置衣姿 PoseWear 四合一总库：1,499张CC0演员人像 + 1,407套真人服装 + 288×5多角度姿势 + 1,320套动漫服装（含 18+ 开关）">👩 演员脸库·服装·姿势总库 (5600+)</button>
             <button type="button" onclick="copyCharacterGoldenPrompt('', this)" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #f472b6;background:rgba(244,114,182,0.15);color:#fbcfe8;cursor:pointer;">📋 复制【通用5条黄金标准·定妆照生图词】</button>
             <button type="button" onclick="addDramaCastRole()" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;">+ 新增角色 (A/B/C...)</button>
             <button type="button" onclick="clearAllDramaCastRoles()" style="padding:3px 9px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #ef4444;background:rgba(239,68,68,0.14);color:#fca5a5;cursor:pointer;" title="一键清空当前所有角色卡槽（清空后发给外部 AI 时完全由您的故事自由决定角色）">🗑️ 清空全部角色</button>
@@ -7795,140 +7796,200 @@ function previewDramaWorkImage(fileName, titleText, roleId = '') {
   modal.style.display = 'flex';
 }
 
-let _cc0CatalogCache = null;
+let _posewearCatalogCache = {};
 let _cc0ModalState = {
   target: 'A',
-  section: 'face',
-  hair: 'top',
+  tab: 'portrait',
+  cat: 'all',
+  subCat: 'all',
+  q: '',
+  adult: false,
   page: 0,
   shuffledIds: null,
+  poseAngles: {},
 };
+try {
+  _cc0ModalState.adult = localStorage.getItem('easycolab_posewear_adult') === '1';
+} catch (e) {}
 
-const _CC0_HAIR_ZH = {
-  'ショート': '✂️ 短发',
-  'ミディアム': '💇‍♀️ 中发/锁骨发',
-  'セミロング': '👩 中长发',
-  'ロング': '👸 长发',
-};
+const _POSEWEAR_ASSET_HOST = 'https://posewear-assets-96b.pages.dev/';
 
-const _CC0_STYLE_ZH = {
-  '切りっぱなしストレートボブ（前髪なし）': '无刘海齐切直发波波头',
-  '前下がりひし形ショートボブ（黒髪）': '黑发前倾菱形修颜短波波',
-  '耳掛けハンサムショート（前髪なし）': '无刘海挂耳飒爽短发',
-  'くびれショート（襟足長め・シースルーバング）': '空气刘海收颈修颜短发',
-  '丸みショートボブ（シースルーバング・ダークブラウン）': '深棕空气刘海圆润短波波',
-  'ミニボブ（オン眉ぱっつん前髪）': '眉上齐刘海俏皮迷你波波',
-  '韓国風タッセルボブ（サイドバング）': '韩风八字刘海一刀切波波',
-  'マッシュショート（前髪長め）': '长刘海蓬松蘑菇短发',
-  'ミニボブパーマ（くせ毛風）': '自然微卷迷你波波头',
-  'ショートウルフ（ミニウルフ）': '轻盈层次迷你狼尾短发',
-  'ハイトーンミルクティーショートボブ': '浅奶茶色高明度短波波',
-  'ハイライト入り丸みショート': '立体挑染圆润短发',
-  'レイヤーショートボブ（顔まわりレイヤー）': '修饰脸型层次短波波',
-  '内巻きワンカールボブ（ラベンダーアッシュ）': '薰衣草灰紫内扣波波头',
-  '2wayバングのワンカールミディアムボブ': '韩系两用刘海内扣锁骨发',
-  'くるくるハードパーマミディアム': '复古羊毛卷中发',
-  'ぱっつん前髪のミディアムストレート': '齐刘海清纯顺直锁骨发',
-  'バタフライカット（ヘーゼルカラー）': '榛果棕蝶翼层次锁骨发',
-  'バーガンディのシースルーレイヤー': '酒红色空气刘海层次中发',
-  'ミディアムニュアンスパーマ（コテ巻き風）': '慵懒氛围感微卷锁骨发',
-  'ロブレイヤー（ミントベージュ）': '薄荷米棕层次长波波',
-  '切りっぱなし外ハネミディアムボブ': '齐切外翘活力锁骨发',
-  '前下がりミディアムボブ（マロンベージュ）': '栗棕色修颜中长波波',
-  '艶さらストレートミディアムボブ（前髪なし）': '无刘海高光泽顺直锁骨发',
-  '重めミディアムレイヤー（バレイヤージュ）': '渐变挑染厚重感层次中发',
-  '鎖骨丈ミディアムレイヤーボブ（アッシュグレージュ）': '冷灰棕锁骨层次波波',
-  'ウェットヘアの前髪長めショートボブ': '湿发感长刘海时尚短波波',
-  'スパイラルパーマショートボブ（黒髪）': '黑发螺旋微卷短波波',
-  'くびれボブ（インナーカラー）': '挂耳染修颜收腰波波头',
-  'ハイトーンミルクティーグレージュミディアム': '浅奶茶灰棕温柔锁骨发',
-  'ハッシュカット（韓国ヘア）': '韩系高层次羽毛剪',
-  'ミディアムレイヤー内巻きワンカール（まろベージュ）': '柔和米棕内扣层次锁骨发',
-  '外ハネボブ（暗髪）': '深发色俏皮外翘波波头',
-  'ミディアムウルフパーマ': '微卷层次中长狼尾发',
-  '2wayバングの韓国レイヤー': '韩系八字刘海高层次中长发',
-  'シースルーぱっつん前髪のシャギーレイヤー': '空气齐刘海碎发层次中长发',
-  'スパイラルパーマ韓国風セミロング': '韩风螺旋大波浪中长发',
-  'セミロングウルフ（チェリーレッド）': '樱桃红个性层次中长发',
-  'セミロングストレート（前髪あり・暗髪）': '深色齐刘海清纯顺直中长发',
-  'セミロングニュアンスパーマ': '温柔氛围感微卷中长发',
-  'セミロング顔まわりレイヤー（ミルクティーベージュ）': '奶茶米棕修颜层次中长发',
-  'セミロング黒髪ツヤレイヤー': '乌黑亮泽东方气质层次中长发',
-  'ハッシュカット（グレージュ）': '冷灰棕韩系羽毛剪中长发',
-  'ワンカールレイヤーと後れ毛（ショコラブラウン）': '巧克力棕碎发内扣中长发',
-  '斜めバングのエアリーカール': '斜刘海空气感柔卷中长发',
-  'たっぷりレイヤー（ラベンダーグレージュ）': '薰衣草灰棕丰盈层次长发',
-  'ロングウルフ（クラゲヘア）': '水母剪高层次个性长发',
-  'くびれセミロング（透明感カラー）': '透明感发色韩系女神卷中长发',
-  'ハイレイヤー×裾カラー（ブロンド）': '发尾金色渐变高层次长发',
-  'バタフライカット（ミントベージュ・シースルーバング）': '空气刘海薄荷米棕蝴蝶剪长发',
-};
-
-function translateCc0ItemDesc(it) {
-  const hZh = (_CC0_HAIR_ZH[it.hair] || it.hair || '气质发型').replace(/^[^\s]+\s*/, '');
-  const sZh = it.style ? (_CC0_STYLE_ZH[it.style] || it.style) : '';
-  const secZh = it.section === 'styling' ? '时尚穿搭造型' : '标准正脸定妆照';
-  return sZh ? `年轻女性，${sZh}（${hZh}），五官精致立体，${secZh}` : `年轻女性，精致${hZh}，五官立体清透，${secZh}`;
+function _pwUrl(relPath) {
+  if (!relPath) return '';
+  if (relPath.startsWith('http')) return relPath;
+  if (relPath.startsWith('img/')) return `https://ai-portrait-gallery.pages.dev/${relPath}`;
+  return `${_POSEWEAR_ASSET_HOST}${relPath.replace(/^\/+/, '')}`;
 }
 
-async function openCc0PortraitGalleryModal(targetRoleOrSlot = 'A') {
+async function openCc0PortraitGalleryModal(targetRoleOrSlot = 'A', defaultTab = '') {
   _cc0ModalState.target = targetRoleOrSlot || 'A';
+  if (defaultTab) {
+    _cc0ModalState.tab = defaultTab;
+    _cc0ModalState.cat = 'all';
+    _cc0ModalState.subCat = 'all';
+  } else if (targetRoleOrSlot === 'FUSION_TARGET') {
+    if (_cc0ModalState.tab === 'portrait') _cc0ModalState.tab = 'costume';
+  }
   _cc0ModalState.page = 0;
   _cc0ModalState.shuffledIds = null;
   let modal = document.getElementById('cc0PortraitGalleryModal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'cc0PortraitGalleryModal';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:99997;background:rgba(2,6,23,0.88);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:16px;';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:99997;background:rgba(2,6,23,0.88);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:14px;';
     modal.onclick = (ev) => {
       if (ev.target === modal) modal.style.display = 'none';
     };
     document.body.appendChild(modal);
   }
   modal.style.display = 'flex';
-  if (!_cc0CatalogCache) {
-    modal.innerHTML = `<div style="padding:28px 36px;border-radius:14px;background:#0f172a;border:1.5px solid #a855f7;color:#f3e8ff;font-size:14px;font-weight:800;">👩 正在加载 1,499 张 CC0 高清 AI 演员定妆脸库...</div>`;
-    try {
-      const r = await fetch('/api/cc0_portrait_catalog');
-      const d = await r.json();
-      if (d && d.ok && Array.isArray(d.images)) {
-        _cc0CatalogCache = d;
-      } else {
-        modal.innerHTML = `<div style="padding:24px;border-radius:12px;background:#0f172a;border:1px solid #ef4444;color:#fca5a5;">加载演员脸库失败: ${(d && d.error) || '网络异常'} <button onclick="document.getElementById('cc0PortraitGalleryModal').style.display='none'" style="margin-left:12px;padding:4px 10px;">关闭</button></div>`;
-        return;
-      }
-    } catch (e) {
-      modal.innerHTML = `<div style="padding:24px;border-radius:12px;background:#0f172a;border:1px solid #ef4444;color:#fca5a5;">加载演员脸库异常: ${e} <button onclick="document.getElementById('cc0PortraitGalleryModal').style.display='none'" style="margin-left:12px;padding:4px 10px;">关闭</button></div>`;
-      return;
+  await ensurePosewearTabLoaded(_cc0ModalState.tab);
+  renderCc0PortraitGalleryModal();
+}
+
+async function ensurePosewearTabLoaded(tabName) {
+  const t = tabName || 'portrait';
+  if (_posewearCatalogCache[t]) return _posewearCatalogCache[t];
+  const modal = document.getElementById('cc0PortraitGalleryModal');
+  if (modal) {
+    const labelMap = {
+      portrait: '👩 1,499 张 CC0 高清演员人像库',
+      costume: '👗 1,407 套真人服装穿搭库',
+      pose: '💃 288 组 × 5 机位多角度姿势库 (1,440 张)',
+      anime: '🌸 1,320 套动漫/二次元服装库',
+    };
+    modal.innerHTML = `<div style="padding:28px 36px;border-radius:14px;background:#0f172a;border:1.5px solid #a855f7;color:#f3e8ff;font-size:14px;font-weight:800;">⏳ 正在加载衣姿 PoseWear · ${labelMap[t] || t}...</div>`;
+  }
+  try {
+    const r = await fetch(`/api/cc0_portrait_catalog?tab=${encodeURIComponent(t)}`);
+    const d = await r.json();
+    if (d && d.ok && Array.isArray(d.items)) {
+      _posewearCatalogCache[t] = d.items;
+      return d.items;
+    }
+  } catch (e) {}
+  _posewearCatalogCache[t] = [];
+  return [];
+}
+
+async function switchPosewearTab(newTab) {
+  _cc0ModalState.tab = newTab;
+  _cc0ModalState.cat = 'all';
+  _cc0ModalState.subCat = 'all';
+  _cc0ModalState.page = 0;
+  _cc0ModalState.shuffledIds = null;
+  if (newTab === 'costume' || newTab === 'pose' || newTab === 'anime') {
+    if (_cc0ModalState.target === 'FUSION_SLOT_0') {
+      _cc0ModalState.target = 'FUSION_TARGET';
     }
   }
+  await ensurePosewearTabLoaded(newTab);
+  renderCc0PortraitGalleryModal();
+}
+
+function togglePosewearAdultMode() {
+  _cc0ModalState.adult = !_cc0ModalState.adult;
+  try {
+    localStorage.setItem('easycolab_posewear_adult', _cc0ModalState.adult ? '1' : '0');
+  } catch (e) {}
+  _cc0ModalState.page = 0;
+  _cc0ModalState.shuffledIds = null;
+  renderCc0PortraitGalleryModal();
+}
+
+function setPoseCardAngle(itemId, angleIdx) {
+  _cc0ModalState.poseAngles[itemId] = angleIdx;
   renderCc0PortraitGalleryModal();
 }
 
 function renderCc0PortraitGalleryModal() {
   const modal = document.getElementById('cc0PortraitGalleryModal');
-  if (!modal || !_cc0CatalogCache) return;
-  const allImgs = _cc0CatalogCache.images || [];
-  const ranking = (_cc0CatalogCache.ranking && _cc0CatalogCache.ranking.top) ? _cc0CatalogCache.ranking.top : {};
-  const sec = _cc0ModalState.section || 'face';
-  const hair = _cc0ModalState.hair || 'top';
-  const secList = allImgs.filter(x => (x.section || 'face') === sec);
+  if (!modal) return;
+  const tab = _cc0ModalState.tab || 'portrait';
+  const rawItems = _posewearCatalogCache[tab] || [];
+  const allowAdult = Boolean(_cc0ModalState.adult);
+  const adultVisibleItems = rawItems.filter(it => allowAdult || !it.a);
+  const adultHiddenCnt = rawItems.filter(it => it.a).length;
 
-  let filtered = [];
-  if (_cc0ModalState.shuffledIds && _cc0ModalState.shuffledIds.length > 0) {
-    const idMap = new Map(secList.map(x => [x.id, x]));
-    filtered = _cc0ModalState.shuffledIds.map(id => idMap.get(id)).filter(Boolean);
-  } else if (hair === 'top') {
-    const topIds = new Set([...(ranking['総合'] || []), ...(ranking['ショート'] || []), ...(ranking['ミディアム'] || []), ...(ranking['セミロング'] || []), ...(ranking['ロング'] || [])]);
-    const topMatches = secList.filter(x => topIds.has(x.id));
-    filtered = topMatches.length > 0 ? topMatches : secList;
-  } else if (hair === 'all') {
-    filtered = secList;
-  } else {
-    filtered = secList.filter(x => x.hair === hair);
+  let catTabs = [];
+  let subCatTabs = [];
+  if (tab === 'portrait') {
+    catTabs = [
+      {k: 'all', lbl: `✨ 全部 (${adultVisibleItems.length})`},
+      {k: 'sec:正脸', lbl: '👤 纯净正脸定妆 (893)'},
+      {k: 'sec:生活照', lbl: '👗 穿搭与氛围造型 (606)'},
+      {k: 'len:短发', lbl: '✂️ 短发 (727)'},
+      {k: 'len:中长发', lbl: '💇‍♀️ 中发/锁骨发 (376)'},
+      {k: 'len:半长发', lbl: '👩 中长发 (260)'},
+      {k: 'len:长发', lbl: '👸 长发 (136)'},
+    ];
+  } else if (tab === 'costume' || tab === 'anime') {
+    catTabs = [
+      {k: 'all', lbl: `✨ 全部 (${adultVisibleItems.length})`},
+      {k: '春季', lbl: '🌸 春季穿搭'},
+      {k: '夏季', lbl: '☀️ 夏季穿搭'},
+      {k: '秋季', lbl: '🍂 秋季穿搭'},
+      {k: '冬季', lbl: '❄️ 冬季穿搭'},
+      {k: '派对礼服', lbl: '🥂 派对晚礼服'},
+      {k: '泳装', lbl: '🏖️ 泳装度假'},
+    ];
+    if (allowAdult) {
+      catTabs.push({k: '内衣', lbl: '🔞 私房内衣'});
+      catTabs.push({k: '性感', lbl: '🔞 性感魅惑'});
+    }
+  } else if (tab === 'pose') {
+    catTabs = [
+      {k: 'all', lbl: `✨ 全部 (${adultVisibleItems.length}组)`},
+      {k: 'line:全身·标准', lbl: '🧍 全身·标准 (73组)'},
+      {k: 'line:上半身', lbl: '👤 上半身特写 (80组)'},
+    ];
+    if (allowAdult) {
+      catTabs.push({k: 'line:全身·性感', lbl: '🔞 全身·性感 (80组)'});
+      catTabs.push({k: 'line:双人互动', lbl: '🔞 双人亲密互动 (55组)'});
+    }
+    const poseCats = ['站姿', '坐姿', '躺卧', '跪立', '侧坐·鸭子坐', '蹲姿', '前倾', '后仰', '扭身', '可爱'];
+    if (allowAdult) {
+      poseCats.push('跪立·趴姿', '挤胸·乳沟', '性感·大胆', '贴脸', '立位贴身', '正面位', '后入位', '背面坐位', '骑乘位');
+    }
+    subCatTabs = [{k: 'all', lbl: '全部动作'}, ...poseCats.map(c => ({k: c, lbl: c}))];
   }
 
-  const pageSize = 36;
+  const curCat = _cc0ModalState.cat || 'all';
+  const curSubCat = _cc0ModalState.subCat || 'all';
+  const qLow = (_cc0ModalState.q || '').trim().toLowerCase();
+
+  let filtered = adultVisibleItems.filter(it => {
+    if (tab === 'portrait') {
+      if (curCat.startsWith('sec:')) {
+        const wantSec = curCat.slice(4);
+        const itemSec = it.sec || (it.section === 'styling' ? '生活照' : '正脸');
+        if (itemSec !== wantSec) return false;
+      } else if (curCat.startsWith('len:')) {
+        const wantLen = curCat.slice(4);
+        const itemLen = it.len || '';
+        if (itemLen !== wantLen) return false;
+      }
+    } else if (tab === 'costume' || tab === 'anime') {
+      if (curCat !== 'all' && it.cat !== curCat) return false;
+    } else if (tab === 'pose') {
+      if (curCat.startsWith('line:')) {
+        if (it.line !== curCat.slice(5)) return false;
+      }
+      if (curSubCat !== 'all' && it.cat !== curSubCat) return false;
+    }
+    if (qLow) {
+      const hay = `${it.ti || ''} ${it.zh || ''} ${it.en || ''} ${it.kw || ''} ${it.cat || ''} ${it.line || ''} ${it.no || ''} ${it.id || ''}`.toLowerCase();
+      if (!hay.includes(qLow)) return false;
+    }
+    return true;
+  });
+
+  if (_cc0ModalState.shuffledIds && _cc0ModalState.shuffledIds.length > 0) {
+    const idMap = new Map(filtered.map(x => [x.id, x]));
+    filtered = _cc0ModalState.shuffledIds.map(id => idMap.get(id)).filter(Boolean);
+  }
+
+  const pageSize = 30;
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const curPage = Math.max(0, Math.min(totalPages - 1, _cc0ModalState.page || 0));
   const pageItems = filtered.slice(curPage * pageSize, (curPage + 1) * pageSize);
@@ -7937,71 +7998,117 @@ function renderCc0PortraitGalleryModal() {
     ? dramaCastState
     : [{id: 'A', name: '角色A'}, {id: 'B', name: '角色B'}];
   const targetOptsHtml = [
-    ...castRoles.map(c => `<option value="${escapeHtmlAttr(c.id)}" ${_cc0ModalState.target === c.id ? 'selected' : ''}>🎬 锁定为短剧【角色${escapeHtmlAttr(c.id)}${c.name ? ' · ' + escapeHtmlAttr(c.name) : ''}】定妆照 (支持多次选入 #1~#N 对比)</option>`),
-    `<option value="NEW_ROLE" ${_cc0ModalState.target === 'NEW_ROLE' ? 'selected' : ''}>➕ 新增一个短剧角色并锁定此定妆照</option>`,
-    `<option value="FUSION_SLOT_0" ${_cc0ModalState.target === 'FUSION_SLOT_0' ? 'selected' : ''}>🪄 送入【02 · 角色合成】第一步人脸槽 (用于1:1换脸/换装)</option>`,
+    ...castRoles.map(c => `<option value="${escapeHtmlAttr(c.id)}" ${_cc0ModalState.target === c.id ? 'selected' : ''}>🎬 短剧【角色${escapeHtmlAttr(c.id)}${c.name ? ' · ' + escapeHtmlAttr(c.name) : ''}】(选人像=锁脸定妆；选服装=填入穿搭描述)</option>`),
+    `<option value="NEW_ROLE" ${_cc0ModalState.target === 'NEW_ROLE' ? 'selected' : ''}>➕ 新增一个短剧角色并应用</option>`,
+    `<option value="FUSION_SLOT_0" ${_cc0ModalState.target === 'FUSION_SLOT_0' ? 'selected' : ''}>🧑 送入【02 · 角色合成】第一步：人脸照片槽</option>`,
+    `<option value="FUSION_TARGET" ${_cc0ModalState.target === 'FUSION_TARGET' ? 'selected' : ''}>👗 送入【02 · 角色合成】第二步：服装/姿势目标图槽</option>`,
   ].join('');
 
-  const faceCnt = allImgs.filter(x => (x.section || 'face') === 'face').length;
-  const styleCnt = allImgs.filter(x => x.section === 'styling').length;
-
-  const hairTabs = [
-    {k: 'top', lbl: '🔥 热门 Top 精选'},
-    {k: 'all', lbl: `✨ 全部 (${secList.length})`},
-    {k: 'ショート', lbl: '✂️ 短发'},
-    {k: 'ミディアム', lbl: '💇‍♀️ 中发/锁骨发'},
-    {k: 'セミロング', lbl: '👩 中长发'},
-    {k: 'ロング', lbl: '👸 长发'},
+  const topMainTabs = [
+    {k: 'portrait', lbl: '👩 CC0 人像脸库 (1,499)', col: '#10b981'},
+    {k: 'costume', lbl: '👗 真人服装穿搭库 (1,407)', col: '#ec4899'},
+    {k: 'pose', lbl: '💃 5机位多角度姿势库 (288组·1440图)', col: '#38bdf8'},
+    {k: 'anime', lbl: '🌸 动漫服装库 (1,320)', col: '#a855f7'},
   ];
 
   modal.innerHTML = `
-    <div style="max-width:1120px;width:96%;max-height:90vh;background:#0f172a;border:1.5px solid #a855f7;border-radius:14px;padding:14px 16px;box-shadow:0 24px 60px rgba(0,0,0,0.82);display:flex;flex-direction:column;gap:10px;">
-      <!-- 顶部标题 + 目标卡槽选择 + 关闭 -->
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid #334155;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="font-size:15px;font-weight:900;color:#f3e8ff;">👩 CC0 高清 AI 演员定妆脸库 (共 1,499 张 · 免启动云端 GPU 秒级锁脸)</span>
-          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.2);color:#6ee7b7;border:1px solid #10b981;font-weight:700;">CC0 免费商用 · 1122×1402 原图直锁</span>
+    <div style="max-width:1180px;width:96%;max-height:92vh;background:#0f172a;border:1.5px solid #a855f7;border-radius:14px;padding:14px 16px;box-shadow:0 24px 60px rgba(0,0,0,0.85);display:flex;flex-direction:column;gap:9px;">
+      <!-- 第一行：四大主库切换 Tabs + 18+ 成人向开关 + 目标卡槽选择 + 关闭 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid #334155;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          ${topMainTabs.map(t => {
+            const isAct = (tab === t.k);
+            return `<button type="button" onclick="switchPosewearTab('${t.k}')" style="padding:5px 12px;font-size:12px;font-weight:900;border-radius:7px;border:1.5px solid ${isAct ? t.col : '#475569'};background:${isAct ? 'rgba(168,85,247,0.22)' : '#020617'};color:${isAct ? '#ffffff' : '#94a3b8'};cursor:pointer;">${t.lbl}</button>`;
+          }).join('')}
+          <button type="button" onclick="togglePosewearAdultMode()" style="padding:4px 10px;font-size:11px;font-weight:800;border-radius:6px;border:1.5px solid ${allowAdult ? '#ef4444' : '#475569'};background:${allowAdult ? 'rgba(239,68,68,0.24)' : '#020617'};color:${allowAdult ? '#fca5a5' : '#64748b'};cursor:pointer;" title="开启后显示双人亲密互动姿势、性感姿势与私房内衣穿搭 (共 ${adultHiddenCnt} 项)">🔞 18+ 成人/双人互动 ${allowAdult ? '已开启 ✓' : '已隐藏'}</button>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="font-size:11.5px;color:#cbd5e1;font-weight:700;">点击照片选入：</span>
-          <select onchange="_cc0ModalState.target=this.value" style="padding:4px 8px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:#020617;color:#fde68a;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:11px;color:#cbd5e1;font-weight:700;">应用目标：</span>
+          <select onchange="_cc0ModalState.target=this.value" style="padding:4px 8px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #a855f7;background:#020617;color:#fde68a;max-width:310px;">
             ${targetOptsHtml}
           </select>
-          <button type="button" onclick="document.getElementById('cc0PortraitGalleryModal').style.display='none'" style="padding:5px 12px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;">✕ 关闭</button>
+          <button type="button" onclick="document.getElementById('cc0PortraitGalleryModal').style.display='none'" style="padding:5px 11px;font-size:12px;font-weight:800;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;">✕ 关闭</button>
         </div>
       </div>
 
-      <!-- 二级筛选栏：正脸定妆 vs 穿搭氛围 + 发型分类 + 随机换一批 -->
+      <!-- 第二行：分类筛选胶囊 + 搜索框 + 随机换一批 -->
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <button type="button" onclick="_cc0ModalState.section='face';_cc0ModalState.page=0;_cc0ModalState.shuffledIds=null;renderCc0PortraitGalleryModal();" style="padding:4px 11px;font-size:11.5px;font-weight:800;border-radius:6px;border:1.5px solid ${sec === 'face' ? '#10b981' : '#475569'};background:${sec === 'face' ? 'rgba(16,185,129,0.22)' : '#020617'};color:${sec === 'face' ? '#6ee7b7' : '#94a3b8'};cursor:pointer;">👤 纯净正脸定妆 (Face · ${faceCnt}张 · 最适合锁脸/换脸)</button>
-          <button type="button" onclick="_cc0ModalState.section='styling';_cc0ModalState.page=0;_cc0ModalState.shuffledIds=null;renderCc0PortraitGalleryModal();" style="padding:4px 11px;font-size:11.5px;font-weight:800;border-radius:6px;border:1.5px solid ${sec === 'styling' ? '#ec4899' : '#475569'};background:${sec === 'styling' ? 'rgba(236,72,153,0.22)' : '#020617'};color:${sec === 'styling' ? '#fbcfe8' : '#94a3b8'};cursor:pointer;">👗 穿搭与氛围造型 (Styling · ${styleCnt}张)</button>
-        </div>
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-          ${hairTabs.map(t => {
-            const active = (!_cc0ModalState.shuffledIds) && (hair === t.k);
-            return `<button type="button" onclick="_cc0ModalState.hair='${t.k}';_cc0ModalState.page=0;_cc0ModalState.shuffledIds=null;renderCc0PortraitGalleryModal();" style="padding:3px 9px;font-size:11px;font-weight:${active ? '800' : '600'};border-radius:5px;border:1px solid ${active ? '#c084fc' : '#334155'};background:${active ? 'rgba(192,132,252,0.24)' : '#020617'};color:${active ? '#f3e8ff' : '#94a3b8'};cursor:pointer;">${t.lbl}</button>`;
+          ${catTabs.map(t => {
+            const active = (!_cc0ModalState.shuffledIds) && (curCat === t.k);
+            return `<button type="button" onclick="_cc0ModalState.cat='${t.k}';_cc0ModalState.page=0;_cc0ModalState.shuffledIds=null;renderCc0PortraitGalleryModal();" style="padding:3px 9px;font-size:11px;font-weight:${active ? '800' : '600'};border-radius:5px;border:1px solid ${active ? '#c084fc' : '#334155'};background:${active ? 'rgba(192,132,252,0.24)' : '#020617'};color:${active ? '#f3e8ff' : '#94a3b8'};cursor:pointer;">${t.lbl}</button>`;
           }).join('')}
-          <button type="button" onclick="shuffleCc0PortraitGallery()" style="padding:3px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #f59e0b;background:rgba(245,158,11,0.22);color:#fde68a;cursor:pointer;" title="从当前分类随机抽取 36 张新面孔">🎲 随机换一批</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="text" value="${escapeHtmlAttr(_cc0ModalState.q || '')}" oninput="_cc0ModalState.q=this.value;_cc0ModalState.page=0;_cc0ModalState.shuffledIds=null;renderCc0PortraitGalleryModal();" placeholder="🔍 搜中/英文 (如: 礼服 / 牛仔 / 坐姿 / 双人 / 贴脸...)" style="width:225px;padding:4px 8px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;">
+          <button type="button" onclick="shuffleCc0PortraitGallery()" style="padding:4px 10px;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #f59e0b;background:rgba(245,158,11,0.22);color:#fde68a;cursor:pointer;" title="从当前分类随机抽取 30 项">🎲 随机换一批</button>
         </div>
       </div>
 
-      <!-- 演员照片网格 -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:9px;overflow-y:auto;max-height:64vh;padding:4px 2px;">
+      ${subCatTabs.length > 0 ? `
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding-top:2px;">
+        <span style="font-size:10.5px;color:#94a3b8;font-weight:700;">动作细分：</span>
+        ${subCatTabs.map(t => {
+          const active = (curSubCat === t.k);
+          return `<button type="button" onclick="_cc0ModalState.subCat='${t.k}';_cc0ModalState.page=0;_cc0ModalState.shuffledIds=null;renderCc0PortraitGalleryModal();" style="padding:2px 7px;font-size:10.5px;font-weight:${active ? '800' : '600'};border-radius:4px;border:1px solid ${active ? '#38bdf8' : '#334155'};background:${active ? 'rgba(56,189,248,0.22)' : '#020617'};color:${active ? '#7dd3fc' : '#94a3b8'};cursor:pointer;">${t.lbl}</button>`;
+        }).join('')}
+      </div>
+      ` : ''}
+
+      <!-- 第三行：卡片网格 -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(168px, 1fr));gap:9px;overflow-y:auto;max-height:62vh;padding:4px 2px;">
         ${pageItems.map(it => {
-          const thumbUrl = `https://ai-portrait-gallery.pages.dev/${it.thumb}`;
-          const styleZh = it.style ? (_CC0_STYLE_ZH[it.style] || it.style) : ((_CC0_HAIR_ZH[it.hair] || it.hair || '标准定妆').replace(/^[^\s]+\s*/, ''));
-          const hairBadge = _CC0_HAIR_ZH[it.hair] || it.hair || '';
-          const fullDesc = translateCc0ItemDesc(it);
+          const angles = Array.isArray(it.angles) ? it.angles : null;
+          const angIdx = angles ? Math.max(0, Math.min(angles.length - 1, _cc0ModalState.poseAngles[it.id] || 0)) : 0;
+          const curAng = angles ? angles[angIdx] : null;
+          const thumbUrl = _pwUrl(curAng ? curAng.t : (it.t || it.thumb));
+          const fullRel = curAng ? (curAng.o || curAng.i) : (it.o || it.full || it.i);
+          const badgeTxt = tab === 'portrait'
+            ? `${it.sec || (it.section === 'styling' ? '造型' : '正脸')} · ${it.len || it.hair || ''}`
+            : (tab === 'pose' ? `${it.line || ''} · ${it.cat || ''}` : `${it.cat || ''} · ${it.id || ''}`);
+          const titleTxt = it.ti || it.zh || it.id || '';
+          const zhPrompt = curAng ? `${it.zh}，${it.line || ''}，${curAng.zh}视角` : (it.zh || titleTxt);
+          const enPrompt = curAng ? `${it.en}, ${it.lineEn || ''}, ${curAng.en}` : (it.en || '');
+          const angleBarHtml = angles ? `
+            <div style="display:flex;gap:2px;margin-top:2px;">
+              ${angles.map((aObj, aIdx) => {
+                const isA = (aIdx === angIdx);
+                return `<button type="button" onclick="setPoseCardAngle('${escapeHtmlAttr(it.id)}', ${aIdx})" style="flex:1;padding:1px 0;font-size:9.5px;font-weight:${isA ? '800' : '600'};border-radius:3px;border:1px solid ${isA ? '#38bdf8' : '#334155'};background:${isA ? 'rgba(56,189,248,0.28)' : '#0f172a'};color:${isA ? '#bae6fd' : '#94a3b8'};cursor:pointer;">${escapeHtmlAttr(aObj.zh)}</button>`;
+              }).join('')}
+            </div>
+          ` : '';
+
+          let btnsHtml = '';
+          if (tab === 'portrait') {
+            btnsHtml = `<button type="button" onclick="pickCc0PortraitItem('${escapeHtmlAttr(it.id)}', '${escapeHtmlAttr(fullRel)}', '${escapeHtmlAttr(zhPrompt)}', '${escapeHtmlAttr(enPrompt)}', 'portrait', this)" style="width:100%;padding:4px 0;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;">📌 选用此演员</button>`;
+          } else if (tab === 'costume' || tab === 'anime') {
+            btnsHtml = `
+              <div style="display:flex;gap:4px;">
+                <button type="button" onclick="pickCc0PortraitItem('${escapeHtmlAttr(it.id)}', '${escapeHtmlAttr(fullRel)}', '${escapeHtmlAttr(zhPrompt)}', '${escapeHtmlAttr(enPrompt)}', 'fusion_target', this)" style="flex:1.15;padding:4px 0;font-size:10.5px;font-weight:800;border-radius:5px;border:1px solid #ec4899;background:rgba(236,72,153,0.22);color:#fbcfe8;cursor:pointer;" title="将此套服装高清图与提示词载入【02·角色合成】第二步，直接给您的人脸换上此套衣服">🪄 送入换装</button>
+                <button type="button" onclick="applyPosewearPromptOnly('${escapeHtmlAttr(zhPrompt)}', '${escapeHtmlAttr(enPrompt)}', this)" style="flex:1;padding:4px 0;font-size:10.5px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="将此套穿搭的中英文描述填入当前短剧角色描述并复制到剪贴板">📝 用此穿搭词</button>
+              </div>
+            `;
+          } else {
+            btnsHtml = `
+              <div style="display:flex;gap:4px;">
+                <button type="button" onclick="pickCc0PortraitItem('${escapeHtmlAttr(it.id)}', '${escapeHtmlAttr(fullRel)}', '${escapeHtmlAttr(zhPrompt)}', '${escapeHtmlAttr(enPrompt)}', 'fusion_target', this)" style="flex:1.15;padding:4px 0;font-size:10.5px;font-weight:800;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.22);color:#7dd3fc;cursor:pointer;" title="将当前角度的姿势参考图与提示词送入【02·角色合成】第二步目标图槽">🪄 送入目标图</button>
+                <button type="button" onclick="applyPosewearPromptOnly('${escapeHtmlAttr(zhPrompt)}', '${escapeHtmlAttr(enPrompt)}', this)" style="flex:1;padding:4px 0;font-size:10.5px;font-weight:800;border-radius:5px;border:1px solid #f59e0b;background:rgba(245,158,11,0.18);color:#fde68a;cursor:pointer;" title="复制当前姿势与机位角度的中英文提示词">📋 复制姿势词</button>
+              </div>
+            `;
+          }
+
           return `
-            <div style="border-radius:8px;background:#020617;border:1px solid #334155;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;transition:border-color 0.15s;" onmouseover="this.style.borderColor='#c084fc'" onmouseout="this.style.borderColor='#334155'">
+            <div style="border-radius:8px;background:#020617;border:1px solid ${it.a ? 'rgba(239,68,68,0.5)' : '#334155'};overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;transition:border-color 0.15s;" onmouseover="this.style.borderColor='#c084fc'" onmouseout="this.style.borderColor='${it.a ? 'rgba(239,68,68,0.5)' : '#334155'}'">
               <div style="position:relative;width:100%;aspect-ratio:4/5;background:#0f172a;overflow:hidden;">
                 <img src="${thumbUrl}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">
-                <span style="position:absolute;left:5px;top:5px;font-size:9.5px;padding:1px 6px;border-radius:4px;background:rgba(2,6,23,0.78);color:#e9d5ff;font-weight:700;">${escapeHtmlAttr(hairBadge)}</span>
+                <span style="position:absolute;left:5px;top:5px;font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(2,6,23,0.82);color:#e9d5ff;font-weight:700;">${escapeHtmlAttr(badgeTxt)}</span>
+                ${it.a ? `<span style="position:absolute;right:5px;top:5px;font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(220,38,38,0.88);color:#ffffff;font-weight:800;">18+</span>` : ''}
               </div>
-              <div style="padding:6px 7px;display:flex;flex-direction:column;gap:5px;">
-                <div style="font-size:10.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(styleZh)}">${escapeHtmlAttr(styleZh)}</div>
-                <button type="button" onclick="pickCc0PortraitItem('${escapeHtmlAttr(it.id)}', '${escapeHtmlAttr(it.full)}', '${escapeHtmlAttr(fullDesc)}', this)" style="width:100%;padding:4px 0;font-size:11px;font-weight:800;border-radius:5px;border:1px solid #10b981;background:rgba(16,185,129,0.22);color:#6ee7b7;cursor:pointer;">📌 选用此演员</button>
+              <div style="padding:6px 7px;display:flex;flex-direction:column;gap:4px;">
+                <div style="font-size:11px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(zhPrompt)}">${escapeHtmlAttr(titleTxt)}</div>
+                <div style="font-size:9.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtmlAttr(zhPrompt)}">${escapeHtmlAttr(zhPrompt)}</div>
+                ${angleBarHtml}
+                ${btnsHtml}
               </div>
             </div>
           `;
@@ -8010,7 +8117,7 @@ function renderCc0PortraitGalleryModal() {
 
       <!-- 底部分页栏 -->
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-top:6px;border-top:1px solid #334155;font-size:11.5px;color:#94a3b8;">
-        <span>当前筛选共 <b>${filtered.length}</b> 张高清演员照（第 ${curPage + 1} / ${totalPages} 页） · 💡 提示：同一个角色可连续点选多张照片，自动存入该角色的 <b>#1 ~ #N 抽卡记录</b> 随时对比切换！</span>
+        <span>当前分类共 <b>${filtered.length}</b> 项（第 ${curPage + 1} / ${totalPages} 页） · 💡 提示：姿势卡片可直接点击 <b>正面 / 俯拍 / 仰拍 / 侧面 / 背面</b> 实时切换 5 个摄影机位角度！</span>
         <div style="display:flex;align-items:center;gap:6px;">
           <button type="button" ${curPage <= 0 ? 'disabled' : ''} onclick="_cc0ModalState.page=Math.max(0,_cc0ModalState.page-1);renderCc0PortraitGalleryModal();" style="padding:3px 10px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#f8fafc;cursor:pointer;">◀ 上一页</button>
           <button type="button" ${curPage >= totalPages - 1 ? 'disabled' : ''} onclick="_cc0ModalState.page=Math.min(${totalPages - 1},_cc0ModalState.page+1);renderCc0PortraitGalleryModal();" style="padding:3px 10px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#f8fafc;cursor:pointer;">下一页 ▶</button>
@@ -8021,13 +8128,10 @@ function renderCc0PortraitGalleryModal() {
 }
 
 function shuffleCc0PortraitGallery() {
-  if (!_cc0CatalogCache) return;
-  const sec = _cc0ModalState.section || 'face';
-  const hair = _cc0ModalState.hair || 'all';
-  let pool = (_cc0CatalogCache.images || []).filter(x => (x.section || 'face') === sec);
-  if (hair !== 'all' && hair !== 'top') {
-    pool = pool.filter(x => x.hair === hair);
-  }
+  const tab = _cc0ModalState.tab || 'portrait';
+  const rawItems = _posewearCatalogCache[tab] || [];
+  const allowAdult = Boolean(_cc0ModalState.adult);
+  const pool = rawItems.filter(it => allowAdult || !it.a);
   const arr = pool.map(x => x.id);
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -8035,14 +8139,45 @@ function shuffleCc0PortraitGallery() {
     arr[i] = arr[j];
     arr[j] = tmp;
   }
-  _cc0ModalState.shuffledIds = arr.slice(0, 36);
+  _cc0ModalState.shuffledIds = arr.slice(0, 30);
   _cc0ModalState.page = 0;
   renderCc0PortraitGalleryModal();
 }
 
-async function pickCc0PortraitItem(itemId, fullPath, descZh, btnEl) {
+async function applyPosewearPromptOnly(zhPrompt, enPrompt, btnEl) {
+  const target = _cc0ModalState.target || 'A';
+  const combined = enPrompt ? `${zhPrompt} (${enPrompt})` : zhPrompt;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(combined);
+    }
+  } catch (e) {}
+  if (target && target !== 'FUSION_SLOT_0' && target !== 'FUSION_TARGET' && target !== 'NEW_ROLE') {
+    const item = dramaCastState.find(c => c.id === target);
+    if (item) {
+      const baseDesc = (item.desc || '').split('；穿搭/动作参考：')[0].trim();
+      item.desc = baseDesc ? `${baseDesc}；穿搭/动作参考：${zhPrompt}` : zhPrompt;
+      syncCastToWorkflow();
+      renderDramaCastCards();
+    }
+  }
+  const propInp = document.getElementById('fusionPropsActionInput');
+  if (propInp) {
+    propInp.value = zhPrompt;
+  }
+  if (btnEl) {
+    const old = btnEl.innerText;
+    btnEl.innerText = '✅ 已填入&复制';
+    setTimeout(() => { btnEl.innerText = old; }, 1600);
+  }
+  showGlobalCopyToast(`✅ 已复制并填入提示词：「${zhPrompt.slice(0, 28)}...」`);
+}
+
+async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind, btnEl) {
   let target = _cc0ModalState.target || 'A';
-  if (target === 'NEW_ROLE') {
+  if (actionKind === 'fusion_target') {
+    target = 'FUSION_TARGET';
+  } else if (target === 'NEW_ROLE') {
     addDramaCastRole();
     target = dramaCastState[dramaCastState.length - 1].id;
     _cc0ModalState.target = target;
@@ -8061,11 +8196,12 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, btnEl) {
         id: itemId,
         full: fullPath,
         desc_zh: descZh,
+        desc_en: descEn || '',
       }),
     });
     const d = await r.json();
     if (!d || !d.ok) {
-      alert('选用演员照失败: ' + ((d && d.error) || '未知错误'));
+      alert('选用素材失败: ' + ((d && d.error) || '未知错误'));
       return;
     }
     if (target === 'FUSION_SLOT_0') {
@@ -8074,6 +8210,36 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, btnEl) {
       }
       document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
       showGlobalCopyToast('✅ 已将所选 CC0 高清演员正脸载入【第一步：人脸槽】并自动聚焦五官！');
+      return;
+    }
+    if (target === 'FUSION_TARGET') {
+      if (d.image_b64) {
+        let placed = false;
+        for (let i = 0; i < fusionTargetList.length; i++) {
+          if (!fusionTargetList[i]) {
+            fusionTargetList[i] = d.image_b64;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          if (fusionTargetList.length <= 1) {
+            fusionTargetList[0] = d.image_b64;
+          } else {
+            fusionTargetList.push(d.image_b64);
+          }
+        }
+        renderFusionTargetCards();
+      }
+      const propInp = document.getElementById('fusionPropsActionInput');
+      if (propInp && descZh) {
+        propInp.value = descZh;
+      }
+      if (currentMiniMaxMode !== 'fusion') {
+        switchMiniMaxMode('fusion');
+      }
+      document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
+      showGlobalCopyToast(`✅ 已将「${descZh.slice(0, 24)}」高清参考图与提示词载入【02 · 角色合成】第二步！`);
       return;
     }
     dramaCastPhotoCacheBust = Date.now();
@@ -8107,7 +8273,7 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, btnEl) {
     }
     showGlobalCopyToast(`✅ 已将 CC0 演员照选入【角色${target}】（第 ${(d.draw_history || []).length} 抽）！您可继续点选其他演员加入 #1~#N 对比，或直接关闭窗口`);
   } catch (e) {
-    alert('选用演员照异常: ' + e);
+    alert('选用素材异常: ' + e);
   } finally {
     if (btnEl) {
       setTimeout(() => {
@@ -9408,39 +9574,36 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/api/cc0_portrait_catalog"):
-            cache_file = LOCAL_MOVIES_DIR / ".cc0_portrait_catalog_cache.json"
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            tab_kind = (qs.get("tab", ["portrait"])[0] or "portrait").strip().lower()
+            tab_urls = {
+                "portrait": "https://posewear.pages.dev/assets/portraits.0b8834f90f.json",
+                "costume": "https://posewear.pages.dev/assets/costumes.2cee954fb7.json",
+                "pose": "https://posewear.pages.dev/assets/poses.2383bf449f.json",
+                "anime": "https://posewear.pages.dev/assets/anime.5b38cbc858.json",
+            }
+            remote_url = tab_urls.get(tab_kind, tab_urls["portrait"])
+            cache_file = LOCAL_MOVIES_DIR / f".posewear_{tab_kind}_cache.json"
             if cache_file.is_file() and (time.time() - cache_file.stat().st_mtime < 86400 * 7):
                 try:
                     cached = json.loads(cache_file.read_text(encoding="utf-8"))
-                    if isinstance(cached, dict) and cached.get("images"):
-                        self._send_json({"ok": True, **cached})
+                    if isinstance(cached, list) and len(cached) > 0:
+                        self._send_json({"ok": True, "tab": tab_kind, "items": cached})
                         return
                 except Exception:
                     pass
             try:
-                req_img = urllib.request.Request(
-                    "https://ai-portrait-gallery.pages.dev/data/images.js",
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                txt_img = urllib.request.urlopen(req_img, timeout=20).read().decode("utf-8", errors="replace")
-                arr_str = txt_img.split("=", 1)[1].strip().rstrip(";")
-                images_list = json.loads(arr_str)
-
-                req_rk = urllib.request.Request(
-                    "https://ai-portrait-gallery.pages.dev/data/ranking.js",
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                txt_rk = urllib.request.urlopen(req_rk, timeout=15).read().decode("utf-8", errors="replace")
-                rk_str = txt_rk.split("=", 1)[1].strip().rstrip(";")
-                ranking_obj = json.loads(rk_str)
-
-                payload_out = {"images": images_list, "ranking": ranking_obj}
+                req_cat = urllib.request.Request(remote_url, headers={"User-Agent": "Mozilla/5.0"})
+                raw_txt = urllib.request.urlopen(req_cat, timeout=20).read().decode("utf-8", errors="replace")
+                data_obj = json.loads(raw_txt)
+                items_list = data_obj if isinstance(data_obj, list) else (data_obj.get("items") or [])
                 try:
                     LOCAL_MOVIES_DIR.mkdir(parents=True, exist_ok=True)
-                    cache_file.write_text(json.dumps(payload_out, ensure_ascii=False), encoding="utf-8")
+                    cache_file.write_text(json.dumps(items_list, ensure_ascii=False), encoding="utf-8")
                 except Exception:
                     pass
-                self._send_json({"ok": True, **payload_out})
+                self._send_json({"ok": True, "tab": tab_kind, "items": items_list})
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
             return
@@ -11109,21 +11272,27 @@ p.wait()
             item_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(payload.get("id") or "").strip())
             full_rel = str(payload.get("full") or f"img/full/{item_id}.png").strip().lstrip("/")
             desc_zh = str(payload.get("desc_zh") or "年轻女性，五官精致立体，标准定妆照").strip()
-            if not item_id:
-                self._send_json({"ok": False, "error": "缺少演员照片 ID"})
+            if not item_id and not full_rel:
+                self._send_json({"ok": False, "error": "缺少素材 ID 或路径"})
                 return
             try:
-                img_url = f"https://ai-portrait-gallery.pages.dev/{full_rel}"
+                if full_rel.startswith("http"):
+                    img_url = full_rel
+                elif full_rel.startswith("img/"):
+                    img_url = f"https://ai-portrait-gallery.pages.dev/{full_rel}"
+                else:
+                    img_url = f"https://posewear-assets-96b.pages.dev/{full_rel}"
                 req_im = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
                 raw_bytes = urllib.request.urlopen(req_im, timeout=25).read()
 
-                if target == "FUSION_SLOT_0":
+                if target in ("FUSION_SLOT_0", "FUSION_TARGET"):
                     from PIL import Image
                     im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
                     buf = io.BytesIO()
                     im.save(buf, format="JPEG", quality=95)
                     b64_str = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-                    _append_panel_log(f"👩 [CC0演员脸库] 已加载高清正脸 #{item_id} 至【02 · 角色合成】人脸槽")
+                    slot_lbl = "第一步：人脸槽" if target == "FUSION_SLOT_0" else "第二步：服装/姿势目标图槽"
+                    _append_panel_log(f"👗 [衣姿PoseWear库] 已加载高清参考图 #{item_id} 至【02 · 角色合成】{slot_lbl}")
                     self._send_json({"ok": True, "target": target, "id": item_id, "image_b64": b64_str})
                     return
 
