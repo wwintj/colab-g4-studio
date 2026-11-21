@@ -58,8 +58,67 @@ PYTHON_BIN = BASE_DIR / ".venv" / "bin" / "python"
 ENDPOINT_FILE = BASE_DIR / ".colab_endpoint.json"
 CUSTOM_MODELS_FILE = BASE_DIR / ".custom_hf_models.json"
 ACCOUNTS_FILE = BASE_DIR / ".colab_accounts.json"
-LOCAL_MOVIES_DIR = Path.home() / "Movies" / "EasyColab"
+
+
+def _load_configured_local_movies_dir() -> Path:
+    default_p = Path.home() / "Movies" / "EasyColab"
+    try:
+        if ENDPOINT_FILE.is_file():
+            cfg = json.loads(ENDPOINT_FILE.read_text(encoding="utf-8"))
+            raw_dir = str(cfg.get("local_save_dir") or "").strip()
+            if raw_dir:
+                cand = Path(os.path.expanduser(raw_dir)).resolve()
+                cand.mkdir(parents=True, exist_ok=True)
+                return cand
+    except Exception:
+        pass
+    default_p.mkdir(parents=True, exist_ok=True)
+    return default_p
+
+
+def _format_display_save_dir(p: Path) -> str:
+    try:
+        home_s = str(Path.home().resolve())
+        p_s = str(p.resolve())
+        if p_s == home_s:
+            return "~"
+        if p_s.startswith(home_s + "/"):
+            return "~/" + p_s[len(home_s) + 1:]
+        return p_s
+    except Exception:
+        return str(p)
+
+
+LOCAL_MOVIES_DIR = _load_configured_local_movies_dir()
 ELAPSED_META_FILE = LOCAL_MOVIES_DIR / ".elapsed_meta.json"
+
+
+def _set_local_movies_dir(new_dir_str: str) -> Path:
+    global LOCAL_MOVIES_DIR, ELAPSED_META_FILE
+    clean_s = (new_dir_str or "").strip() or "~/Movies/EasyColab"
+    cand = Path(os.path.expanduser(clean_s)).resolve()
+    cand.mkdir(parents=True, exist_ok=True)
+    old_state = LOCAL_MOVIES_DIR / ".ui_workspace_state.json"
+    new_state = cand / ".ui_workspace_state.json"
+    if old_state.is_file() and not new_state.is_file():
+        try:
+            shutil.copy2(old_state, new_state)
+        except Exception:
+            pass
+    LOCAL_MOVIES_DIR = cand
+    ELAPSED_META_FILE = LOCAL_MOVIES_DIR / ".elapsed_meta.json"
+    try:
+        cfg = json.loads(ENDPOINT_FILE.read_text(encoding="utf-8")) if ENDPOINT_FILE.is_file() else {}
+        cfg["local_save_dir"] = str(cand)
+        ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+    cache_dict = globals().get("_LOCAL_THUMB_MEM_CACHE")
+    if isinstance(cache_dict, dict):
+        cache_dict.clear()
+    return cand
+
+
 PANEL_PORT = int(os.environ.get("COLAB_PANEL_PORT", "18080"))
 _HF_TRENDING_CACHE: Dict[str, Any] = {}
 
@@ -115,11 +174,31 @@ def _infer_elapsed_sec(fname: str, mtime: float, meta_map: Dict[str, float]) -> 
 
 def _abbreviate_filename(fname: str) -> str:
     m_sr = re.search(r"_ReCaVSR_([^_]+)_", fname)
-    sr_tag = f"[{m_sr.group(1)}] " if m_sr else ""
-    if len(fname) <= 22:
+    sr_tag = f"[{m_sr.group(1)}] " if m_sr else ("🧬" if "_H3FaceFix" in fname else "")
+    m_seed = re.search(r"seed(\d+)", fname)
+    tail_id = f"#{m_seed.group(1)[-4:]}" if m_seed else ""
+    if not tail_id:
+        m_ts = re.search(r"_(\d{6})(?:_|\.)", fname)
+        tail_id = f"#{m_ts.group(1)[-4:]}" if m_ts else ""
+    low = fname.lower()
+    if low.startswith("minimax_h3_image_edit"):
+        return f"{sr_tag}角色合成 {tail_id}".strip()
+    if low.startswith("minimax_h3_image_t2i"):
+        return f"{sr_tag}4K写真 {tail_id}".strip()
+    if low.startswith("biometric_faceswap"):
+        return f"{sr_tag}极速换脸 {tail_id}".strip()
+    if low.startswith("minimax_h3_fl2va"):
+        return f"{sr_tag}首尾帧视频 {tail_id}".strip()
+    if low.startswith("minimax_h3_t2va"):
+        return f"{sr_tag}文生视频 {tail_id}".strip()
+    if low.startswith("longcat") or "avatar" in low:
+        return f"{sr_tag}数字人视频 {tail_id}".strip()
+    if low.startswith("drama_workflow") or "drama" in low:
+        return f"{sr_tag}短剧成片 {tail_id}".strip()
+    if len(fname) <= 16:
         return sr_tag + fname
     base = re.sub(r"_ReCaVSR_.*$", ".mp4", fname)
-    return f"{sr_tag}{base[:8]}...{base[-8:]}"
+    return f"{sr_tag}{base[:7]}..{base[-6:]}"
 
 
 def _list_local_easycolab_videos() -> List[Dict[str, Any]]:
@@ -166,7 +245,7 @@ def _list_local_easycolab_videos() -> List[Dict[str, Any]]:
             except Exception:
                 continue
             lt = time.localtime(ctime)
-            date_str = f"{lt.tm_year}年{lt.tm_mon}月{lt.tm_mday}日 {lt.tm_hour}:{lt.tm_min:02d}"
+            date_str = f"{lt.tm_mon:02d}-{lt.tm_mday:02d} {lt.tm_hour:02d}:{lt.tm_min:02d}"
             el_sec = _infer_elapsed_sec(p.name, ctime, meta_map)
             items.append({
                 "name": p.name,
@@ -3094,27 +3173,49 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 右卡片：🕒 本地历史 (~/Movies/EasyColab) -->
-    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;min-width:0;overflow:hidden;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:6px;">
+    <!-- 右卡片：🕒 本地历史 (支持自定义默认保存目录) -->
+    <div style="background:#0f172a;border:1px solid var(--border);border-radius:14px;padding:14px 14px 12px 14px;display:flex;flex-direction:column;min-width:0;overflow:hidden;">
+      <style>
+        #mmHistoryList::-webkit-scrollbar { width: 5px; }
+        #mmHistoryList::-webkit-scrollbar-track { background: transparent; }
+        #mmHistoryList::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+        #mmHistoryList::-webkit-scrollbar-thumb:hover { background: #475569; }
+      </style>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:nowrap;">
+        <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
           <span style="color:#3b82f6;font-size:15px;">🕒</span>
           <span style="font-size:14.5px;font-weight:800;color:#f8fafc;">本地历史</span>
           <span id="localHistoryCount" style="font-size:11.5px;color:#94a3b8;">(0)</span>
         </div>
-        <div style="display:flex;align-items:center;gap:4px;">
-          <button type="button" title="导入本机其他视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;font-size:11.5px;font-weight:700;cursor:pointer;padding:3px 9px;border-radius:6px;">＋ 导入视频</button>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+          <button type="button" title="导入本机其他视频到列表中 (支持超分与尾帧续写)" onclick="triggerImportExternalVideo(false)" style="background:rgba(59,130,246,0.14);border:1px solid rgba(59,130,246,0.4);color:#93c5fd;font-size:11.5px;font-weight:700;cursor:pointer;padding:3px 9px;border-radius:6px;white-space:nowrap;">＋ 导入视频</button>
           <button type="button" title="刷新本地历史列表" onclick="loadLocalVideoHistory(false)" style="background:transparent;border:none;color:#94a3b8;font-size:15px;cursor:pointer;padding:2px 6px;border-radius:6px;">↻</button>
         </div>
       </div>
 
-      <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:8px;max-height:515px;overflow-y:auto;padding-right:2px;flex:1;">
+      <div id="mmHistoryList" style="display:flex;flex-direction:column;gap:6px;max-height:515px;overflow-y:auto;padding-right:4px;flex:1;scrollbar-width:thin;scrollbar-color:#334155 transparent;">
         <div style="font-size:12px;color:var(--muted);padding:12px 0;text-align:center;">正在扫描...</div>
       </div>
 
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#64748b;">
-        <span title="~/Movies/EasyColab">📂 ~/Movies/EasyColab</span>
-        <a href="javascript:void(0)" onclick="revealInFinder(true)" style="color:#60a5fa;text-decoration:none;font-weight:600;">打开文件夹 ↗</a>
+      <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:11px;color:#94a3b8;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
+          <span id="localSaveDirDisplay" onclick="toggleLocalSaveDirEditor()" title="点击修改默认保存文件夹（支持外置移动硬盘 / 自定义目录）" style="font-family:'SF Mono',Menlo,monospace;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:1;min-width:0;">📂 ~/Movies/EasyColab</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;">
+            <button type="button" onclick="toggleLocalSaveDirEditor()" style="padding:2px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;cursor:pointer;" title="自定义或更换默认保存文件夹（可改为外置移动硬盘路径）">⚙️ 改目录</button>
+            <a href="javascript:void(0)" onclick="revealInFinder(true)" style="color:#60a5fa;text-decoration:none;font-weight:700;">打开 ↗</a>
+          </div>
+        </div>
+        <div id="localSaveDirEditBox" style="display:none;flex-direction:column;gap:5px;padding:7px 8px;border-radius:7px;background:#020617;border:1px solid #3b82f6;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input type="text" id="inpLocalSaveDirPath" placeholder="如 ~/Movies/EasyColab 或 /Volumes/外置硬盘/EasyColab" style="flex:1;min-width:0;padding:4px 7px;font-size:11px;font-family:'SF Mono',Menlo,monospace;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#f8fafc;">
+            <button type="button" onclick="pickNativeLocalSaveDir()" style="padding:4px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;white-space:nowrap;" title="弹出 macOS 系统原生文件夹选择器">📂 浏览</button>
+          </div>
+          <div style="display:flex;justify-content:flex-end;align-items:center;gap:5px;">
+            <button type="button" onclick="saveCustomLocalSaveDir('~/Movies/EasyColab')" style="padding:2px 7px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">↺ 恢复默认</button>
+            <button type="button" onclick="document.getElementById('localSaveDirEditBox').style.display='none'" style="padding:2px 7px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">取消</button>
+            <button type="button" onclick="saveCustomLocalSaveDir()" style="padding:2px 9px;font-size:10.5px;font-weight:800;border-radius:4px;border:none;background:#3b82f6;color:#ffffff;cursor:pointer;">💾 保存路径</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -6769,12 +6870,98 @@ async function handleExternalVideoImport(inputEl) {
   reader.readAsDataURL(file);
 }
 
+let currentLocalSaveDirFull = '';
+let currentLocalSaveDirDisplay = '~/Movies/EasyColab';
+
+function _updateLocalSaveDirLabels(fullDir, dispDir) {
+  if (fullDir) currentLocalSaveDirFull = fullDir;
+  if (dispDir) currentLocalSaveDirDisplay = dispDir;
+  const lbl = document.getElementById('localSaveDirDisplay');
+  if (lbl) {
+    lbl.innerText = `📂 ${currentLocalSaveDirDisplay}`;
+    lbl.title = `当前默认保存目录：${currentLocalSaveDirFull || currentLocalSaveDirDisplay}（点击可修改路径）`;
+  }
+  const inp = document.getElementById('inpLocalSaveDirPath');
+  if (inp && document.activeElement !== inp) {
+    inp.value = currentLocalSaveDirDisplay;
+  }
+}
+
+function toggleLocalSaveDirEditor() {
+  const box = document.getElementById('localSaveDirEditBox');
+  if (!box) return;
+  const show = box.style.display === 'none';
+  box.style.display = show ? 'flex' : 'none';
+  if (show) {
+    const inp = document.getElementById('inpLocalSaveDirPath');
+    if (inp) {
+      inp.value = currentLocalSaveDirDisplay || currentLocalSaveDirFull || '~/Movies/EasyColab';
+      inp.focus();
+      inp.select();
+    }
+  }
+}
+
+async function pickNativeLocalSaveDir() {
+  try {
+    const r = await fetch('/api/set_local_save_dir', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pick_native: true}),
+    });
+    const d = await r.json();
+    if (d && d.cancelled) return;
+    if (!d || !d.ok) {
+      alert('选择文件夹失败: ' + ((d && d.error) || '未知错误'));
+      return;
+    }
+    _updateLocalSaveDirLabels(d.dir, d.display_dir);
+    const box = document.getElementById('localSaveDirEditBox');
+    if (box) box.style.display = 'none';
+    showGlobalCopyToast(`✅ 默认保存文件夹已更改为：${d.display_dir || d.dir}`);
+    await loadLocalVideoHistory(true);
+  } catch (e) {
+    alert('请求系统文件夹选择器失败: ' + e);
+  }
+}
+
+async function saveCustomLocalSaveDir(overridePath = '') {
+  const inp = document.getElementById('inpLocalSaveDirPath');
+  const targetPath = (overridePath || (inp ? inp.value : '') || '').trim();
+  if (!targetPath) {
+    alert('请输入有效的文件夹路径（如 ~/Movies/EasyColab 或 /Volumes/外置盘/EasyColab）');
+    return;
+  }
+  try {
+    const r = await fetch('/api/set_local_save_dir', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: targetPath}),
+    });
+    const d = await r.json();
+    if (!d || !d.ok) {
+      alert('保存文件夹路径失败: ' + ((d && d.error) || '未知错误'));
+      return;
+    }
+    _updateLocalSaveDirLabels(d.dir, d.display_dir);
+    const box = document.getElementById('localSaveDirEditBox');
+    if (box) box.style.display = 'none';
+    showGlobalCopyToast(`✅ 默认保存文件夹已更改为：${d.display_dir || d.dir}`);
+    await loadLocalVideoHistory(true);
+  } catch (e) {
+    alert('修改保存路径异常: ' + e);
+  }
+}
+
 async function loadLocalVideoHistory(autoSelectFirst = false) {
   const hBox = document.getElementById('mmHistoryList');
   const cntEl = document.getElementById('localHistoryCount');
   try {
     const r = await fetch('/api/local_videos');
     const d = await r.json();
+    if (d && (d.dir || d.display_dir)) {
+      _updateLocalSaveDirLabels(d.dir || '', d.display_dir || d.dir || '');
+    }
     localHistoryItems = (d && Array.isArray(d.items)) ? d.items : [];
     if (cntEl) cntEl.innerText = `(${localHistoryItems.length})`;
     renderLocalHistoryList();
@@ -6810,7 +6997,7 @@ function renderLocalHistoryList() {
   const hBox = document.getElementById('mmHistoryList');
   if (!hBox) return;
   if (!localHistoryItems.length) {
-    hBox.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:24px 0;text-align:center;">暂无本地视频记录</div>`;
+    hBox.innerHTML = `<div style="font-size:12px;color:var(--muted);padding:24px 0;text-align:center;">当前文件夹下暂无图片或视频记录</div>`;
     return;
   }
   hBox.innerHTML = localHistoryItems.map((it, idx) => {
@@ -6823,28 +7010,28 @@ function renderLocalHistoryList() {
     const badgeBg = active ? 'rgba(59,130,246,0.28)' : '#1e293b';
     const badgeColor = active ? '#60a5fa' : '#94a3b8';
     const shortBadge = it.elapsed_short
-      ? `<span style="background:${badgeBg};color:${badgeColor};padding:2px 7px;border-radius:999px;font-size:11px;font-weight:700;flex-shrink:0;">${escapeHtml(it.elapsed_short)}</span>`
+      ? `<span style="background:${badgeBg};color:${badgeColor};padding:2px 6px;border-radius:999px;font-size:10.5px;font-weight:700;flex-shrink:0;white-space:nowrap;">${escapeHtml(it.elapsed_short)}</span>`
       : '';
     const srAction = isImgFile
-      ? `<button type="button" title="一键将该照片送入 LongCat 数字人开口说话" onclick="event.stopPropagation();selectLocalHistoryItem(${idx});sendCurrentImageToAvatar()" style="background:rgba(16,185,129,0.18);color:#6ee7b7;border:1px solid rgba(16,185,129,0.45);padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;flex-shrink:0;">🎭数字人</button>`
+      ? `<button type="button" title="一键将该照片送入 LongCat 数字人开口说话" onclick="event.stopPropagation();selectLocalHistoryItem(${idx});sendCurrentImageToAvatar()" style="background:rgba(16,185,129,0.18);color:#6ee7b7;border:1px solid rgba(16,185,129,0.45);padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">🎭数字人</button>`
       : (isSr
-        ? `<span style="background:rgba(139,92,246,0.22);color:#c4b5fd;border:1px solid rgba(139,92,246,0.45);padding:1px 6px;border-radius:6px;font-size:10.5px;font-weight:800;flex-shrink:0;">✨超清</span>`
-        : `<button type="button" title="使用 ReCaVSR 将该视频超分至 2K 超清" onclick="event.stopPropagation();upscaleVideoByName('${escapeHtml(it.name)}')" style="background:rgba(139,92,246,0.16);color:#c4b5fd;border:1px solid rgba(139,92,246,0.42);padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;flex-shrink:0;">✨2K</button>`);
+        ? `<span style="background:rgba(139,92,246,0.22);color:#c4b5fd;border:1px solid rgba(139,92,246,0.45);padding:1px 5px;border-radius:6px;font-size:10px;font-weight:800;flex-shrink:0;white-space:nowrap;">✨超清</span>`
+        : `<button type="button" title="使用 ReCaVSR 将该视频超分至 2K 超清" onclick="event.stopPropagation();upscaleVideoByName('${escapeHtml(it.name)}')" style="background:rgba(139,92,246,0.16);color:#c4b5fd;border:1px solid rgba(139,92,246,0.42);padding:2px 6px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;white-space:nowrap;">✨2K</button>`);
     const thumbBorder = active ? '1.5px solid #60a5fa' : '1px solid rgba(148,163,184,0.28)';
     const thumbUrl = `/api/local_video_thumb?name=${encodeURIComponent(it.name)}&v=${encodeURIComponent(it.size_mb || '')}`;
     return `
-      <div onclick="selectLocalHistoryItem(${idx})" style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:7px 9px;border-radius:10px;background:${rowBg};border:${rowBorder};cursor:pointer;transition:all 0.12s;">
-        <div style="display:flex;align-items:center;gap:9px;min-width:0;flex:1;">
-          <div style="width:40px;height:48px;border-radius:7px;overflow:hidden;border:${thumbBorder};background:#020617;position:relative;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,0.45);">
+      <div onclick="selectLocalHistoryItem(${idx})" style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 8px;border-radius:10px;background:${rowBg};border:${rowBorder};cursor:pointer;transition:all 0.12s;">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+          <div style="width:38px;height:46px;border-radius:7px;overflow:hidden;border:${thumbBorder};background:#020617;position:relative;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,0.45);">
             <img loading="lazy" src="${thumbUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">
             <span style="position:absolute;bottom:1px;right:1px;font-size:9px;line-height:1;padding:1px 2px;border-radius:3px;background:rgba(2,6,23,0.78);color:${iconColor};">${isImgFile ? '🖼️' : '▶️'}</span>
           </div>
-          <div style="min-width:0;">
-            <div style="font-size:12.5px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}">${escapeHtml(it.short_name || it.name)}</div>
-            <div style="font-size:11px;color:#94a3b8;margin-top:2px;">${escapeHtml(it.date_str || '')}</div>
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:12px;font-weight:700;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(it.name)}">${escapeHtml(it.short_name || it.name)}</div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(it.date_str || '')}</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
           ${srAction}
           ${shortBadge}
         </div>
@@ -10491,6 +10678,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             self._send_json({
                 "ok": True,
                 "dir": str(LOCAL_MOVIES_DIR),
+                "display_dir": _format_display_save_dir(LOCAL_MOVIES_DIR),
                 "items": _list_local_easycolab_videos(),
             })
             return
@@ -12073,6 +12261,40 @@ p.wait()
                     "face_found": True,
                     "was_distant": was_distant,
                     "face_b64": out_b64,
+                })
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/set_local_save_dir":
+            try:
+                raw_path = str(payload.get("path") or "").strip()
+                if payload.get("pick_native"):
+                    proc = subprocess.run(
+                        [
+                            "osascript",
+                            "-e",
+                            'POSIX path of (choose folder with prompt "请选择 EasyColab 默认保存文件夹（支持外置移动硬盘 / 自定义目录）：")',
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    if proc.returncode != 0 or not proc.stdout.strip():
+                        self._send_json({"ok": False, "cancelled": True})
+                        return
+                    raw_path = proc.stdout.strip()
+                if not raw_path:
+                    self._send_json({"ok": False, "error": "请输入有效的文件夹路径"})
+                    return
+                new_p = _set_local_movies_dir(raw_path)
+                disp_p = _format_display_save_dir(new_p)
+                _append_panel_log(f"📂 [本地保存目录] 已切换默认保存文件夹 → {disp_p} ({new_p})")
+                self._send_json({
+                    "ok": True,
+                    "dir": str(new_p),
+                    "display_dir": disp_p,
+                    "items": _list_local_easycolab_videos(),
                 })
             except Exception as e:
                 self._send_json({"ok": False, "error": str(e)})
