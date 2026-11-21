@@ -2835,24 +2835,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span style="color:#3b82f6;">☰</span>
         <span id="promptSectionTitle">镜头与多模态提示词</span>
       </div>
-      <div id="fourBoxActionBtns" style="display:flex;align-items:center;gap:8px;">
-        <button type="button" class="btn-outline" style="padding:4px 12px;font-size:12px;border-color:#3b82f6;color:#93c5fd;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 结果填入四框</button>
-        <button type="button" class="btn-outline" style="padding:4px 12px;font-size:12px;border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
+      <div id="fourBoxActionBtns" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <label title="开启后：生成视频时自动将您的提示词编译为 MiniMax-H3 官方六段式结构 (subject_definitions + retention_analysis: fully_preserved + detailed_description)，显著增强跨帧锁脸与防变形能力" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.45);padding:4px 10px;border-radius:7px;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="chkAutoH3SixSection" checked style="width:13px;height:13px;accent-color:#10b981;cursor:pointer;">
+          <span>📜 自动H3六段式防崩编译</span>
+        </label>
+        <button type="button" onclick="compileCurrentVideoPromptToH3SixSection(true)" style="padding:4px 10px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;" title="立即将当前输入框内容转换为 MiniMax-H3 官方原生六段式结构并预览">🪄 转为H3六段式</button>
+        <button type="button" class="btn-outline" style="padding:4px 11px;font-size:11.5px;border-color:#3b82f6;color:#93c5fd;" onclick="copyChatToVideoPrompt()">📋 从上方 Qwen3.8 结果填入四框</button>
+        <button type="button" class="btn-outline" style="padding:4px 11px;font-size:11.5px;border-color:rgba(239,68,68,0.45);color:#fca5a5;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
       </div>
     </div>
 
     <!-- 框 1 (单独一行)：主体、构图、光影与风格描述 -->
     <div id="videoPromptBox1Wrap" style="margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <label id="videoPromptBox1Label" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">1. 主体、构图、光影与风格描述</label>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <label title="开启后：生成视频时自动将您的提示词编译为 MiniMax-H3 官方六段式结构 (subject_definitions + retention_analysis: fully_preserved + detailed_description)，显著增强跨帧锁脸与防变形能力" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#6ee7b7;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.42);padding:2px 8px;border-radius:6px;cursor:pointer;user-select:none;">
-            <input type="checkbox" id="chkAutoH3SixSection" checked style="width:12.5px;height:12.5px;accent-color:#10b981;cursor:pointer;">
-            <span>📜 自动H3六段式锁脸防崩编译</span>
-          </label>
-          <button type="button" onclick="compileCurrentVideoPromptToH3SixSection(true)" style="padding:2px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;" title="立即将当前输入框内容转换为 MiniMax-H3 官方原生六段式结构并预览">🪄 一键转为H3六段式</button>
-          <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
-        </div>
+        <button type="button" onclick="clearSingleVideoPrompt('videoPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
       <textarea id="videoPrompt" rows="4" oninput="autoSplitAvatarPromptAndTts(this)" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;">Masterpiece Makoto Shinkai anime style, 2D cel-shaded animation. A teenage girl in a Japanese sailor school uniform standing at a sunlit railway crossing in late spring. A green commuter train speeds past in front of her, creating a strong gust of wind that blows her long black hair and a flurry of pink cherry blossom petals across the frame. Dramatic lens flare, glowing cumulous clouds in a deep blue sky, vibrant cinematic lighting, smooth 24fps keyframe animation.</textarea>
     </div>
