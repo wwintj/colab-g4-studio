@@ -2989,7 +2989,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">2. 环境音效与台词对白（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoSoundPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoSoundPrompt" rows="2" oninput="if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="例如：雨滴敲击声、脚步踩水声、角色台词对白..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+      <textarea id="videoSoundPrompt" rows="3" oninput="if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="例如：雨滴敲击声、脚步踩水声、角色台词对白..." style="width:100%;min-height:76px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 3 (单独一行)：背景音乐风格（可选） -->
@@ -2998,21 +2998,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <label style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;">3. 背景音乐风格（可选）</label>
         <button type="button" onclick="clearSingleVideoPrompt('videoMusicPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
-      <textarea id="videoMusicPrompt" rows="2" oninput="if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="例如：抒情独奏钢琴、赛博朋克合成器电子乐、恢弘管弦乐..." style="width:100%;min-height:68px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+      <textarea id="videoMusicPrompt" rows="3" oninput="if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="例如：抒情独奏钢琴、赛博朋克合成器电子乐、恢弘管弦乐..." style="width:100%;min-height:76px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
     </div>
 
     <!-- 框 4 (单独一行)：反向提示词 Negative Prompt（可选，排除低质或多余元素） -->
     <div id="videoNegBoxWrap">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <div onclick="toggleNegPromptBox()" style="font-size:12.5px;font-weight:700;color:#94a3b8;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;">
-          <span id="negArrowIcon">⌄</span>
+        <label onclick="toggleNegPromptBox()" style="font-size:12.5px;font-weight:700;color:#94a3b8;margin:0;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:6px;">
           <span>4. 反向提示词 Negative Prompt（可选，排除低质或多余元素）</span>
-        </div>
+          <span id="negArrowIcon" style="font-size:11px;color:#64748b;">▾</span>
+        </label>
         <button type="button" onclick="clearSingleVideoPrompt('videoNegPrompt')" style="padding:2px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border);background:transparent;color:#94a3b8;cursor:pointer;" onmouseover="this.style.color='#fca5a5';this.style.borderColor='rgba(239,68,68,0.45)'" onmouseout="this.style.color='#94a3b8';this.style.borderColor='var(--border)'">✕ 清空</button>
       </div>
       <div id="negPromptWrap">
-        <label style="font-size:11.5px;color:#64748b;display:block;margin-bottom:5px;">反向排除项</label>
-        <textarea id="videoNegPrompt" rows="2" placeholder="例如：low quality, blurry, watermark, text, deformed, bad anatomy, extra limbs, static frame..." style="width:100%;min-height:62px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+        <textarea id="videoNegPrompt" rows="3" placeholder="例如：low quality, blurry, watermark, text, deformed, bad anatomy, extra limbs, static frame..." style="width:100%;min-height:76px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
       </div>
     </div>
   </div>
@@ -5061,7 +5060,7 @@ function toggleNegPromptBox() {
   if (!wrap) return;
   const hidden = wrap.style.display === 'none';
   wrap.style.display = hidden ? 'block' : 'none';
-  if (icon) icon.innerText = hidden ? '⌄' : '›';
+  if (icon) icon.innerText = hidden ? '▾' : '▸';
 }
 
 function onFramesSliderChange(val) {
