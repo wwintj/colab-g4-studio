@@ -2361,6 +2361,84 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- 🎬 女性人像提示词导演 模态弹窗 (20 摄影 Route × 7 气质 Overlay · 0 延迟五段式锁参生成) -->
+<div id="portraitDirectorModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:10010;background:rgba(2,6,23,0.84);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:18px;">
+  <div style="width:100%;max-width:960px;max-height:92vh;overflow-y:auto;background:#1e293b;border:1.5px solid rgba(236,72,153,0.52);border-radius:16px;padding:18px 20px;box-shadow:0 28px 60px -12px rgba(0,0,0,0.78);color:#f8fafc;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:16px;font-weight:900;color:#f8fafc;">🎬 人像提示词导演</span>
+        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(236,72,153,0.16);border:1px solid rgba(236,72,153,0.45);color:#fbcfe8;">20 专业摄影 Route × 7 气质 Overlay · 0延迟五段式</span>
+        <span id="fpdRefLockBadge" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.45);color:#6ee7b7;">🎨 纯文生 4K 模式</span>
+      </div>
+      <button type="button" onclick="document.getElementById('portraitDirectorModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 关闭</button>
+    </div>
+
+    <!-- 1. 风格分类筛选 + 20 Route 卡片 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <span style="font-size:12px;font-weight:800;color:#cbd5e1;">① 选择单一视觉主风格 Route（防止多风格堆叠串味）：</span>
+      <div id="fpdCategoryTabs" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+        <button type="button" class="fpd-cat-btn" data-cat="all" onclick="selectFpdCategory('all')" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid #ec4899;background:rgba(236,72,153,0.22);color:#fbcfe8;font-size:11px;font-weight:800;cursor:pointer;">全部 (20)</button>
+        <button type="button" class="fpd-cat-btn" data-cat="curve" onclick="selectFpdCategory('curve')" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">✨ CCD曲线 (5)</button>
+        <button type="button" class="fpd-cat-btn" data-cat="lifestyle" onclick="selectFpdCategory('lifestyle')" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">🌿 生活氛围 (4)</button>
+        <button type="button" class="fpd-cat-btn" data-cat="gufeng" onclick="selectFpdCategory('gufeng')" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">👘 古风东方 (5)</button>
+        <button type="button" class="fpd-cat-btn" data-cat="fashion" onclick="selectFpdCategory('fashion')" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">👠 时尚商业 (4)</button>
+        <button type="button" class="fpd-cat-btn" data-cat="realism" onclick="selectFpdCategory('realism')" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">🎞️ 写实电影 (2)</button>
+      </div>
+    </div>
+    <div id="fpdRouteGrid" style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:7px;max-height:210px;overflow-y:auto;padding:2px;margin-bottom:12px;"></div>
+
+    <!-- 2. 7 种人物气质叠加层 Overlay -->
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:800;color:#cbd5e1;margin-bottom:6px;">② 叠加人物气质 Overlay（可选 · 不覆盖主风格，只增强眼神与气场）：</div>
+      <div id="fpdOverlayRow" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"></div>
+    </div>
+
+    <!-- 3. 参数锁定区（全部选填，留空用 Route 导演默认瞬间；填了则严格锁定优先保留） -->
+    <div style="padding:10px 12px;border-radius:10px;background:#0f172a;border:1px solid #334155;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-size:12px;font-weight:800;color:#93c5fd;">③ 导演参数锁定（选填 · 你写的内容最高优先级保留，其余光影/镜头/肤质自动补全）</span>
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+          <span style="font-size:11px;color:#94a3b8;font-weight:700;">画幅：</span>
+          <button type="button" class="fpd-ratio-btn" data-ratio="keep" onclick="selectFpdRatio('keep')" style="height:22px;padding:0 7px;border-radius:5px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;font-size:11px;font-weight:700;cursor:pointer;">跟随当前</button>
+          <button type="button" class="fpd-ratio-btn" data-ratio="3552x4736" onclick="selectFpdRatio('3552x4736')" style="height:22px;padding:0 7px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:600;cursor:pointer;">3:4 人像</button>
+          <button type="button" class="fpd-ratio-btn" data-ratio="3072x5472" onclick="selectFpdRatio('3072x5472')" style="height:22px;padding:0 7px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:600;cursor:pointer;">9:16 竖屏</button>
+          <button type="button" class="fpd-ratio-btn" data-ratio="5472x3072" onclick="selectFpdRatio('5472x3072')" style="height:22px;padding:0 7px;border-radius:5px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:11px;font-weight:600;cursor:pointer;">16:9 电影</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:8px;">
+        <input type="text" id="fpdUserMoment" oninput="renderFpdPreview()" placeholder="核心动作/状态（如：雨后回眸微微笑着整理发丝，留空用默认）" style="height:32px;padding:0 9px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#f8fafc;font-size:12px;">
+        <input type="text" id="fpdUserOutfit" oninput="renderFpdPreview()" placeholder="服装穿搭（如：米白修身针织开衫，留空用默认/参考图②）" style="height:32px;padding:0 9px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#f8fafc;font-size:12px;">
+        <input type="text" id="fpdUserScene" oninput="renderFpdPreview()" placeholder="场景环境（如：午后靠窗咖啡馆，留空用默认/参考图④）" style="height:32px;padding:0 9px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#f8fafc;font-size:12px;">
+      </div>
+    </div>
+
+    <!-- 4. 实时五段式导演提示词预览（可直接微调） -->
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+        <span style="font-size:12px;font-weight:800;color:#cbd5e1;">④ 实时生成的 4K 导演提示词（已针对 MiniMax-H3-Image · CFG=1.0 正向摄影词优化，可直接微调）：</span>
+        <span id="fpdCharCount" style="font-size:11px;color:#94a3b8;font-family:'SF Mono',monospace;">0 字</span>
+      </div>
+      <textarea id="fpdPreviewBox" rows="5" oninput="const c=document.getElementById('fpdCharCount');if(c)c.innerText=this.value.length+' 字';" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid rgba(236,72,153,0.42);background:#020617;color:#f1f5f9;font-size:12.5px;line-height:1.6;resize:vertical;"></textarea>
+    </div>
+
+    <!-- 5. 底部操作按钮 + 开源协议致谢 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button type="button" onclick="randomizeFpdInspiration()" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid rgba(168,85,247,0.55);background:rgba(168,85,247,0.16);color:#e9d5ff;font-size:12px;font-weight:800;cursor:pointer;">🎲 随机灵感组合</button>
+        <button type="button" onclick="clearFpdInputs()" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#94a3b8;font-size:12px;font-weight:700;cursor:pointer;">🧹 清空锁参</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button type="button" onclick="applyFpdPromptToBox(false)" style="height:36px;padding:0 14px;border-radius:9px;border:1px solid rgba(59,130,246,0.6);background:rgba(59,130,246,0.18);color:#93c5fd;font-size:12.5px;font-weight:800;cursor:pointer;">📋 填入提示词框</button>
+        <button type="button" onclick="applyFpdPromptToBox(true)" style="height:36px;padding:0 16px;border-radius:9px;border:1px solid rgba(244,114,182,0.65);background:linear-gradient(135deg,#ec4899,#9333ea);color:#ffffff;font-size:12.5px;font-weight:800;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.5);">🚀 填入并立即生成 4K</button>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(51,65,85,0.55);font-size:10.5px;color:#64748b;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+      <span>摄影视觉路由体系改编自开源项目 liyue-aigc/female-portrait-director (MIT License)</span>
+      <span>已自动剔除磨砂假皮词与无效负向词 · 支持四宫格参考图自动锁脸/保真穿搭</span>
+    </div>
+  </div>
+</div>
+
 <div class="grid-top">
   <div class="cu-card">
     <div class="cu-header">
@@ -3271,7 +3349,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button type="button" class="btn-outline" style="height:28px;padding:0 11px;font-size:11.5px;border-radius:7px;border-color:rgba(239,68,68,0.45);color:#fca5a5;white-space:nowrap;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
       </div>
       <div id="singleBoxActionBtns" style="display:none;align-items:center;gap:6px;flex-wrap:nowrap;flex-shrink:0;">
-        <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:26px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11.5px;font-weight:700;max-width:230px;flex-shrink:0;cursor:pointer;">
+        <button type="button" id="btnOpenPortraitDirector" onclick="openPortraitDirectorModal()" title="打开女性人像提示词导演：20 套专业摄影 Route × 7 种气质 Overlay · 0 延迟五段式锁参扩写" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(236,72,153,0.68);background:linear-gradient(135deg,rgba(236,72,153,0.28),rgba(147,51,234,0.28));color:#fbcfe8;font-size:11.5px;font-weight:800;white-space:nowrap;flex-shrink:0;cursor:pointer;">🎬 人像导演</button>
+        <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:26px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11.5px;font-weight:700;max-width:195px;flex-shrink:0;cursor:pointer;">
           <option value="">✨ 一键套用 4K 写真 / 锁脸换装模板...</option>
           <option value="edit_qipao">👘 【锁脸换装·需传图】黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
           <option value="edit_silk">🍷 【锁脸换装·需传图】酒红真丝滑落肩头吊带睡袍 + 黑色蕾丝花边</option>
@@ -7238,6 +7317,435 @@ function applyH3ImagePresetTemplate(tplKey) {
   if (scEl) scEl.value = t.scene || '';
   if (t.res && resEl) resEl.value = t.res;
   if (pEl && t.prompt) pEl.value = t.prompt;
+}
+
+// ==================== 🎬 女性人像提示词导演 (20 专业摄影 Route × 7 气质 Overlay · 0 延迟五段式) ====================
+// 视觉路由结构改编自开源项目 liyue-aigc/female-portrait-director (MIT License)，已针对 MiniMax-H3-Image (33B · CFG=1.0) 正向摄影语言深度适配
+const FPD_ROUTES = [
+  // ---- ✨ CCD曲线 (5) ----
+  {
+    id: 'cold-white-clear-ccd-curve', cat: 'curve', emoji: '❄️', name: '冷白清透CCD曲线', tag: '日间高色温 · 蓝白空气感 · 轻盈曲线', defaultRes: '3552x4736',
+    subject: '一位二十出头的东方年轻女性，初恋感清透淡颜，鹅蛋脸骨相清秀，锁骨与肩颈线条清晰，身形轻盈纤细而上围自然饱满，比例匀称协调，柔顺黑长发自然垂落肩头',
+    defaultMoment: '在明亮的落地窗旁轻侧身站立，单手轻轻撩起耳侧碎发，自然望向镜头，神态松弛清澈，呈现肩颈、胸腰与腰胯的流畅比例',
+    defaultOutfit: '修身奶白色短款针织上衣搭配高腰浅灰百褶短裙，贴合身形且剪裁完整利落',
+    defaultScene: '采光极佳的日间明亮都市玻璃空间，背景可见通透落地窗、蓝白色城市天光与极简白色墙面',
+    lighting: '高色温日间自然光与玻璃冷白漫反射为主光，叠加极弱柔闪提亮人物面部与锁骨高光，整体呈现干净明亮的冷白空气感，亮部清透不过死白',
+    camera: '千禧年高画质 CCD 卡片机实拍质感，35mm 等效人像焦段，半身到大腿构图，皮肤通透白皙有真实原生水光感，轻微清透数码颗粒与自然生活抓拍氛围，4K超清实拍原片'
+  },
+  {
+    id: 'black-pearl-dark-gold-ccd', cat: 'curve', emoji: '🖤', name: '黑珍珠墨金CCD', tag: '夜间直闪 · 暗金反光 · 奶油高光', defaultRes: '3552x4736',
+    subject: '一位二十多岁的东方成年女性，五官立体耐看，皮肤在闪光灯下透出奶油珍珠光泽，肩颈与腰臀曲线流畅清晰，乌黑微卷长发自然披散',
+    defaultMoment: '在夜色深暗的室内廊道微微回眸轻侧身，指尖轻搭包带，眼神安静有故事感，自然展现肩颈与腰线轮廓',
+    defaultOutfit: '剪裁贴身的墨黑色缎面吊带长裙，搭配纤细暗金色锁骨链与小巧耳饰',
+    defaultScene: '深炭灰与墨黑色调的夜间私密轻奢廊道或复古酒店电梯间，远处点缀少量低饱和茶金色暖光与柔和金属反光',
+    lighting: '黑珍珠般深暗但暗部细节清晰可读的环境底光，正面以柔和机顶直闪精准提亮人物脸部、锁骨与缎面光泽，形成奶油白高光与墨金夜色的克制明暗反差',
+    camera: '复古旗舰 CCD 数码卡片机夜拍质感，35mm 人像抓拍构图，细腻自然夜拍微粒，皮肤呈现真实通透的闪光灯柔光质感，私密真实的夜间生活电影感，4K超清实拍'
+  },
+  {
+    id: 'pure-desire-curve', cat: 'curve', emoji: '🤍', name: '纯欲曲线生活照', tag: '清纯淡颜 × 成年身形反差 · 电影生活感', defaultRes: '3552x4736',
+    subject: '一位二十出头的东方年轻女性，五官清纯干净耐看，眉眼澄澈温柔，锁骨纤细精致，身形具有自然曼妙的成年女性曲线，胸腰与腿部比例修长匀称',
+    defaultMoment: '靠在午后落地窗边的浅色布艺沙发旁轻侧身微低头，发丝垂落颈侧，抬眸安静看向镜头，呈现出清纯面容与成熟身形线条的克制反差',
+    defaultOutfit: '贴身柔软的纯白色罗纹细吊带短上衣搭配高腰浅蓝修身牛仔短裤，日常感十足且自然勾勒腰腹线条',
+    defaultScene: '安静干净的浅色调现代卧室窗边，白纱窗帘微透天光，木质地板与简约床品构成真实生活空间',
+    lighting: '柔和偏冷白的窗边自然漫射光轻抚面部、肩颈与锁骨，光线过渡细腻柔润，高光通透干净，毫无影楼硬闪痕迹',
+    camera: '全画幅单反 50mm f/1.8 实拍生活剧照感，浅景深自然虚化背景，皮肤白皙通透保留真实原生纹理，自然抓拍不刻意摆拍，4K超清原片质感'
+  },
+  {
+    id: 'soft-ccd-energetic-voluptuous', cat: 'curve', emoji: '🍑', name: '元气丰腴柔光CCD', tag: '明亮元气 · 丰润曲线 · 奶白柔闪', defaultRes: '3552x4736',
+    subject: '一位二十多岁的东方成年女性，五官明亮生动带自然笑意，脸颊透着健康好气色，身形丰腴柔润而肩背与腰腹比例协调，曲线饱满流畅',
+    defaultMoment: '傍晚走在热闹干净的商业街角回头朝镜头灿烂微笑，一手拿着冰饮，姿态轻快松弛，充满鲜活感染力',
+    defaultOutfit: '清爽贴身的浅粉或奶油白方领短款针织上衣搭配高腰修身牛仔短裙，版型利落凸显腰臀曲线',
+    defaultScene: '明亮整洁的城市街边甜品店或玻璃橱窗外，背景有柔和暖白店铺灯牌与微暗傍晚天空',
+    lighting: '自然傍晚环境光叠加温暖店铺漫反射光，辅以柔和轻闪提亮人物面颊与奶白高光，画面明亮清透、通透不发灰',
+    camera: '柔光 CCD 卡片机生活抓拍质感，35mm 半身至大腿构图，通透水润真皮肌理，轻快明朗的社交实拍胶片感，4K超清细节'
+  },
+  {
+    id: 'oriental-voluptuous', cat: 'curve', emoji: '🏮', name: '东方丰腴写真', tag: '温润古典曲线 · 垂坠衣料 · 低饱和柔光', defaultRes: '3552x4736',
+    subject: '一位二十多岁的成熟东方女性，眉眼温婉舒展，面容端庄柔润，体态丰润优雅、比例匀称协调，肩颈圆润流畅，发髻低挽留出几缕柔发',
+    defaultMoment: '端坐于木质窗榻旁微微侧身转身，手轻抚衣袖，神态含蓄温润，借垂坠衣料与姿态重心展现东方古典丰润之美',
+    defaultOutfit: '垂坠感极佳的藕粉色或月白色真丝改良旗袍长裙，领口与盘扣精致典雅，自然勾勒肩颈与腰线轮廓',
+    defaultScene: '古雅静谧的中式木质茶室窗边，浅色宣纸拉门、青瓷茶盏与淡淡竹影构成雅致留白背景',
+    lighting: '低饱和度柔和窗边侧柔光，细腻勾勒面部立体度、肩颈曲线与真丝面料的柔和珠光反光，影调温润高级',
+    camera: '中画幅人像镜头 85mm f/2.0 实拍质感，柔和浅景深，肤色温润通透有细腻真实肤质，克制高级的东方人像精修质感，4K超清'
+  },
+
+  // ---- 🌿 生活氛围 (4) ----
+  {
+    id: 'clean-lifestyle', cat: 'lifestyle', emoji: '☕', name: '清纯生活照', tag: '窗边自然光 · 奶油暖白 · 电影生活剧照', defaultRes: '3552x4736',
+    subject: '一位二十出头的东方年轻女性，五官干净清秀、邻家初恋感十足，眼神清澈柔和，自然清透淡妆，柔顺直发或轻盈微卷发自然披肩',
+    defaultMoment: '午后坐在安静的咖啡馆靠窗木桌旁，单手轻托下巴看向窗外又似不经意转眸看镜头，神态温柔松弛，宛如生活电影中的自然一帧',
+    defaultOutfit: '米白色柔软针织开衫内搭浅杏色棉质上衣，简约干净，富有日常呼吸感',
+    defaultScene: '午后安静的木质文艺咖啡馆靠窗座位，桌面放着温热拿铁与翻开的书页，窗外有斑驳绿树与柔和街景',
+    lighting: '午后柔和窗边自然侧光洒在脸颊与发丝边缘，整体呈现干净通透的奶油暖白色调，暗部柔和自然',
+    camera: '35mm / 50mm 定焦镜头电影生活剧照感，f/1.8 柔和虚化，真实通透的原生肌肤纹理与自然发丝光泽，非影楼摆拍，4K超清实拍'
+  },
+  {
+    id: 'french-lazy', cat: 'lifestyle', emoji: '🥐', name: '法式慵懒写真', tag: '松弛午后光 · 奶油暖白 · 随性优雅', defaultRes: '3552x4736',
+    subject: '一位二十多岁的东方轻熟女性，气质松弛温柔，五官舒展大气，自然微乱的法式慵懒卷发轻拂肩颈，淡雅红棕裸感唇妆',
+    defaultMoment: '慵懒斜靠在浅色公寓阳台藤椅或窗台边，微眯双眼感受阳光，手指随意拨弄耳边碎发，姿态放松却不失精致优雅',
+    defaultOutfit: '宽松垂坠的象牙白亚麻衬衫或柔软米色羊绒针织衫，领口自然微敞露出锁骨与纤细金色项链',
+    defaultScene: '采光充沛的浅色调法式公寓窗边或巴黎风铁艺阳台，微风吹动薄纱窗帘，桌面摆着牛角包与玻璃水杯',
+    lighting: '午后温暖柔和的窗边漫射自然光，奶油暖白色调，轻柔勾勒发丝金边与衣料肌理，画面松弛温柔',
+    camera: '50mm f/1.4 电影剧照风格实拍，自然胶片色阶过渡，肌肤通透柔润保留真实细节，随性而高级的生活感，4K超清'
+  },
+  {
+    id: 'retro-hongkong', cat: 'lifestyle', emoji: '📼', name: '复古港风写真', tag: '旧港片女主 · 霓虹暖调侧光 · 复古胶片', defaultRes: '3552x4736',
+    subject: '一位二十多岁的明艳东方女性，浓眉大眼、五官深邃明艳有旧港片女主气质，蓬松乌黑大波浪卷发，经典复古雾红唇妆',
+    defaultMoment: '傍晚站在老街灯影或怀旧茶餐厅卡座旁微微回眸，眼神带着淡淡故事感与倔强柔情，宛如九十年代港片电影静帧',
+    defaultOutfit: '剪裁合身的复古酒红色针织上衣或牛仔外套搭配金色圆环耳饰，充满年代氛围质感',
+    defaultScene: '极具年代感的香港旧街道转角或暖光复古茶餐厅，背景虚化处有朦胧霓虹招牌、老式绿瓷砖与湿润街面反光',
+    lighting: '低饱和暖调电影环境光搭配红绿霓虹柔和侧逆光，脸部主光清晰柔和，明暗层次分明且富有情绪余韵',
+    camera: '35mm 复古电影胶片摄影质感，浅景深迷人光斑，克制细腻的胶片质感与真实通透五官细节，旧港片剧照氛围，4K超清'
+  },
+  {
+    id: 'travel-vacation', cat: 'lifestyle', emoji: '🌊', name: '旅行假日写真', tag: '海风日光 · 明亮假日感 · 环境呼吸感', defaultRes: '3552x4736',
+    subject: '一位二十多岁的东方年轻女性，神态明朗松弛，笑容自然清爽，长发被海风轻吹微扬，透着健康的自然光泽',
+    defaultMoment: '在海滨小城步道或临海民宿露台短暂停步回眸，抬手轻挡微阳或轻扶草帽，留下旅途中最惬意真实的瞬间',
+    defaultOutfit: '轻盈飘逸的浅蓝或纯白棉麻吊带度假长裙，搭配简约草编包与精致细项链',
+    defaultScene: '阳光明媚的海边街道、白色石阶巷口或临海酒店露台，背景有清澈蓝海、白色建筑与摇曳绿植，空间通透有呼吸感',
+    lighting: '通透明亮的户外假日自然阳光，发丝与肩头带有清爽阳光轮廓光，色彩清新通透、阴影干净不发脏',
+    camera: '35mm 旅拍人像镜头自然抓拍，适度环境景深保留旅途空间感，皮肤自然通透带微光，鲜活明亮的度假生活感，4K超清'
+  },
+
+  // ---- 👘 古风东方 (5) ----
+  {
+    id: 'ancient-lady-dewy-makeup', cat: 'gufeng', emoji: '💎', name: '古风贵女水光妆', tag: '富养贵女 · 通透水光显妆 · 近景颜值优先', defaultRes: '3552x4736',
+    subject: '一位二十出头的东方古典贵女，骨相秀美端庄，明确可见精致清透的东方水光妆容：细腻卧蚕、水润微粉腮红、莹润水光花瓣唇，乌发挽成精致古典发髻点缀珍珠玉簪',
+    defaultMoment: '在阳光透亮的中式庭院游廊轻倚雕花木栏，微微侧颜回眸，眼神温润灵动，以近景半身构图突出水光妆容与贵女气韵',
+    defaultOutfit: '织金提花浅杏与青碧色真丝汉服襦裙，外罩轻薄刺绣纱衫，衣料光泽细腻、头饰精致不堆砌',
+    defaultScene: '干净明亮、富有世家富养感的江南古典园林游廊或晴日花窗旁，隐约可见垂柳、白墙黛瓦与清透日光',
+    lighting: '清透明亮的庭院自然漫射光轻柔打亮鼻梁、眼下与唇部水光高光，妆容色彩、衣色与背景清雅分离、通透高级',
+    camera: '85mm f/1.4 近景半身人像特写，极佳的肤质水光还原力与细腻发丝解析力，真实鲜活不塑料，4K超清写实古风摄影'
+  },
+  {
+    id: 'new-chinese', cat: 'gufeng', emoji: '🎋', name: '新中式东方写真', tag: '东方留白 · 克制清雅 · 低饱和木质空间', defaultRes: '3552x4736',
+    subject: '一位二十多岁的东方女性，五官清雅端正、眉目如画，气质安静克制略带书卷疏离感，乌黑长发以一枚温润木簪或玉簪松松挽起',
+    defaultMoment: '安坐于留白感十足的木质茶室中，轻执青瓷茶杯微微垂眸，神态宁静从容，人物与空间达成东方美学平衡',
+    defaultOutfit: '素雅月白或浅青色真丝新中式立领盘扣上衣搭配垂坠阔腿长裙，剪裁极简高级、织物肌理清晰',
+    defaultScene: '极简留白的现代东方木质茶室，一枝瘦竹投影在素色墙面，搭配简洁实木茶台与素雅屏风，克制不堆砌',
+    lighting: '柔和克制的窗格漫射自然光，低饱和清雅影调，细致呈现真丝织纹与温润玉石质感',
+    camera: '85mm f/2.0 中画幅东方美学人像摄影，构图讲究黄金留白，肌肤温润自然有真实细微质感，高级克制，4K超清'
+  },
+  {
+    id: 'gufeng-xianxia', cat: 'gufeng', emoji: '☁️', name: '古风仙侠美人图', tag: '唐风古偶女主 · 飘逸披帛 · 云雾柔光', defaultRes: '3552x4736',
+    subject: '一位二十出头的东方绝色古风美人，眉眼含情、鼻梁精致、唇色清润，额间点缀细腻花钿，长发高挽华美唐风发髻，配以精致珠玉步摇与流苏发簪',
+    defaultMoment: '立于云雾缭绕的古风高台回廊之间，微风轻扬衣袂与薄纱披帛，微微转眸望向远方，宛如东方幻想大片女主角色海报',
+    defaultOutfit: '层次华美的唐风大袖衫与刺绣齐胸襦裙，搭配流光刺绣腰封与飘逸长披帛，纹样结构清晰精致',
+    defaultScene: '仙气氤氲的古风宫殿回廊与远处云雾山水楼阁，空气中飘散柔和光尘，远景自然虚化烘托主体',
+    lighting: '明亮柔和的梦幻侧逆光穿透云雾与轻纱，勾勒出发丝与披帛的通透轮廓光，脸部受光均匀清透',
+    camera: '85mm f/1.4 电影级古装角色海报实拍质感，通透水润真皮五官，华服刺绣与珠玉高光纤毫毕现，4K超清'
+  },
+  {
+    id: 'cold-xianxia-enhanced', cat: 'gufeng', emoji: '🌌', name: '清冷仙气古风增强', tag: '冷白月华 · 疏离空灵 · 宫灯回廊', defaultRes: '3552x4736',
+    subject: '一位二十出头的清冷东方仙侠女主，眉眼清绝克制、神色安静疏离，肌肤冷白通透如月光凝脂，墨发半束点缀银白冰晶玉钗',
+    defaultMoment: '独自停驻于清寂的冷调回廊或月下石阶前，衣袂微动，淡然侧眸，自带不染尘埃的空灵距离感',
+    defaultOutfit: '月白色与冰青色重工轻纱广袖古装，银丝暗纹若隐若现，薄纱披帛随微风轻盈舒展',
+    defaultScene: '幽静深邃的古风回廊，远处冷调微光宫灯与薄雾虚化交织，营造清寂辽阔的东方幻想空间层次',
+    lighting: '冷白清透的月华侧逆光与柔和正面补光结合，冷调纯净不发灰，精确勾勒轻纱透光感与清绝眉眼',
+    camera: '85mm f/1.4 高级古风角色写真质感，背景奶油般浅景深虚化，人物五官清晰真实通透，空灵克制，4K超清'
+  },
+  {
+    id: 'bright-luxury-gufeng', cat: 'gufeng', emoji: '👑', name: '明媚华贵古风增强', tag: '盛唐红金华服 · 珠宝高光 · 大女主气场', defaultRes: '3552x4736',
+    subject: '一位二十多岁的明艳华贵东方大女主，五官大气明艳、眼波流转自信端庄，精致盛唐妆容配以华美金步摇、珍珠花冠与宝石耳坠',
+    defaultMoment: '立于盛大宫殿朱红廊柱与雕花画屏之间，身姿端庄舒展，微微扬颌望向镜头，气场盛大明媚而不艳俗',
+    defaultOutfit: '重工红金织锦唐风大袖华服，金线牡丹刺绣华美清晰，配以华丽缎面披帛与宝石璎珞项饰',
+    defaultScene: '华丽大气的盛唐宫廷回廊与暖光琉璃宫灯背景，宏大空间层次虚化衬托人物绝对主角地位',
+    lighting: '明亮温暖的宫廷柔光与细腻珠宝高光反射，色彩饱和华贵而干净克制，高光不溢出色阶丰富',
+    camera: '85mm f/1.8 顶级古偶电影剧照实拍质感，金线刺绣、真丝光泽与通透真人肤质极致清晰，4K超清'
+  },
+
+  // ---- 👠 时尚商业 (4) ----
+  {
+    id: 'urban-fashion', cat: 'fashion', emoji: '🏙️', name: '都市时尚街拍', tag: '高阶 OOTD · 玻璃橱窗 · 现代松弛感', defaultRes: '3552x4736',
+    subject: '一位二十多岁的现代都市东方女性，五官利落精致，气质自信松弛，柔顺微卷中长发随步伐轻动，现代精致通勤妆容',
+    defaultMoment: '走在阳光洒满的都市商业街角或精品店玻璃橱窗外，自然迈步回眸，单肩挎包，呈现出高级时尚街拍的从容气场',
+    defaultOutfit: '剪裁利落的燕麦色短款西装外套内搭修身黑色针织衫与高腰垂感长裤，配以极简金属耳环与皮质手袋',
+    defaultScene: '现代简洁的城市商业街区、高级玻璃幕墙橱窗与线条利落的浅灰建筑立面，干净有序不杂乱',
+    lighting: '通透明朗的城市户外自然光搭配玻璃幕墙柔和反光，人物轮廓清晰立体，服装面料质感突出',
+    camera: '50mm f/2.0 现代时尚杂志街拍实拍质感，自然动态抓拍，肤质清透真实、色彩高级克制，4K超清'
+  },
+  {
+    id: 'ecommerce-tryon', cat: 'fashion', emoji: '🛍️', name: '电商服装模特图', tag: '服装还原优先 · 版型精准 · 干净种草', defaultRes: '3552x4736',
+    subject: '一位二十多岁的专业东方服装展示模特，五官自然大方耐看、不过度抢镜，体态挺拔舒展，淡雅日常妆发',
+    defaultMoment: '以自然舒展的正面微侧三七步站姿展示全身或七分身穿搭，双臂自然垂放或轻插口袋，完整清晰呈现服装领口、肩线、腰身与下摆版型',
+    defaultOutfit: '剪裁精准的现代日常质感穿搭，服装颜色、面料纹理、车线与结构褶皱完全忠实呈现、无任何变形与色差',
+    defaultScene: '干净明亮的极简浅暖灰摄影棚或现代极简试衣镜空间，背景纯洁清爽、绝不干扰服装细节展示',
+    lighting: '均匀通透的高显色商业柔光箱主光搭配柔和轮廓光，精准还原服装真实色彩与织物肌理，无偏色与杂乱阴影',
+    camera: '70mm f/4.0 专业商业服装摄影实拍质感，服装全域锐利清晰，人物肌肤自然健康，真实可穿的高级种草成片，4K超清'
+  },
+  {
+    id: 'studio-retouched', cat: 'fashion', emoji: '📸', name: '影楼精修写真', tag: '棚拍柔光 · 精致妆发 · 高级不塑料', defaultRes: '3552x4736',
+    subject: '一位二十多岁的精致东方女性，五官立体对称、妆发一丝不苟，眼神清亮有神，发丝顺滑有质感，尽显高级肖像仪态',
+    defaultMoment: '端坐于简约高级摄影棚布景前微微侧肩回眸，下颌线微扬，姿态优雅稳重，呈现出极具完成度的高级肖像质感',
+    defaultOutfit: '简约高定感纯黑或香槟白露肩礼服裙，剪裁高级挺括，配以精致小巧钻石耳饰',
+    defaultScene: '干净克制的浅灰或暖米色高级摄影棚纯色背景，带有极柔和的光影渐变过渡，主体视觉绝对集中',
+    lighting: '经典商业人像蝴蝶光与大型八角柔光箱主光，搭配柔和发丝轮廓光，眼神光清晰明亮，立体通透',
+    camera: '哈苏中画幅 90mm f/2.8 棚拍精修人像质感，皮肤细腻洁净但保留真实毛孔与自然皮脂微光，高级不塑料不假面，4K超清'
+  },
+  {
+    id: 'sporty-active', cat: 'fashion', emoji: '🎾', name: '活力运动写真', tag: '阳光健康线条 · 清爽元气 · 运动后停步', defaultRes: '3552x4736',
+    subject: '一位二十出头的阳光健康东方年轻女性，面容明朗元气、神采奕奕，高马尾清爽利落，脸颊带有一丝运动后的健康红润与微光泽，身形紧致流畅',
+    defaultMoment: '在阳光明媚的户外网球场边或跑道旁运动后短暂停步回望，手拿水杯或轻搭球拍，展现真实鲜活的健康生命力',
+    defaultOutfit: '清爽贴身的纯白或薄荷绿修身运动背心搭配高腰百褶网球短裙与运动鞋，完整利落展现健康肩颈与腿部线条',
+    defaultScene: '晴朗阳光下的蓝绿色户外网球场或林荫塑胶跑道，背景通透明亮、绿树蓝天富有活力呼吸感',
+    lighting: '清澈明朗的户外自然日光，勾勒出马尾发丝与肩背的阳光金边，人物面色红润清透、阴影通透干净',
+    camera: '50mm f/2.0 运动生活抓拍实拍质感，清晰干脆的现代摄影色调，自然真实的健康肌肤光泽，4K超清'
+  },
+
+  // ---- 🎞️ 写实电影 (2) ----
+  {
+    id: 'ultra-close-real-face', cat: 'realism', emoji: '👁️', name: '超近景真实人脸', tag: '怼脸骨相特写 · 真实微纹理 · 原片直出', defaultRes: '3552x4736',
+    subject: '一位二十出头的东方成年女性，极佳的原生骨相与精致对称五官，清晰自然的原生眉流、根根分明的真实睫毛、清澈含光的深棕色瞳孔与自然水润唇纹',
+    defaultMoment: '极近距离面部特写构图，她安静直视镜头，嘴角微松自然呼吸，一缕细软碎发轻落脸颊，毫无修饰伪装却极具镜头凝视张力',
+    defaultOutfit: '画面底部仅隐约露出简约米白色针织领口或裸露锁骨边缘，视觉重心 100% 聚焦于面部五官与眼神',
+    defaultScene: '极度浅景深完全虚化的柔和自然室内窗边背景，画面纯净无干扰元素',
+    lighting: '方向明确的窗边柔和自然侧光，恰如其分地勾勒鼻梁高度、眼窝立体感、虹膜眼神光以及皮肤自然通透的原生微纹理与细微光泽',
+    camera: '全画幅单反 85mm / 100mm 微距人像镜头 f/2.0 极近景特写，未修图相机 RAW 原片质感，皮肤真实通透且耐看（保留真实细微肌理而绝不粗糙脏污），4K极致解析力'
+  },
+  {
+    id: 'low-key-cinematic-photography', cat: 'realism', emoji: '🎬', name: '低调电影感摄影', tag: '局部照亮 · 深邃暗部层次 · 叙事静帧', defaultRes: '5472x3072',
+    subject: '一位二十多岁的东方成年女性，五官深邃克制、神态沉静内敛，眼神富有电影叙事余韵，乌黑长发自然垂落',
+    defaultMoment: '置身于低照度空间的局部光束边缘微微侧身凝望窗外或暗处，安静克制，仿佛一部文艺电影中的关键定格画面',
+    defaultOutfit: '低饱和深炭灰或深墨蓝羊毛质感大衣与简约高领针织衫，织物在侧光下呈现细腻厚重质感',
+    defaultScene: '有纵深感的低照度室内空间、雨夜窗边或安静幽暗的艺术馆长廊，暗部保有丰富空间结构而不死黑',
+    lighting: '精准的低调电影布光，以一束柔和定向窗光或暖白局部光精准照亮人物半边面庞、眼眸与肩线，形成高对比但暗部细节清晰可读的克制影调',
+    camera: '变形宽银幕电影镜头 50mm f/1.8 实拍静帧，低饱和克制电影调色，极细腻自然胶片质感，皮肤真实通透、极具叙事张力，4K电影级画质'
+  }
+];
+
+const FPD_OVERLAYS = [
+  { id: '', emoji: '✨', name: '无叠加 (原生)', desc: '' },
+  { id: 'cold-heroine', emoji: '🌙', name: '清冷女主', desc: '人物神态清冷克制，带有安静疏离的高级距离感，降低甜腻感，眼神澄澈冷静，冷白氛围更显高级' },
+  { id: 'bright-heroine', emoji: '🌹', name: '明艳女主', desc: '五官存在感鲜明，妆造完整度高，眼神明媚灵动充满视觉张力与女主气场，极具第一眼吸睛记忆点' },
+  { id: 'cool-mature', emoji: '🖤', name: '冷艳御姐', desc: '自带成熟冷艳的强气场与松弛控制力，眉眼笃定冷淡而极具压迫感与高级都市御姐魅力' },
+  { id: 'gentle-sister', emoji: '🤍', name: '温柔姐姐', desc: '神态温润舒展、嘴角带柔和亲近笑意，流露出稳定、包容且自然亲切的轻熟温柔姐姐气质' },
+  { id: 'intellectual', emoji: '📚', name: '高智知性', desc: '眼神冷静沉着富有观察力与书卷思考感，姿态干练克制，透出独立理性、从容专业的高智感知识女性气质' },
+  { id: 'mature-urban', emoji: '🥂', name: '轻熟都市', desc: '举手投足散发优雅从容的现代轻熟都市女人味，成熟而不老气，姿态松弛稳定且富有生活品质感' },
+  { id: 'sweet-cool', emoji: '⚡', name: '甜酷女孩', desc: '面容清甜鲜活却带着几分漫不经心的街头个性与酷感反差，年轻充满活力与社交抓拍表现力' }
+];
+
+let fpdCurrentCat = 'all';
+let fpdSelectedRouteId = 'cold-white-clear-ccd-curve';
+let fpdSelectedOverlayId = '';
+let fpdSelectedRatio = 'keep';
+
+function _getFpdSlotFlags() {
+  return {
+    hasFace: Boolean(typeof fusionSlotsB64 !== 'undefined' && fusionSlotsB64[0]),
+    hasOutfit: Boolean(typeof fusionTargetList !== 'undefined' && fusionTargetList[0]),
+    hasPose: Boolean(typeof fusionTargetList !== 'undefined' && fusionTargetList[1]),
+    hasScene: Boolean(typeof fusionSlotsB64 !== 'undefined' && fusionSlotsB64[2]),
+  };
+}
+
+function openPortraitDirectorModal() {
+  const modal = document.getElementById('portraitDirectorModal');
+  if (!modal) return;
+  const flags = _getFpdSlotFlags();
+  const badge = document.getElementById('fpdRefLockBadge');
+  if (badge) {
+    const activeParts = [];
+    if (flags.hasFace) activeParts.push('①人脸锁脸');
+    if (flags.hasOutfit) activeParts.push('②服饰保真');
+    if (flags.hasPose) activeParts.push('③姿态参考');
+    if (flags.hasScene) activeParts.push('④场景融合');
+    if (activeParts.length > 0) {
+      badge.innerText = '🔒 四宫格参考图已挂载：' + activeParts.join(' + ');
+      badge.style.background = 'rgba(245,158,11,0.18)';
+      badge.style.borderColor = 'rgba(245,158,11,0.5)';
+      badge.style.color = '#fde68a';
+    } else {
+      badge.innerText = '🎨 纯文生 4K 模式（未传四宫格参考图）';
+      badge.style.background = 'rgba(16,185,129,0.16)';
+      badge.style.borderColor = 'rgba(16,185,129,0.45)';
+      badge.style.color = '#6ee7b7';
+    }
+  }
+  // 若当前主输入框里是用户手写的简短想法（<95字且不是完整导演长文），自动预填到「核心动作/状态」实现锁参扩写
+  const pEl = document.getElementById('videoPrompt');
+  const mEl = document.getElementById('fpdUserMoment');
+  if (pEl && mEl && !mEl.value.trim()) {
+    const curTxt = (pEl.value || '').trim();
+    if (curTxt && curTxt.length <= 95 && !curTxt.includes('<Picture 1>') && !curTxt.includes('4K超清')) {
+      mEl.value = curTxt;
+    }
+  }
+  renderFpdRoutes();
+  renderFpdOverlays();
+  renderFpdPreview();
+  modal.style.display = 'flex';
+}
+
+function selectFpdCategory(cat) {
+  fpdCurrentCat = cat || 'all';
+  document.querySelectorAll('.fpd-cat-btn').forEach(btn => {
+    const active = btn.getAttribute('data-cat') === fpdCurrentCat;
+    btn.style.borderColor = active ? '#ec4899' : '#334155';
+    btn.style.background = active ? 'rgba(236,72,153,0.22)' : '#0f172a';
+    btn.style.color = active ? '#fbcfe8' : '#cbd5e1';
+  });
+  renderFpdRoutes();
+}
+
+function renderFpdRoutes() {
+  const grid = document.getElementById('fpdRouteGrid');
+  if (!grid) return;
+  const list = fpdCurrentCat === 'all' ? FPD_ROUTES : FPD_ROUTES.filter(r => r.cat === fpdCurrentCat);
+  grid.innerHTML = list.map(r => {
+    const active = r.id === fpdSelectedRouteId;
+    const border = active ? '1.5px solid #ec4899' : '1px solid #334155';
+    const bg = active ? 'linear-gradient(135deg,rgba(236,72,153,0.22),rgba(147,51,234,0.18))' : '#0f172a';
+    const shadow = active ? '0 0 0 1px rgba(236,72,153,0.35)' : 'none';
+    return `<button type="button" onclick="selectFpdRoute('${r.id}')" style="text-align:left;padding:8px 9px;border-radius:9px;border:${border};background:${bg};box-shadow:${shadow};cursor:pointer;display:flex;flex-direction:column;gap:3px;min-width:0;">
+      <div style="font-size:12px;font-weight:800;color:${active ? '#ffffff' : '#e2e8f0'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.emoji} ${r.name}</div>
+      <div style="font-size:10.5px;color:${active ? '#fbcfe8' : '#94a3b8'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.tag}</div>
+    </button>`;
+  }).join('');
+}
+
+function selectFpdRoute(routeId) {
+  fpdSelectedRouteId = routeId;
+  renderFpdRoutes();
+  renderFpdPreview();
+}
+
+function renderFpdOverlays() {
+  const row = document.getElementById('fpdOverlayRow');
+  if (!row) return;
+  row.innerHTML = FPD_OVERLAYS.map(ov => {
+    const active = ov.id === fpdSelectedOverlayId;
+    const border = active ? '1px solid #a855f7' : '1px solid #334155';
+    const bg = active ? 'rgba(168,85,247,0.24)' : '#0f172a';
+    const color = active ? '#f3e8ff' : '#cbd5e1';
+    return `<button type="button" onclick="selectFpdOverlay('${ov.id}')" style="height:28px;padding:0 10px;border-radius:7px;border:${border};background:${bg};color:${color};font-size:11.5px;font-weight:${active ? '800' : '600'};cursor:pointer;white-space:nowrap;">${ov.emoji} ${ov.name}</button>`;
+  }).join('');
+}
+
+function selectFpdOverlay(ovId) {
+  fpdSelectedOverlayId = (fpdSelectedOverlayId === ovId) ? '' : ovId;
+  renderFpdOverlays();
+  renderFpdPreview();
+}
+
+function selectFpdRatio(ratioVal) {
+  fpdSelectedRatio = ratioVal || 'keep';
+  document.querySelectorAll('.fpd-ratio-btn').forEach(btn => {
+    const active = btn.getAttribute('data-ratio') === fpdSelectedRatio;
+    btn.style.borderColor = active ? '#3b82f6' : '#334155';
+    btn.style.background = active ? 'rgba(59,130,246,0.22)' : '#1e293b';
+    btn.style.color = active ? '#93c5fd' : '#cbd5e1';
+  });
+  renderFpdPreview();
+}
+
+function buildFpdPrompt() {
+  const route = FPD_ROUTES.find(r => r.id === fpdSelectedRouteId) || FPD_ROUTES[0];
+  const overlay = FPD_OVERLAYS.find(o => o.id === fpdSelectedOverlayId) || FPD_OVERLAYS[0];
+  const userMoment = ((document.getElementById('fpdUserMoment') || {}).value || '').trim();
+  const userOutfit = ((document.getElementById('fpdUserOutfit') || {}).value || '').trim();
+  const userScene = ((document.getElementById('fpdUserScene') || {}).value || '').trim();
+  const flags = _getFpdSlotFlags();
+
+  const segs = [];
+
+  // 第一段：主体与参考图锁脸/气质定位
+  if (flags.hasFace) {
+    let s1 = `【人物与气质】以参考图①人物的面部五官、骨相轮廓与真实神态为绝对基准，完整锁定人物真实长相不漂移`;
+    if (overlay && overlay.desc) s1 += `，${overlay.desc}`;
+    segs.push(s1 + '。');
+  } else {
+    let s1 = `【人物与气质】${route.subject}`;
+    if (overlay && overlay.desc) s1 += `；${overlay.desc}`;
+    segs.push(s1 + '。');
+  }
+
+  // 第二段：事件瞬间与姿态动作（优先锁定用户输入或参考图③）
+  if (userMoment) {
+    let s2 = `【动作与瞬间】${userMoment}`;
+    if (flags.hasPose) s2 += '（身体姿态与重心自然贴合参考图③构图）';
+    segs.push(s2 + '。');
+  } else if (flags.hasPose) {
+    segs.push('【动作与瞬间】严格参考图③的身体姿态、头肩角度与画面重心，呈现自然松弛、毫无僵硬摆拍感的真实抓拍瞬间。');
+  } else {
+    segs.push(`【动作与瞬间】${route.defaultMoment}。`);
+  }
+
+  // 第三段：服装穿搭（优先锁定用户输入或参考图②）
+  if (userOutfit) {
+    let s3 = `【服装穿搭】身穿${userOutfit}`;
+    if (flags.hasOutfit) s3 += '，并结合参考图②的面料细节与版型结构保持高度还原';
+    segs.push(s3 + '。');
+  } else if (flags.hasOutfit) {
+    segs.push('【服装穿搭】严格保留参考图②服饰的版型剪裁、颜色、花纹图案与面料垂坠质感，上身自然贴合人物肩颈与腰身曲线，不偏色不变形。');
+  } else {
+    segs.push(`【服装穿搭】身穿${route.defaultOutfit}。`);
+  }
+
+  // 第四段：空间环境与光线色温（优先锁定用户输入或参考图④）
+  let scenePart = userScene
+    ? `置身于${userScene}`
+    : (flags.hasScene ? '画面环境与空间纵深自然融入参考图④实景背景，人物与环境光影透视完全统一' : `置身于${route.defaultScene}`);
+  segs.push(`【场景与光线】${scenePart}；${route.lighting}。`);
+
+  // 第五段：镜头焦段、画幅与正向真皮画质收尾
+  const ratioLabelMap = {
+    '3552x4736': '3:4 竖版人像构图',
+    '3072x5472': '9:16 竖屏特写构图',
+    '5472x3072': '16:9 电影宽幅构图',
+  };
+  const ratioText = ratioLabelMap[fpdSelectedRatio] ? `${ratioLabelMap[fpdSelectedRatio]}，` : '';
+  segs.push(`【镜头与画质】${ratioText}${route.camera}。`);
+
+  return segs.join('\n');
+}
+
+function renderFpdPreview() {
+  const box = document.getElementById('fpdPreviewBox');
+  const cnt = document.getElementById('fpdCharCount');
+  if (!box) return;
+  const txt = buildFpdPrompt();
+  box.value = txt;
+  if (cnt) cnt.innerText = txt.length + ' 字';
+}
+
+function randomizeFpdInspiration() {
+  const r = FPD_ROUTES[Math.floor(Math.random() * FPD_ROUTES.length)];
+  const ov = FPD_OVERLAYS[Math.floor(Math.random() * FPD_OVERLAYS.length)];
+  fpdCurrentCat = 'all';
+  fpdSelectedRouteId = r.id;
+  fpdSelectedOverlayId = ov.id;
+  selectFpdCategory('all');
+  renderFpdOverlays();
+  renderFpdPreview();
+}
+
+function clearFpdInputs() {
+  ['fpdUserMoment', 'fpdUserOutfit', 'fpdUserScene'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  fpdSelectedOverlayId = '';
+  selectFpdRatio('keep');
+  renderFpdOverlays();
+  renderFpdPreview();
+}
+
+function applyFpdPromptToBox(runNow) {
+  const box = document.getElementById('fpdPreviewBox');
+  const pEl = document.getElementById('videoPrompt');
+  const resEl = document.getElementById('videoRes');
+  const modal = document.getElementById('portraitDirectorModal');
+  const finalTxt = ((box && box.value) || buildFpdPrompt()).trim();
+  if (pEl && finalTxt) {
+    pEl.value = finalTxt;
+  }
+  if (resEl && fpdSelectedRatio && fpdSelectedRatio !== 'keep') {
+    resEl.value = fpdSelectedRatio;
+  }
+  if (modal) modal.style.display = 'none';
+  if (runNow && typeof startVideoGenerate === 'function') {
+    startVideoGenerate('image');
+  }
 }
 
 let mingCloneAudioB64 = '';
