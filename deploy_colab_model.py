@@ -6283,6 +6283,15 @@ def mount_google_drive_native(session_name: str) -> bool:
 
     try:
         s = state.get_session(session_name)
+
+        def _on_k_started(kid):
+            s.kernel_id = kid
+            state.store.add(s)
+
+        def _on_s_started(sid):
+            s.session_id = sid
+            state.store.add(s)
+
         runtime = ColabRuntime(
             s.url,
             s.token,
@@ -6290,6 +6299,8 @@ def mount_google_drive_native(session_name: str) -> bool:
             history=state.history,
             kernel_id=s.kernel_id,
             session_id=s.session_id,
+            on_kernel_started=_on_k_started,
+            on_session_started=_on_s_started,
         )
     except Exception as e:
         print(f"⚠️ 无法连接缓存会话 '{session_name}' ({e})，准备重新分配实例...", flush=True)
@@ -6400,11 +6411,13 @@ print('DRIVE_ROOT_READY:/content/drive/MyDrive/models')
 """
     try:
         runtime.kernel_client._manager.client.connection_ready.wait(timeout=15)
-        outputs = runtime.execute_code(mount_code, allow_stdin=True, timeout=600)
-        for out in outputs:
-            if "text" in out:
-                sys.stdout.write(out["text"])
+
+        def _stream_mount_out(out_msg):
+            if out_msg.get("output_type") == "stream" and "text" in out_msg:
+                sys.stdout.write(out_msg["text"])
                 sys.stdout.flush()
+
+        runtime.execute_code(mount_code, output_hook=_stream_mount_out, allow_stdin=True, timeout=600)
         return True
     except Exception as e:
         print(f"⚠️ 实例 '{session_name}' WebSocket 连接已断开 ({e})，正在自动清理失效会话并重新分配...", flush=True)
@@ -6861,42 +6874,24 @@ def run_local_wizard():
     save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": True})
 
     def _allocate_colab_session(sess_id: str) -> None:
-        target_gpu = args.gpu
-        try:
-            from urllib.parse import urljoin
-            from colab_cli.client import TUN_ENDPOINT
-            from colab_cli.common import state
-            ccu_url = urljoin(state.client.colab_domain, f"{TUN_ENDPOINT}/ccu-info")
-            resp_c = state.client.session.request(
-                "GET",
-                ccu_url,
-                headers={"Accept": "application/json", "X-Colab-Client-Agent": "colab-cli"},
-                params={"authuser": "0"},
-                timeout=8,
-            )
-            raw_c = json.loads(state.client._strip_xssi_prefix(resp_c.text) or "{}")
-            bal_c = float(raw_c.get("currentBalance") or 0.0)
-            el_gpus = [str(g).upper() for g in (raw_c.get("eligibleGpus") or [])]
-            if bal_c <= 0.0 and ("G4" not in el_gpus) and target_gpu.upper() != "T4":
-                print(f"\n💡 检测到当前账号 Colab 算力余额为 0.00 CU 且未解锁 G4，已自动切换为申请【T4 (16GB 显存 · 0.00 CU/h 不扣费)】实例...", flush=True)
-                target_gpu = "T4"
-        except Exception:
-            pass
+        target_gpu = (args.gpu or "G4").upper()
         print(f"\n-> 正在申请分配 Google Colab {target_gpu} 实例 '{sess_id}'...", flush=True)
         res_new = subprocess.run([colab_bin, "new", "-s", sess_id, "--gpu", target_gpu], check=False)
-        if res_new.returncode != 0 and target_gpu.upper() != "T4":
-            print(f"\n⚠️ 当前账号无 {target_gpu} 权限 (0.00 CU)，正在自动降级申请【T4 (16GB 显存 · 0.00 CU/h)】实例...", flush=True)
-            res_new = subprocess.run([colab_bin, "new", "-s", sess_id, "--gpu", "T4"], check=False)
         if res_new.returncode != 0:
             print(
-                f"\n❌ [分配失败] 当前 Google 账号无法分配 GPU 实例（可能 T4 配额暂时受限或需在网页端首次激活）。\n"
-                f"   👉 若需使用 RTX PRO 6000 (G4 · 96GB 显存)，请点击控制台右上角「👤 账号」按钮切换至有 CU 余额的账号（如 687.72 CU 账号）！",
+                f"\n❌ [GPU_ALLOC_FAILED:{target_gpu}] 当前账户无法分配 {target_gpu} 实例（Colab 服务端返回无 {target_gpu} 权限或算力池暂无空闲）。\n"
+                f"   👉 请在控制台弹出的选择框中自主选择：重试 {target_gpu}、改用其他 GPU (A100 / L4 / T4)、或切换其他算力账户！",
                 flush=True,
             )
             save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": False})
-            sys.exit(1)
+            sys.exit(2)
 
+    g4_only_set = {"Huihui-Qwen3.8-27B-abliterated-GGUF", "MiniMax-H3", "MiniMax-H3-Image"}
     if f"[{session_name}]" not in sess_out and session_name not in sess_out:
+        _allocate_colab_session(session_name)
+    elif "Hardware: T4" in sess_out and (args.gpu or "G4").upper() != "T4" and model_folder in g4_only_set:
+        print(f"\n-> 检测到当前运行中的实例为 T4 (16GB)，但请求了 {args.gpu} 大显存模型 ({model_folder})，正在释放旧 T4 实例并重新申请 {args.gpu}...", flush=True)
+        subprocess.run([colab_bin, "stop", "-s", session_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         _allocate_colab_session(session_name)
     else:
         print(f"\n-> 复用当前运行中的 Colab 实例 '{session_name}'。", flush=True)

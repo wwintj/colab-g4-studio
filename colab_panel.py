@@ -1536,33 +1536,25 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
         "MiniMax-H3-Image",
     }
     auto_switched_note = ""
-    if not download_only:
-        try:
-            cu_check = _query_cu_usage(force=True)
-            bal_val = cu_check.get("paid_balance")
-            el_gpus = [str(g).upper() for g in (cu_check.get("eligible_gpus") or [])]
-            has_g4_entitlement = (bal_val is not None and float(bal_val) > 0.0) or ("G4" in el_gpus)
-            if not has_g4_entitlement and bal_val is not None and float(bal_val) <= 0.0:
-                gpu = "T4"
-                if folder in ("MiniMax-H3", "MiniMax-H3-Turbo"):
-                    old_folder = folder
-                    repo = "unsloth/MiniMax-H3-GGUF"
-                    folder = "MiniMax-H3-T4-GGUF"
-                    pattern = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
-                    auto_switched_note = f"⚡ [T4 智能适配] 当前为 T4 (16GB) 账号，已自动将 {old_folder} 切换为 T4 专享量化版 {folder} (UD-Q2_K_XL · 8步有声视频)"
-                elif folder == "LongCat-Video-Avatar-1.6":
-                    repo = "meituan-longcat/LongCat-Video-Avatar-1.6"
-                    folder = "LongCat-Video-Avatar-1.6-INT8"
-                    pattern = "base_model_int8/*.safetensors"
-                    auto_switched_note = "⚡ [T4 智能适配] 当前为 T4 (16GB) 账号，已自动将 LongCat-Video-Avatar-1.6 切换为 INT8 量化版 (LongCat-Video-Avatar-1.6-INT8)"
-                elif folder in g4_only_folders or "bf16.gguf" in (pattern or "").lower():
-                    old_folder = folder
-                    repo = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
-                    folder = "Qwen3.8-27B-T4-Q3"
-                    pattern = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
-                    auto_switched_note = f"⚡ [T4 防爆盘保护] 当前为 T4 (16GB) 账号，已自动将启动模型从 {old_folder} 切换为 T4 适配模型 {folder} (12.4 GB)"
-        except Exception:
-            pass
+    gpu = (gpu or "G4").upper()
+    if not download_only and gpu == "T4":
+        if folder in ("MiniMax-H3", "MiniMax-H3-Turbo"):
+            old_folder = folder
+            repo = "unsloth/MiniMax-H3-GGUF"
+            folder = "MiniMax-H3-T4-GGUF"
+            pattern = "minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf"
+            auto_switched_note = f"⚡ [T4 模型适配] 您已选择使用 T4 (16GB) 启动，已自动将 {old_folder} 匹配为 T4 专享量化版 {folder} (7.5 GB · 8步有声视频)"
+        elif folder == "LongCat-Video-Avatar-1.6":
+            repo = "meituan-longcat/LongCat-Video-Avatar-1.6"
+            folder = "LongCat-Video-Avatar-1.6-INT8"
+            pattern = "base_model_int8/*.safetensors"
+            auto_switched_note = "⚡ [T4 模型适配] 您已选择使用 T4 (16GB) 启动，已自动将 LongCat-Video-Avatar-1.6 匹配为 INT8 量化版 (14.8 GB)"
+        elif folder in g4_only_folders or "bf16.gguf" in (pattern or "").lower():
+            old_folder = folder
+            repo = "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"
+            folder = "Qwen3.8-27B-T4-Q3"
+            pattern = "Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf"
+            auto_switched_note = f"⚡ [T4 模型适配] 您已选择使用 T4 (16GB) 启动，已自动将 {old_folder} 匹配为 T4 适配模型 {folder} (12.4 GB)"
 
     with _DEPLOY_LOCK:
         if _DEPLOY_STATE["running"]:
@@ -1961,6 +1953,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或管理 Google Colab 算力账户" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(59,130,246,0.5);color:#93c5fd;font-size:12.5px;font-weight:700;">👤 <span id="headerAccountLabel">账户</span> ▾</button>
     <button class="btn-outline" onclick="openApiConfigModal()" id="btnOpenApiModal" title="查看并复制 OpenAI 兼容 API 接入参数 (本机永久固定 URL / 公网 Tunnel URL / API Key / Model ID)" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);color:#e9d5ff;font-size:12.5px;font-weight:700;">🔗 API</button>
     <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="height:32px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:700;">🔄 刷新</button>
+    <select id="headerGpuSelect" title="选择开机要申请的 Google Colab GPU 硬件型号（拒绝后台擅自降级）" style="height:32px;padding:0 8px;border-radius:8px;border:1px solid rgba(16,185,129,0.55);background:#0f172a;color:#34d399;font-size:12px;font-weight:800;cursor:pointer;">
+      <option value="G4" selected>🔥 G4 (96G)</option>
+      <option value="A100">🚀 A100</option>
+      <option value="L4">⚡ L4 (24G)</option>
+      <option value="T4">🟢 T4 (16G)</option>
+    </select>
     <button class="btn-success" onclick="startDeploy(false, true)" id="btnQuickStart" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;transition:box-shadow 0.2s,transform 0.2s;">▶️ 一键开机</button>
     <button class="btn-danger" onclick="stopColab()" id="btnStop" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;">🛑 关机</button>
   </div>
@@ -2008,6 +2006,42 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <span class="kv-label">Model ID (模型名)</span>
       <span class="kv-val" id="modelId">huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF</span>
       <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('modelId')">复制</button>
+    </div>
+  </div>
+</div>
+
+<!-- GPU 权限不足 / 分配失败时的用户自主选择弹窗（绝不擅自后台降级为 T4） -->
+<div id="gpuChoiceModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(2,6,23,0.82);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
+  <div style="width:100%;max-width:540px;background:#1e293b;border:1.5px solid #f59e0b;border-radius:16px;padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.85);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);">
+      <span style="font-size:15.5px;font-weight:900;color:#fde68a;">⚠️ GPU 硬件权限确认 — 请选择启动方式</span>
+      <button type="button" onclick="document.getElementById('gpuChoiceModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 取消</button>
+    </div>
+    <div id="gpuChoiceModalReason" style="font-size:12.5px;color:#e2e8f0;line-height:1.55;margin-bottom:14px;padding:10px 12px;border-radius:8px;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.4);">
+      检测到当前账户无 G4 (RTX PRO 6000 · 96GB) 权限或算力池暂无空闲。系统已停止自动降级，请由您自主选择要加载的 GPU 规格：
+    </div>
+    <div style="display:flex;flex-direction:column;gap:9px;">
+      <button type="button" onclick="confirmGpuChoiceAndDeploy('G4')" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid #3b82f6;background:linear-gradient(135deg,rgba(37,99,235,0.28),rgba(15,23,42,0.95));color:#f8fafc;font-size:13px;font-weight:800;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        <span>🔥 1. 强制尝试申请 G4 (RTX PRO 6000 · 96GB 满血版)</span>
+        <span style="font-size:11px;color:#93c5fd;font-weight:600;">直接向 Colab 请求 G4</span>
+      </button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button type="button" onclick="confirmGpuChoiceAndDeploy('A100')" style="padding:10px 12px;border-radius:10px;border:1px solid #a855f7;background:rgba(168,85,247,0.16);color:#f3e8ff;font-size:12.5px;font-weight:800;cursor:pointer;text-align:left;">
+          <div>🚀 2. 改用 A100 启动</div>
+          <div style="font-size:10.5px;color:#d8b4fe;font-weight:500;margin-top:2px;">申请 NVIDIA A100 实例</div>
+        </button>
+        <button type="button" onclick="confirmGpuChoiceAndDeploy('L4')" style="padding:10px 12px;border-radius:10px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#e0f2fe;font-size:12.5px;font-weight:800;cursor:pointer;text-align:left;">
+          <div>⚡ 3. 改用 L4 (24GB) 启动</div>
+          <div style="font-size:10.5px;color:#bae6fd;font-weight:500;margin-top:2px;">申请 NVIDIA L4 实例</div>
+        </button>
+      </div>
+      <button type="button" onclick="confirmGpuChoiceAndDeploy('T4')" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid #10b981;background:linear-gradient(135deg,rgba(16,185,129,0.24),rgba(15,23,42,0.95));color:#ecfdf5;font-size:13px;font-weight:800;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        <span>🟢 4. 改用 T4 (16GB) 启动（自动匹配 T4 极速量化版模型）</span>
+        <span style="font-size:11px;color:#6ee7b7;font-weight:600;">免 CU · ~30秒极速加载</span>
+      </button>
+      <button type="button" onclick="document.getElementById('gpuChoiceModal').style.display='none';openAccountModal();" style="width:100%;padding:9px 14px;border-radius:10px;border:1px solid #64748b;background:#0f172a;color:#cbd5e1;font-size:12.5px;font-weight:700;cursor:pointer;text-align:center;">
+        👤 5. 打开「账户管理」切换至其他有 G4 算力额度的账户...
+      </button>
     </div>
   </div>
 </div>
@@ -4973,6 +5007,15 @@ async function pollLogs() {
     }
     const st = document.getElementById('deployStateText');
     isDeployTaskRunning = Boolean(d.running);
+    if (!d.running && d.exit_code === 2) {
+      const joinedLogs = (d.logs || []).join('\n');
+      const mFail = joinedLogs.match(/\[GPU_ALLOC_FAILED:([A-Z0-9]+)\]/);
+      const failedGpu = mFail ? mFail[1] : 'G4';
+      if (!window._lastGpuFailShownTs || (Date.now() - window._lastGpuFailShownTs > 4000)) {
+        window._lastGpuFailShownTs = Date.now();
+        openGpuChoiceModal(`Google Colab 服务端拒绝了 ${failedGpu} 实例分配（返回 Service Unavailable：当前账户无 ${failedGpu} 权限或算力池繁忙）。系统未自动降级，请由您自主选择要加载的 GPU 或切换账户：`, failedGpu);
+      }
+    }
     if (d.running) {
       isPowerBtnUnlocked = true;
       st.innerText = '⏳ 任务正在执行中...';
@@ -4989,11 +5032,38 @@ async function pollLogs() {
   } catch (e) {}
 }
 
-async function startDeploy(downloadOnly = false, fromQuickStart = false) {
+let _pendingDeployDownloadOnly = false;
+let _pendingDeployFromQuickStart = true;
+
+function openGpuChoiceModal(reasonText, requestedGpu = 'G4') {
+  const m = document.getElementById('gpuChoiceModal');
+  const rEl = document.getElementById('gpuChoiceModalReason');
+  if (rEl && reasonText) {
+    rEl.innerText = reasonText;
+  }
+  if (m) m.style.display = 'flex';
+}
+
+async function confirmGpuChoiceAndDeploy(chosenGpu) {
+  const m = document.getElementById('gpuChoiceModal');
+  if (m) m.style.display = 'none';
+  const hdrSel = document.getElementById('headerGpuSelect');
+  if (hdrSel) hdrSel.value = chosenGpu;
+  if (chosenGpu === 'T4') {
+    switchPresetTierTab('t4', true);
+  }
+  await startDeploy(_pendingDeployDownloadOnly, _pendingDeployFromQuickStart, chosenGpu, true);
+}
+
+async function startDeploy(downloadOnly = false, fromQuickStart = false, overrideGpu = '', forceGpu = false) {
   if (!fromQuickStart && !isMachineUnlocked()) {
     notifyMachineLocked();
     return;
   }
+  _pendingDeployDownloadOnly = Boolean(downloadOnly);
+  _pendingDeployFromQuickStart = Boolean(fromQuickStart);
+  const hdrSel = document.getElementById('headerGpuSelect');
+  const chosenGpu = (overrideGpu || (hdrSel ? hdrSel.value : 'G4') || 'G4').toUpperCase();
   if (fromQuickStart) {
     isPowerBtnUnlocked = true;
     isDeployTaskRunning = true;
@@ -5004,9 +5074,10 @@ async function startDeploy(downloadOnly = false, fromQuickStart = false) {
     folder: document.getElementById('inpFolder').value.trim(),
     pattern: document.getElementById('inpPattern').value.trim(),
     ctx: parseInt(document.getElementById('inpCtx').value || '262144', 10),
-    gpu: 'G4',
+    gpu: chosenGpu,
     download_only: Boolean(downloadOnly),
-    from_power_btn: Boolean(fromQuickStart)
+    from_power_btn: Boolean(fromQuickStart),
+    force_gpu: Boolean(forceGpu)
   };
   const r = await fetch('/api/deploy', {
     method: 'POST',
@@ -5019,6 +5090,11 @@ async function startDeploy(downloadOnly = false, fromQuickStart = false) {
     isDeployTaskRunning = false;
     updateMachineLockUI();
   }
+  if (d.need_gpu_choice) {
+    openGpuChoiceModal(d.message, chosenGpu);
+    return;
+  }
+  window._lastGpuFailShownTs = Date.now();
   alert(d.message);
   pollLogs();
 }
@@ -12098,6 +12174,9 @@ p.wait()
 
         if self.path == "/api/deploy":
             from_power_btn = bool(payload.get("from_power_btn", False))
+            force_gpu = bool(payload.get("force_gpu", False))
+            req_gpu = str(payload.get("gpu") or "G4").upper()
+            download_only = bool(payload.get("download_only", False))
             active_sessions = _list_active_sessions()
             with _DEPLOY_LOCK:
                 deploy_running = bool(_DEPLOY_STATE.get("running"))
@@ -12107,13 +12186,31 @@ p.wait()
                     "message": "🔒 防误触安全锁已开启：当前机器处于【已关机】锁定状态！\n请先点击顶部标题栏的「▶️ 一键开机」启动机器后，再切换或加载模型。",
                 })
                 return
+            if not active_sessions and not download_only and req_gpu != "T4" and not force_gpu:
+                try:
+                    cu_chk = _query_cu_usage(force=False)
+                    bal_v = cu_chk.get("paid_balance")
+                    el_g = [str(g).upper() for g in (cu_chk.get("eligible_gpus") or [])]
+                    has_ent = (bal_v is not None and float(bal_v) > 0.0) or (req_gpu in el_g)
+                    if not has_ent and bal_v is not None and float(bal_v) <= 0.0:
+                        self._send_json({
+                            "ok": False,
+                            "need_gpu_choice": True,
+                            "requested_gpu": req_gpu,
+                            "eligible_gpus": el_g,
+                            "paid_balance": bal_v,
+                            "message": f"⚠️ 当前账户在 Google Colab 返回的算力余额为 0.00 CU，且可用 GPU 列表为 {el_g or ['T4']}（未包含 {req_gpu}）。\n系统已停止自动降级，请由您自主选择开机方式：",
+                        })
+                        return
+                except Exception:
+                    pass
             ok, msg = _start_deploy_background(
                 repo=payload.get("repo", "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"),
                 folder=payload.get("folder", "Huihui-Qwen3.8-27B-abliterated-GGUF"),
                 pattern=payload.get("pattern", "Huihui-Qwen3.8-27B-abliterated-bf16.gguf"),
                 ctx=int(payload.get("ctx", 262144)),
-                gpu=payload.get("gpu", "G4"),
-                download_only=bool(payload.get("download_only", False)),
+                gpu=req_gpu,
+                download_only=download_only,
             )
             self._send_json({"ok": ok, "message": msg})
             return
