@@ -3430,7 +3430,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
 
     <!-- 第 2 排横条：左侧「视频总帧数滑块 + 4s~20s 快捷按钮 + 自动 2K 超分开关」，右侧当前模式专属生成主按钮 -->
-    <div id="specRow2ActionGrid" style="display:grid;grid-template-columns: 1fr 220px;gap:10px;align-items:center;">
+    <div id="specRow2ActionGrid" style="display:grid;grid-template-columns: minmax(0, 1fr) 220px;gap:10px;align-items:center;min-width:0;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1e293b;padding:0 12px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);flex-wrap:nowrap;min-width:0;overflow:hidden;">
         <div id="framesSliderInner" style="display:flex;align-items:center;gap:7px;flex:1;flex-wrap:nowrap;min-width:0;">
           <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;flex-shrink:0;">时长/帧数</span>
@@ -3460,11 +3460,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </span>
       </div>
 
-      <div style="display:flex;gap:8px;width:100%;height:38px;">
-        <button type="button" id="btnImageOnlyGen" onclick="startVideoGenerate('image')" title="生成原生 4K 高清写真 PNG/JPG 大图（约 11~17 秒）" style="flex:1;height:38px;box-sizing:border-box;display:none;align-items:center;justify-content:center;padding:0 12px;font-size:13.5px;font-weight:800;border-radius:9px;border:1px solid rgba(244,114,182,0.55);background:linear-gradient(135deg, #ec4899, #9333ea);color:#ffffff;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.45);white-space:nowrap;">
+      <div style="display:flex;gap:8px;width:100%;min-width:0;height:38px;overflow:hidden;">
+        <button type="button" id="btnImageOnlyGen" onclick="startVideoGenerate('image')" title="生成原生 4K 高清写真 PNG/JPG 大图（约 11~17 秒）" style="flex:1;min-width:0;max-width:100%;height:38px;box-sizing:border-box;display:none;align-items:center;justify-content:center;padding:0 10px;font-size:13px;font-weight:800;border-radius:9px;border:1px solid rgba(244,114,182,0.55);background:linear-gradient(135deg, #ec4899, #9333ea);color:#ffffff;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           📸 立即生成 4K 写真图片
         </button>
-        <button class="btn-primary" style="flex:1;height:38px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 12px;font-size:13.5px;font-weight:800;border-radius:9px;box-shadow:0 6px 16px -4px rgba(59,130,246,0.5);white-space:nowrap;" onclick="startVideoGenerate('video')" id="btnVideoGen">
+        <button class="btn-primary" style="flex:1;min-width:0;max-width:100%;height:38px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:0 10px;font-size:13px;font-weight:800;border-radius:9px;box-shadow:0 6px 16px -4px rgba(59,130,246,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="startVideoGenerate('video')" id="btnVideoGen">
           🎬 生成有声视频
         </button>
       </div>
@@ -5813,16 +5813,16 @@ function switchMiniMaxMode(mode) {
     if (batchWrap) batchWrap.style.display = 'none';
     if (specRowsCont) {
       specRowsCont.style.display = 'grid';
-      specRowsCont.style.gridTemplateColumns = '1.22fr 1.18fr';
+      specRowsCont.style.gridTemplateColumns = 'minmax(0, 1.22fr) minmax(0, 1.18fr)';
       specRowsCont.style.gap = '10px';
       specRowsCont.style.alignItems = 'center';
     }
     if (specRow1) {
-      specRow1.style.gridTemplateColumns = '1.6fr 1fr';
+      specRow1.style.gridTemplateColumns = 'minmax(0, 1.6fr) minmax(0, 1fr)';
       specRow1.style.marginBottom = '0';
     }
     if (specRow2) {
-      specRow2.style.gridTemplateColumns = '1fr 215px';
+      specRow2.style.gridTemplateColumns = 'minmax(0, 1fr) 215px';
     }
     if (framesInner) framesInner.style.display = 'none';
     if (sr2kLbl) sr2kLbl.style.display = 'none';
@@ -5875,7 +5875,7 @@ function switchMiniMaxMode(mode) {
       specRow1.style.marginBottom = '10px';
     }
     if (specRow2) {
-      specRow2.style.gridTemplateColumns = '1fr 220px';
+      specRow2.style.gridTemplateColumns = 'minmax(0, 1fr) 220px';
     }
     if (framesInner) framesInner.style.display = 'none';
     if (sr2kLbl) sr2kLbl.style.display = 'inline-flex';
@@ -5931,7 +5931,7 @@ function switchMiniMaxMode(mode) {
       specRow1.style.marginBottom = '10px';
     }
     if (specRow2) {
-      specRow2.style.gridTemplateColumns = '1fr 220px';
+      specRow2.style.gridTemplateColumns = 'minmax(0, 1fr) 220px';
     }
     if (framesInner) framesInner.style.display = 'flex';
     if (sr2kLbl) sr2kLbl.style.display = 'inline-flex';
@@ -8093,7 +8093,7 @@ function setVideoBtnRunningState(running, customLabel) {
         btnImg.setAttribute('data-running', '1');
         btnImg.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
         btnImg.style.boxShadow = '0 6px 16px -4px rgba(239,68,68,0.55)';
-        btnImg.innerText = customLabel || '🛑 正在生成 4K 图片... (点击停止)';
+        btnImg.innerText = customLabel || '🛑 生成 4K 图中 (点击停止)';
       }
       if (btnVid) {
         btnVid.setAttribute('data-running', '0');
@@ -8104,7 +8104,7 @@ function setVideoBtnRunningState(running, customLabel) {
         btnVid.setAttribute('data-running', '1');
         btnVid.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
         btnVid.style.boxShadow = '0 6px 16px -4px rgba(239,68,68,0.55)';
-        btnVid.innerText = customLabel || '🛑 正在合成视频... (点击停止)';
+        btnVid.innerText = customLabel || '🛑 合成视频中 (点击停止)';
       }
       if (btnImg) {
         btnImg.setAttribute('data-running', '0');
@@ -8667,8 +8667,8 @@ async function startVideoGenerate(forceTarget = '') {
   const pWrap = document.getElementById('videoProgressWrap');
   const pBar = document.getElementById('videoProgressBar');
   const runningBtnText = isImgMode
-    ? '🛑 正在生成 4K 写真大图... (点击停止)'
-    : (isAvMode ? '🛑 正在生成数字人视频... (点击停止)' : (selectedBatchCount > 1 ? `🛑 正在连抽 ${selectedBatchCount} 条... (点击停止)` : '🛑 正在合成有声视频... (点击停止)'));
+    ? '🛑 生成 4K 图中 (点击停止)'
+    : (isAvMode ? '🛑 生成数字人中 (点击停止)' : (selectedBatchCount > 1 ? `🛑 连抽 ${selectedBatchCount} 条中 (点击停止)` : '🛑 合成视频中 (点击停止)'));
   setVideoBtnRunningState(true, runningBtnText);
   pWrap.style.display = 'block';
   pBar.style.width = '8%';
