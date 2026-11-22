@@ -16,6 +16,7 @@ import math
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -293,6 +294,9 @@ _UPSCALE_TIMING: Dict[str, Any] = {
 
 
 PANEL_LOGS_FILE = BASE_DIR / ".colab_panel_logs.json"
+DEPLOY_LIVE_LOG_FILE = BASE_DIR / ".deploy_live.log"
+DEPLOY_PID_FILE = BASE_DIR / ".deploy_live.pid"
+_REMOTE_LOG_FALLBACK_CACHE: Dict[str, Any] = {"ts": 0.0, "lines": []}
 
 
 def _compact_progress_log_lines(raw_lines: List[str]) -> List[str]:
@@ -711,16 +715,14 @@ _DEPLOY_STATE: Dict[str, Any] = {
     "logs": [],
     "exit_code": None,
     "started_at": None,
+    "pid": None,
 }
 if PANEL_LOGS_FILE.exists():
     try:
         _init_logs_obj = json.loads(PANEL_LOGS_FILE.read_text(encoding="utf-8"))
         if isinstance(_init_logs_obj.get("logs"), list):
             _raw_init = _compact_progress_log_lines(_init_logs_obj["logs"])[-400:]
-            if any("RuntimeError" in x or "Traceback" in x or "[自动切换引擎]" in x for x in _raw_init):
-                _DEPLOY_STATE["logs"] = [f"[{time.strftime('%H:%M:%S')}] ✅ 控制台已就绪，请选择模型并点击「🚀 下载/加载并启动」或「▶️ 一键开机」。"]
-                _DEPLOY_STATE["exit_code"] = None
-            else:
+            if _raw_init:
                 _DEPLOY_STATE["logs"] = _raw_init
                 if "exit_code" in _init_logs_obj:
                     _DEPLOY_STATE["exit_code"] = _init_logs_obj["exit_code"]
@@ -1529,6 +1531,251 @@ print("PANEL_JSON_START:" + json.dumps(res, ensure_ascii=False) + ":PANEL_JSON_E
         runtime.stop()
 
 
+def _is_deploy_pid_alive(pid: int) -> bool:
+    if not pid or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        cmd_out = subprocess.check_output(["ps", "-p", str(pid), "-o", "command="], text=True, timeout=2).strip()
+        return "deploy_colab_model.py" in cmd_out
+    except Exception:
+        return False
+
+
+def _append_deploy_log_line_locked(rln: str):
+    logs_ref = _DEPLOY_STATE["logs"]
+    if logs_ref and "[显存装载]" in rln and "[显存装载]" in logs_ref[-1]:
+        logs_ref[-1] = rln
+    else:
+        logs_ref.append(rln)
+        if len(logs_ref) > 500:
+            _DEPLOY_STATE["logs"] = logs_ref[-500:]
+
+
+def _stop_detached_deploy_process() -> bool:
+    target_pid = None
+    with _DEPLOY_LOCK:
+        if _DEPLOY_STATE.get("pid"):
+            target_pid = int(_DEPLOY_STATE["pid"])
+    if not target_pid and DEPLOY_PID_FILE.is_file():
+        try:
+            meta = json.loads(DEPLOY_PID_FILE.read_text(encoding="utf-8"))
+            target_pid = int(meta.get("pid") or 0) or None
+        except Exception:
+            target_pid = None
+    killed = False
+    if target_pid and _is_deploy_pid_alive(target_pid):
+        try:
+            os.killpg(target_pid, signal.SIGTERM)
+            killed = True
+        except Exception:
+            try:
+                os.kill(target_pid, signal.SIGTERM)
+                killed = True
+            except Exception:
+                pass
+    try:
+        if DEPLOY_PID_FILE.exists():
+            DEPLOY_PID_FILE.unlink()
+    except Exception:
+        pass
+    with _DEPLOY_LOCK:
+        _DEPLOY_STATE["running"] = False
+        _DEPLOY_STATE["pid"] = None
+        if killed:
+            _DEPLOY_STATE["exit_code"] = -15
+        _save_panel_logs_snapshot()
+    try:
+        c2 = _load_endpoint_cfg()
+        if c2.get("deploying"):
+            c2["deploying"] = False
+            c2["last_activity_ts"] = time.time()
+            ENDPOINT_FILE.write_text(json.dumps(c2, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+    return killed
+
+
+def _start_deploy_log_tailer(pid: int, proc: Optional[subprocess.Popen] = None, start_offset: int = 0):
+    def _tail_worker():
+        offset = max(0, int(start_offset))
+        partial = ""
+        last_snap_ts = time.time()
+        exit_rc: Optional[int] = None
+        try:
+            while True:
+                new_chunk = ""
+                try:
+                    if DEPLOY_LIVE_LOG_FILE.is_file():
+                        with open(DEPLOY_LIVE_LOG_FILE, "rb") as rf:
+                            rf.seek(offset)
+                            raw = rf.read()
+                            if raw:
+                                offset += len(raw)
+                                new_chunk = raw.decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+
+                if new_chunk:
+                    buf = partial + new_chunk
+                    lines = buf.splitlines(keepends=True)
+                    partial = ""
+                    if lines and not lines[-1].endswith(("\n", "\r")):
+                        partial = lines.pop()
+                    if lines:
+                        with _DEPLOY_LOCK:
+                            for ln in lines:
+                                _append_deploy_log_line_locked(ln.rstrip("\r\n"))
+                            now_t = time.time()
+                            if now_t - last_snap_ts >= 2.0:
+                                _save_panel_logs_snapshot()
+                                last_snap_ts = now_t
+
+                alive = False
+                if proc is not None:
+                    rc = proc.poll()
+                    if rc is None:
+                        alive = True
+                    else:
+                        exit_rc = rc
+                        alive = False
+                else:
+                    alive = _is_deploy_pid_alive(pid)
+
+                if not alive:
+                    # 再最后读一次文件尾部，避免漏掉进程退出前刚刷出的最后几行
+                    try:
+                        if DEPLOY_LIVE_LOG_FILE.is_file():
+                            with open(DEPLOY_LIVE_LOG_FILE, "rb") as rf:
+                                rf.seek(offset)
+                                raw = rf.read()
+                                if raw:
+                                    offset += len(raw)
+                                    partial += raw.decode("utf-8", errors="replace")
+                    except Exception:
+                        pass
+                    if partial.strip():
+                        with _DEPLOY_LOCK:
+                            for ln in partial.splitlines():
+                                _append_deploy_log_line_locked(ln.rstrip("\r\n"))
+                    break
+
+                time.sleep(0.3)
+        except Exception as e:
+            with _DEPLOY_LOCK:
+                _DEPLOY_STATE["logs"].append(f"[日志追踪异常] {e}")
+        finally:
+            try:
+                if DEPLOY_PID_FILE.is_file():
+                    meta = json.loads(DEPLOY_PID_FILE.read_text(encoding="utf-8"))
+                    if int(meta.get("pid") or 0) == pid:
+                        DEPLOY_PID_FILE.unlink()
+            except Exception:
+                pass
+            with _DEPLOY_LOCK:
+                # 仅当当前追踪的仍是同一个 pid 时更新状态（防止覆盖新启动的任务）
+                if _DEPLOY_STATE.get("pid") in (None, pid):
+                    if exit_rc is not None:
+                        _DEPLOY_STATE["exit_code"] = exit_rc
+                    elif _DEPLOY_STATE.get("exit_code") is None:
+                        full_tail = "\n".join(_DEPLOY_STATE["logs"][-20:])
+                        _DEPLOY_STATE["exit_code"] = 0 if "DEPLOYMENT SUCCESSFUL" in full_tail else 0
+                    _DEPLOY_STATE["running"] = False
+                    _DEPLOY_STATE["pid"] = None
+                    _LAST_METRICS_CACHE["timestamp"] = 0.0
+                    _LAST_SESSIONS_CACHE["timestamp"] = 0.0
+                    _save_panel_logs_snapshot()
+            try:
+                c2 = _load_endpoint_cfg()
+                c2["last_activity_ts"] = time.time()
+                c2["deploying"] = False
+                ENDPOINT_FILE.write_text(json.dumps(c2, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            except Exception:
+                pass
+            try:
+                _query_local_gdrive_info(force=True)
+            except Exception:
+                pass
+
+    threading.Thread(target=_tail_worker, daemon=True).start()
+
+
+def _reattach_running_deploy_if_any():
+    """面板重启后自动无缝接管仍在后台独立运行的 deploy_colab_model.py 及其磁盘实时日志"""
+    if not DEPLOY_PID_FILE.is_file():
+        return
+    try:
+        meta = json.loads(DEPLOY_PID_FILE.read_text(encoding="utf-8"))
+        pid = int(meta.get("pid") or 0)
+    except Exception:
+        return
+    if not _is_deploy_pid_alive(pid):
+        try:
+            DEPLOY_PID_FILE.unlink()
+        except Exception:
+            pass
+        return
+    existing_lines: List[str] = []
+    file_offset = 0
+    if DEPLOY_LIVE_LOG_FILE.is_file():
+        try:
+            raw = DEPLOY_LIVE_LOG_FILE.read_bytes()
+            file_offset = len(raw)
+            existing_lines = _compact_progress_log_lines(raw.decode("utf-8", errors="replace").splitlines())[-500:]
+        except Exception:
+            pass
+    with _DEPLOY_LOCK:
+        _DEPLOY_STATE["running"] = True
+        _DEPLOY_STATE["pid"] = pid
+        _DEPLOY_STATE["exit_code"] = None
+        _DEPLOY_STATE["started_at"] = float(meta.get("started_at") or time.time())
+        if existing_lines:
+            _DEPLOY_STATE["logs"] = existing_lines
+        else:
+            _DEPLOY_STATE["logs"] = [f"[{time.strftime('%H:%M:%S')}] 🔄 已自动重新接管后台部署任务 (PID {pid})，正在恢复实时日志..."]
+        _save_panel_logs_snapshot()
+    _start_deploy_log_tailer(pid, proc=None, start_offset=file_offset)
+
+
+def _fetch_remote_server_log_fallback(max_lines: int = 25) -> List[str]:
+    """当本机日志稀疏且云端实例在线时，非阻塞拉取远端服务日志尾部作为兜底显示"""
+    now_ts = time.time()
+    if now_ts - float(_REMOTE_LOG_FALLBACK_CACHE.get("ts") or 0.0) < 8.0:
+        return list(_REMOTE_LOG_FALLBACK_CACHE.get("lines") or [])
+    _REMOTE_LOG_FALLBACK_CACHE["ts"] = now_ts
+    out_lines: List[str] = []
+    try:
+        sessions = _list_active_sessions(force=False)
+        if not sessions:
+            _REMOTE_LOG_FALLBACK_CACHE["lines"] = []
+            return []
+        from colab_cli.common import state as _st_log
+        so = _st_log.get_session(sessions[0]["name"])
+        if not so or not getattr(so, "url", None) or not getattr(so, "token", None):
+            return []
+        base_u = so.url.rstrip("/")
+        for rname in ("minimax_server.log", "llama_server.log", "minimax_image_server.log", "longcat_avatar_server.log"):
+            try:
+                u = f"{base_u}/api/contents/content/{rname}?colab-runtime-proxy-token={urllib.parse.quote(so.token)}"
+                req = urllib.request.Request(u, headers={"X-Colab-Runtime-Proxy-Token": so.token})
+                with urllib.request.urlopen(req, timeout=2.5) as resp:
+                    obj = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                    txt = str(obj.get("content") or "")
+                    if txt.strip():
+                        tail = [ln.rstrip() for ln in txt.splitlines() if ln.strip()][-max_lines:]
+                        out_lines = [f"[云端实时日志 · /content/{rname}]"] + tail
+                        break
+            except Exception:
+                continue
+    except Exception:
+        pass
+    _REMOTE_LOG_FALLBACK_CACHE["lines"] = out_lines
+    return out_lines
+
+
 def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu: str, download_only: bool = False, retry_until_ready: bool = False):
     g4_only_folders = {
         "Huihui-Qwen3.8-27B-abliterated-GGUF",
@@ -1568,6 +1815,7 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
         _DEPLOY_STATE["logs"] = init_logs
         _DEPLOY_STATE["exit_code"] = None
         _DEPLOY_STATE["started_at"] = time.time()
+        _DEPLOY_STATE["pid"] = None
         _save_panel_logs_snapshot()
 
     cfg = _load_endpoint_cfg()
@@ -1578,63 +1826,78 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
         cfg["model_folder"] = folder
     ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    def _worker():
-        cmd = [
-            str(PYTHON_BIN),
-            str(DEPLOY_SCRIPT),
-            "--gpu", gpu or "G4",
-            "--repo", repo,
-            "--folder", folder,
-            "--pattern", pattern,
-            "--ctx", str(ctx),
-            "-y",
-        ]
-        if download_only:
-            cmd.append("--download-only")
-        if retry_until_ready:
-            cmd.append("--retry-until-ready")
+    cmd = [
+        str(PYTHON_BIN),
+        "-u",
+        str(DEPLOY_SCRIPT),
+        "--gpu", gpu or "G4",
+        "--repo", repo,
+        "--folder", folder,
+        "--pattern", pattern,
+        "--ctx", str(ctx),
+        "-y",
+    ]
+    if download_only:
+        cmd.append("--download-only")
+    if retry_until_ready:
+        cmd.append("--retry-until-ready")
+
+    try:
+        init_text = "\n".join(init_logs) + "\n"
+        DEPLOY_LIVE_LOG_FILE.write_text(init_text, encoding="utf-8")
+        init_offset = DEPLOY_LIVE_LOG_FILE.stat().st_size
+        child_env = os.environ.copy()
+        child_env["PYTHONUNBUFFERED"] = "1"
+        log_fh = open(DEPLOY_LIVE_LOG_FILE, "ab")
         try:
+            # 独立进程组 + 落盘日志：即使面板热重启，也绝不中断正在进行的开机/下载/加载，且重启后自动无缝续接日志
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(BASE_DIR),
-                stdout=subprocess.PIPE,
+                env=child_env,
+                stdin=subprocess.DEVNULL,
+                stdout=log_fh,
                 stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
+                start_new_session=True,
+                close_fds=True,
             )
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                rln = line.rstrip("\n")
-                with _DEPLOY_LOCK:
-                    logs_ref = _DEPLOY_STATE["logs"]
-                    if logs_ref and "[显存装载]" in rln and "[显存装载]" in logs_ref[-1]:
-                        logs_ref[-1] = rln
-                    else:
-                        logs_ref.append(rln)
-                        if len(logs_ref) > 500:
-                            _DEPLOY_STATE["logs"] = logs_ref[-500:]
-            proc.wait()
-            with _DEPLOY_LOCK:
-                _DEPLOY_STATE["exit_code"] = proc.returncode
-                _DEPLOY_STATE["running"] = False
-                _LAST_METRICS_CACHE["timestamp"] = 0.0
-                _LAST_SESSIONS_CACHE["timestamp"] = 0.0
-                _save_panel_logs_snapshot()
-        except Exception as e:
-            with _DEPLOY_LOCK:
-                _DEPLOY_STATE["logs"].append(f"[错误] {e}")
-                _DEPLOY_STATE["exit_code"] = 1
-                _DEPLOY_STATE["running"] = False
-                _save_panel_logs_snapshot()
         finally:
-            c2 = _load_endpoint_cfg()
-            c2["last_activity_ts"] = time.time()
-            c2["deploying"] = False
-            ENDPOINT_FILE.write_text(json.dumps(c2, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            _query_local_gdrive_info(force=True)
+            log_fh.close()
 
-    threading.Thread(target=_worker, daemon=True).start()
-    return True, "已启动后台部署任务"
+        with _DEPLOY_LOCK:
+            _DEPLOY_STATE["pid"] = proc.pid
+        DEPLOY_PID_FILE.write_text(
+            json.dumps(
+                {
+                    "pid": proc.pid,
+                    "started_at": time.time(),
+                    "repo": repo,
+                    "folder": folder,
+                    "gpu": gpu or "G4",
+                    "download_only": bool(download_only),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        _start_deploy_log_tailer(proc.pid, proc=proc, start_offset=init_offset)
+        return True, "已启动后台部署任务"
+    except Exception as e:
+        with _DEPLOY_LOCK:
+            _DEPLOY_STATE["logs"].append(f"[错误] {e}")
+            _DEPLOY_STATE["exit_code"] = 1
+            _DEPLOY_STATE["running"] = False
+            _DEPLOY_STATE["pid"] = None
+            _save_panel_logs_snapshot()
+        c2 = _load_endpoint_cfg()
+        c2["last_activity_ts"] = time.time()
+        c2["deploying"] = False
+        ENDPOINT_FILE.write_text(json.dumps(c2, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return False, f"启动后台部署失败: {e}"
+
+
+_reattach_running_deploy_if_any()
 
 
 HTML_PAGE = r"""<!DOCTYPE html>
@@ -11429,11 +11692,18 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/api/logs"):
             with _DEPLOY_LOCK:
-                self._send_json({
-                    "running": _DEPLOY_STATE["running"],
-                    "logs": _DEPLOY_STATE["logs"],
-                    "exit_code": _DEPLOY_STATE["exit_code"],
-                })
+                is_run = bool(_DEPLOY_STATE["running"])
+                cur_logs = list(_DEPLOY_STATE["logs"])
+                ex_code = _DEPLOY_STATE["exit_code"]
+            if not is_run and len(cur_logs) <= 3:
+                remote_tail = _fetch_remote_server_log_fallback(max_lines=25)
+                if remote_tail:
+                    cur_logs = cur_logs + [""] + remote_tail
+            self._send_json({
+                "running": is_run,
+                "logs": cur_logs,
+                "exit_code": ex_code,
+            })
             return
 
         if self.path.startswith("/api/local_videos"):
@@ -13289,6 +13559,7 @@ p.wait()
         if self.path == "/api/video_cancel":
             _PENDING_VIDEO_JOB["active"] = False
             _PENDING_VIDEO_JOB["error"] = "🛑 已手动停止视频生成任务"
+            stopped_deploy = _stop_detached_deploy_process()
             cfg = _load_endpoint_cfg()
             headers = {
                 "Content-Type": "application/json",
@@ -13305,6 +13576,10 @@ p.wait()
                         pass
                 except Exception:
                     pass
+            if stopped_deploy:
+                _append_panel_log("🛑 [手动停止] 已中断后台开机/部署/抢卡任务")
+                self._send_json({"ok": True, "message": "🛑 已停止后台开机/部署任务"})
+                return
             _append_panel_log("🛑 [手动停止] 已发送中断信号停止当前生成任务 (模型继续常驻显存)")
             self._send_json({"ok": True, "message": "🛑 已手动停止当前生成任务 (模型继续常驻显存)"})
             return

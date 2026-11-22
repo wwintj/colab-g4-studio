@@ -25,4 +25,6 @@ build_revised_agreement.py
 .idea/
 .vscode/
 .colab_panel_daemon.log
+.deploy_live.log
+.deploy_live.pid
 .apple_face_detect
