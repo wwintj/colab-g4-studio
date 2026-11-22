@@ -1964,7 +1964,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
     const _hc = JSON.parse(localStorage.getItem('easycolab_header_cache') || 'null');
     if (_hc) {
       const _sb = document.getElementById('sessionBadge');
+      const _qb = document.getElementById('btnQuickStart');
       if (_sb && _hc.badgeText) { _sb.innerText = _hc.badgeText; _sb.className = _hc.badgeClass || 'badge offline'; }
+      if (_qb && _hc.badgeClass && _hc.badgeClass.includes('online')) {
+        _qb.innerText = '✅ 已开机';
+        _qb.style.background = 'rgba(16,185,129,0.18)';
+        _qb.style.border = '1px solid rgba(16,185,129,0.65)';
+        _qb.style.color = '#6ee7b7';
+      }
     }
   } catch (e) {}
 </script>
@@ -4540,6 +4547,28 @@ function updateMachineLockUI() {
   }
   if (btnDl) btnDl.disabled = !unlocked;
   if (btnDep) btnDep.disabled = !unlocked;
+  const qBtn = document.getElementById('btnQuickStart');
+  if (qBtn) {
+    if (isInstanceOnline) {
+      qBtn.innerText = '✅ 已开机';
+      qBtn.style.background = 'rgba(16,185,129,0.18)';
+      qBtn.style.border = '1px solid rgba(16,185,129,0.65)';
+      qBtn.style.color = '#6ee7b7';
+      qBtn.title = '当前 Colab 实例已开机运行中（点击可重连或切换加载模型）';
+    } else if (isDeployTaskRunning) {
+      qBtn.innerText = '⏳ 开机中...';
+      qBtn.style.background = 'rgba(245,158,11,0.2)';
+      qBtn.style.border = '1px solid rgba(245,158,11,0.65)';
+      qBtn.style.color = '#fde68a';
+      qBtn.title = '正在申请分配 GPU 实例或加载模型...';
+    } else {
+      qBtn.innerText = '▶️ 一键开机';
+      qBtn.style.background = '';
+      qBtn.style.border = '';
+      qBtn.style.color = '';
+      qBtn.title = '打开开机配置窗口，选择 GPU 显卡（G4/H100/A100/L4/T4）与模型启动机器';
+    }
+  }
 }
 
 function notifyMachineLocked() {
@@ -11335,6 +11364,23 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             cu_info = _query_cu_usage(force=force)
             metrics = None
             if sessions:
+                if not cfg.get("tunnel_url"):
+                    try:
+                        from colab_cli.common import state as _st_tun
+                        _so = _st_tun.get_session(sessions[0]["name"])
+                        if _so and getattr(_so, "url", None) and getattr(_so, "token", None):
+                            _base_u = _so.url.rstrip("/")
+                            _cf_u = f"{_base_u}/api/contents/content/cf_tunnel.log?colab-runtime-proxy-token={urllib.parse.quote(_so.token)}"
+                            _cf_req = urllib.request.Request(_cf_u, headers={"X-Colab-Runtime-Proxy-Token": _so.token})
+                            with urllib.request.urlopen(_cf_req, timeout=3) as _cf_r:
+                                _cf_txt = json.loads(_cf_r.read().decode("utf-8")).get("content") or ""
+                                _m_urls = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", _cf_txt)
+                                if _m_urls:
+                                    cfg["tunnel_url"] = _m_urls[-1]
+                                    cfg["deploying"] = False
+                                    ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                    except Exception:
+                        pass
                 now = time.time()
                 if _DEPLOY_STATE["running"] or (not force and _LAST_METRICS_CACHE["data"] and (now - _LAST_METRICS_CACHE["timestamp"] < 12)):
                     metrics = _LAST_METRICS_CACHE["data"]
