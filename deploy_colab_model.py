@@ -6417,7 +6417,17 @@ print('DRIVE_ROOT_READY:/content/drive/MyDrive/models')
                 sys.stdout.write(out_msg["text"])
                 sys.stdout.flush()
 
-        runtime.execute_code(mount_code, output_hook=_stream_mount_out, allow_stdin=True, timeout=600)
+        if rclone_conf_text:
+            # 永久静默 rclone 模式不需要 stdin 交互，可直接开启流式 output_hook
+            runtime.execute_code(mount_code, output_hook=_stream_mount_out, allow_stdin=False, timeout=600)
+        else:
+            # 交互式 drive.mount 需要 allow_stdin=True（colab_cli 不允许同时传 output_hook）
+            outputs = runtime.execute_code(mount_code, allow_stdin=True, timeout=600)
+            for out_msg in outputs or []:
+                _stream_mount_out(out_msg)
+        return True
+    except (NotImplementedError, TypeError, AttributeError) as e:
+        print(f"⚠️ Google Drive 挂载脚本调用异常 ({e})，已保留当前 GPU 实例继续执行。", flush=True)
         return True
     except Exception as e:
         print(f"⚠️ 实例 '{session_name}' WebSocket 连接已断开 ({e})，正在自动清理失效会话并重新分配...", flush=True)
