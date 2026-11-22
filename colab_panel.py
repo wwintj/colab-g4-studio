@@ -2385,7 +2385,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button type="button" class="fpd-cat-btn" data-cat="realism" onclick="selectFpdCategory('realism')" style="height:24px;padding:0 9px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;">🎞️ 写实电影 (2)</button>
       </div>
     </div>
-    <div id="fpdRouteGrid" style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:7px;max-height:210px;overflow-y:auto;padding:2px;margin-bottom:12px;"></div>
+    <div id="fpdRouteGrid" style="display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:7px;max-height:200px;overflow-y:auto;padding:2px;margin-bottom:8px;"></div>
+
+    <!-- 1.5 批量多风格自动连拍控制条 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 10px;border-radius:9px;background:rgba(15,23,42,0.92);border:1px solid rgba(168,85,247,0.38);margin-bottom:11px;">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <button type="button" id="btnToggleFpdMulti" onclick="toggleFpdMultiMode()" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:11.5px;font-weight:800;cursor:pointer;">☑️ 开启多选连拍</button>
+        <span style="font-size:11px;color:#94a3b8;">快捷套图：</span>
+        <button type="button" onclick="applyFpdBatchPreset('random4')" style="height:24px;padding:0 8px;border-radius:6px;border:1px solid rgba(168,85,247,0.45);background:rgba(168,85,247,0.14);color:#e9d5ff;font-size:11px;font-weight:700;cursor:pointer;">🎲 随机4套</button>
+        <button type="button" onclick="applyFpdBatchPreset('curve5')" style="height:24px;padding:0 8px;border-radius:6px;border:1px solid rgba(236,72,153,0.45);background:rgba(236,72,153,0.14);color:#fbcfe8;font-size:11px;font-weight:700;cursor:pointer;">✨ CCD全套(5张)</button>
+        <button type="button" onclick="applyFpdBatchPreset('lifestyle4')" style="height:24px;padding:0 8px;border-radius:6px;border:1px solid rgba(16,185,129,0.45);background:rgba(16,185,129,0.14);color:#a7f3d0;font-size:11px;font-weight:700;cursor:pointer;">🌿 氛围套图(4张)</button>
+        <button type="button" onclick="applyFpdBatchPreset('gufeng5')" style="height:24px;padding:0 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.14);color:#fde68a;font-size:11px;font-weight:700;cursor:pointer;">👘 古风套图(5张)</button>
+        <button type="button" id="btnClearFpdBatch" onclick="clearFpdBatchQueue()" style="display:none;height:24px;padding:0 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:transparent;color:#fca5a5;font-size:11px;font-weight:700;cursor:pointer;">✕ 清空队列</button>
+      </div>
+      <span id="fpdBatchSummaryBadge" style="font-size:11.5px;font-weight:800;color:#94a3b8;">单张模式（点「开启多选连拍」或快捷套图即可全自动批量拍多张）</span>
+    </div>
 
     <!-- 2. 7 种人物气质叠加层 Overlay -->
     <div style="margin-bottom:12px;">
@@ -2421,15 +2435,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <textarea id="fpdPreviewBox" rows="5" oninput="const c=document.getElementById('fpdCharCount');if(c)c.innerText=this.value.length+' 字';" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid rgba(236,72,153,0.42);background:#020617;color:#f1f5f9;font-size:12.5px;line-height:1.6;resize:vertical;"></textarea>
     </div>
 
-    <!-- 5. 底部操作按钮 + 开源协议致谢 -->
+    <!-- 5. 底部操作按钮 + 拍完自动关机选项 + 开源协议致谢 -->
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button type="button" onclick="randomizeFpdInspiration()" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid rgba(168,85,247,0.55);background:rgba(168,85,247,0.16);color:#e9d5ff;font-size:12px;font-weight:800;cursor:pointer;">🎲 随机灵感组合</button>
         <button type="button" onclick="clearFpdInputs()" style="height:34px;padding:0 10px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#94a3b8;font-size:12px;font-weight:700;cursor:pointer;">🧹 清空锁参</button>
+        <label id="lblFpdAutoShutdown" style="display:none;align-items:center;gap:5px;height:34px;padding:0 10px;border-radius:8px;border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.12);color:#fde68a;font-size:11.5px;font-weight:700;cursor:pointer;user-select:none;">
+          <input type="checkbox" id="chkFpdAutoShutdown" style="width:13px;height:13px;accent-color:#f59e0b;margin:0;cursor:pointer;">
+          <span>🛑 拍完自动关机省算力</span>
+        </label>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <button type="button" onclick="applyFpdPromptToBox(false)" style="height:36px;padding:0 14px;border-radius:9px;border:1px solid rgba(59,130,246,0.6);background:rgba(59,130,246,0.18);color:#93c5fd;font-size:12.5px;font-weight:800;cursor:pointer;">📋 填入提示词框</button>
-        <button type="button" onclick="applyFpdPromptToBox(true)" style="height:36px;padding:0 16px;border-radius:9px;border:1px solid rgba(244,114,182,0.65);background:linear-gradient(135deg,#ec4899,#9333ea);color:#ffffff;font-size:12.5px;font-weight:800;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.5);">🚀 填入并立即生成 4K</button>
+        <button type="button" id="btnFpdPrimaryAction" onclick="onFpdPrimaryActionClick()" style="height:36px;padding:0 16px;border-radius:9px;border:1px solid rgba(244,114,182,0.65);background:linear-gradient(135deg,#ec4899,#9333ea);color:#ffffff;font-size:12.5px;font-weight:800;cursor:pointer;box-shadow:0 6px 16px -4px rgba(236,72,153,0.5);">🚀 填入并立即生成 4K</button>
       </div>
     </div>
     <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(51,65,85,0.55);font-size:10.5px;color:#64748b;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
@@ -3349,8 +3367,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <button type="button" class="btn-outline" style="height:28px;padding:0 11px;font-size:11.5px;border-radius:7px;border-color:rgba(239,68,68,0.45);color:#fca5a5;white-space:nowrap;" onclick="clearAllVideoPrompts()">🗑️ 一键清空四框</button>
       </div>
       <div id="singleBoxActionBtns" style="display:none;align-items:center;gap:6px;flex-wrap:nowrap;flex-shrink:0;">
-        <button type="button" id="btnOpenPortraitDirector" onclick="openPortraitDirectorModal()" title="打开女性人像提示词导演：20 套专业摄影 Route × 7 种气质 Overlay · 0 延迟五段式锁参扩写" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(236,72,153,0.68);background:linear-gradient(135deg,rgba(236,72,153,0.28),rgba(147,51,234,0.28));color:#fbcfe8;font-size:11.5px;font-weight:800;white-space:nowrap;flex-shrink:0;cursor:pointer;">🎬 人像导演</button>
-        <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:26px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11.5px;font-weight:700;max-width:195px;flex-shrink:0;cursor:pointer;">
+        <button type="button" id="btnOpenPortraitDirector" onclick="openPortraitDirectorModal()" title="打开女性人像提示词导演：20 套专业摄影 Route × 7 种气质 Overlay · 支持一键多风格自动连拍" style="height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(236,72,153,0.68);background:linear-gradient(135deg,rgba(236,72,153,0.28),rgba(147,51,234,0.28));color:#fbcfe8;font-size:11.5px;font-weight:800;white-space:nowrap;flex-shrink:0;cursor:pointer;">🎬 人像导演</button>
+        <label id="lblAutoPortraitDirector" title="开启后：写简短大白话（如“夜晚街角黑裙回眸”）点生成时，0 秒自动匹配最佳摄影 Route 并补全镜头/光影/真皮质感（长段完整提示词自动直通不改写）" style="display:inline-flex;align-items:center;gap:4px;height:26px;box-sizing:border-box;padding:0 8px;border-radius:6px;background:rgba(236,72,153,0.14);border:1px solid rgba(236,72,153,0.45);font-size:11.5px;font-weight:700;color:#fbcfe8;cursor:pointer;user-select:none;white-space:nowrap;flex-shrink:0;">
+          <input type="checkbox" id="chkAutoPortraitDirector" checked style="width:13px;height:13px;accent-color:#ec4899;margin:0;cursor:pointer;">
+          <span>✨ 自动导演</span>
+        </label>
+        <select id="h3ImageTemplateSelect" onchange="applyH3ImagePresetTemplate(this.value)" style="height:26px;padding:0 8px;border-radius:6px;border:1px solid #ec4899;background:#1e293b;color:#fbcfe8;font-size:11.5px;font-weight:700;max-width:175px;flex-shrink:0;cursor:pointer;">
           <option value="">✨ 一键套用 4K 写真 / 锁脸换装模板...</option>
           <option value="edit_qipao">👘 【锁脸换装·需传图】黑金凤凰刺绣真丝旗袍 + 帝王绿翡翠耳坠</option>
           <option value="edit_silk">🍷 【锁脸换装·需传图】酒红真丝滑落肩头吊带睡袍 + 黑色蕾丝花边</option>
@@ -5843,6 +5865,8 @@ function switchMiniMaxMode(mode) {
   const singleBtns = document.getElementById('singleBoxActionBtns');
   const tplSel = document.getElementById('h3ImageTemplateSelect');
   const cleanMatteLbl = document.getElementById('lblCleanMatteWords');
+  const dirBtn = document.getElementById('btnOpenPortraitDirector');
+  const autoDirLbl = document.getElementById('lblAutoPortraitDirector');
   const box1Wrap = document.getElementById('videoPromptBox1Wrap');
   const box1Hdr = document.getElementById('videoPromptBox1Header');
   const box1Lbl = document.getElementById('videoPromptBox1Label');
@@ -5883,6 +5907,8 @@ function switchMiniMaxMode(mode) {
     if (singleBtns) singleBtns.style.display = 'flex';
     if (tplSel) tplSel.style.display = 'inline-block';
     if (cleanMatteLbl) cleanMatteLbl.style.display = 'inline-flex';
+    if (dirBtn) dirBtn.style.display = 'inline-flex';
+    if (autoDirLbl) autoDirLbl.style.display = 'inline-flex';
     if (box1Hdr) box1Hdr.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
     if (box2Wrap) box2Wrap.style.display = 'none';
@@ -5939,6 +5965,8 @@ function switchMiniMaxMode(mode) {
     if (singleBtns) singleBtns.style.display = 'flex';
     if (tplSel) tplSel.style.display = 'none';
     if (cleanMatteLbl) cleanMatteLbl.style.display = 'none';
+    if (dirBtn) dirBtn.style.display = 'none';
+    if (autoDirLbl) autoDirLbl.style.display = 'none';
     if (box1Hdr) box1Hdr.style.display = 'none';
     if (box1Wrap) box1Wrap.style.marginBottom = '0';
     if (box2Wrap) box2Wrap.style.display = 'none';
@@ -7572,8 +7600,108 @@ function openPortraitDirectorModal() {
   }
   renderFpdRoutes();
   renderFpdOverlays();
+  updateFpdBatchUI();
   renderFpdPreview();
   modal.style.display = 'flex';
+}
+
+const FPD_ROUTE_KEYWORDS = [
+  { id: 'ultra-close-real-face', re: /怼脸|超近景|面部特写|微距|瞳孔|原生肤质|原片直出|极致特写/i },
+  { id: 'black-pearl-dark-gold-ccd', re: /黑珍珠|墨金|夜拍|直闪|暗金|电梯|廊道|夜晚|夜景|黑裙|黑色吊带|夜色|酒店走廊/i },
+  { id: 'cold-white-clear-ccd-curve', re: /冷白|清透|ccd|玻璃反光|空气感|蓝白|日间曲线/i },
+  { id: 'soft-ccd-energetic-voluptuous', re: /元气|丰腴|柔光ccd|冰饮|甜品店|灿烂笑|活力曲线/i },
+  { id: 'pure-desire-curve', re: /纯欲|细吊带|锁骨|卧室|落地窗|白纱|私房|清纯.*曲线|腰线|蕾丝/i },
+  { id: 'oriental-voluptuous', re: /东方丰腴|旗袍|古典丰润|温润|盘扣|茶榻/i },
+  { id: 'ancient-lady-dewy-makeup', re: /水光妆|贵女|汉服|襦裙|玉簪|步摇|花窗|园林|江南/i },
+  { id: 'cold-xianxia-enhanced', re: /清冷仙|仙气|月白|冰青|空灵|月下|冷调古风/i },
+  { id: 'bright-luxury-gufeng', re: /明媚华贵|盛唐|红金|宫廷|大女主|牡丹|华服|古偶|凤冠/i },
+  { id: 'gufeng-xianxia', re: /古风|仙侠|古装|披帛|大袖|云雾|花钿|侠女/i },
+  { id: 'new-chinese', re: /新中式|茶室|竹影|留白|宣纸|清雅|国风|品茶/i },
+  { id: 'retro-hongkong', re: /港风|港片|茶餐厅|霓虹|旧街|红唇|复古|九十年代|胶片|香港/i },
+  { id: 'french-lazy', re: /法式|慵懒|阳台|牛角包|亚麻|白衬衫|松弛|巴黎|午后阳光/i },
+  { id: 'travel-vacation', re: /海边|海岛|度假|旅行|民宿|草帽|海风|沙滩|旅拍|海滨/i },
+  { id: 'clean-lifestyle', re: /咖啡馆|咖啡|清纯|初恋|邻家|窗边|针织|书店|校园|午后|生活照/i },
+  { id: 'ecommerce-tryon', re: /电商|商品|主图|试衣|穿搭展示|模特图|种草|卖货|棚拍穿搭/i },
+  { id: 'studio-retouched', re: /影楼|棚拍|精修|礼服|肖像|证件|高定|蝴蝶光/i },
+  { id: 'sporty-active', re: /运动|网球|健身|跑道|瑜伽|马尾|汗珠|球拍|活力运动/i },
+  { id: 'urban-fashion', re: /街拍|都市|ootd|西装|通勤|橱窗|商场|时尚|写字楼/i },
+  { id: 'low-key-cinematic-photography', re: /电影感|低调|雨夜|暗调|宽银幕|叙事|大衣|文艺片|幽暗|雨后/i }
+];
+
+const FPD_OVERLAY_KEYWORDS = [
+  { id: 'cold-heroine', re: /清冷|疏离|高冷|冷感|禁欲/i },
+  { id: 'bright-heroine', re: /明艳|浓颜|大气|明媚|绝美/i },
+  { id: 'cool-mature', re: /御姐|冷艳|强势|女王|气场/i },
+  { id: 'gentle-sister', re: /温柔|姐姐|亲切|暖意|温婉/i },
+  { id: 'intellectual', re: /知性|高智|书卷|理性|眼镜|学术/i },
+  { id: 'mature-urban', re: /轻熟|优雅|通勤|熟女|知性都市/i },
+  { id: 'sweet-cool', re: /甜酷|酷女孩|街头|个性|辣妹/i }
+];
+
+let fpdMultiMode = false;
+let fpdBatchQueue = [];
+let fpdBatchRunning = false;
+let fpdBatchCancelled = false;
+
+function autoMatchFpdRouteAndOverlay(rawText) {
+  const txt = String(rawText || '').trim();
+  let matchedRoute = null;
+  for (const rule of FPD_ROUTE_KEYWORDS) {
+    if (rule.re.test(txt)) {
+      matchedRoute = FPD_ROUTES.find(r => r.id === rule.id);
+      break;
+    }
+  }
+  if (!matchedRoute) {
+    const flags = _getFpdSlotFlags();
+    if (flags.hasOutfit) {
+      matchedRoute = FPD_ROUTES.find(r => r.id === 'ecommerce-tryon') || FPD_ROUTES[0];
+    } else {
+      matchedRoute = FPD_ROUTES.find(r => r.id === 'clean-lifestyle') || FPD_ROUTES[0];
+    }
+  }
+  let matchedOverlay = FPD_OVERLAYS[0];
+  for (const ovRule of FPD_OVERLAY_KEYWORDS) {
+    if (ovRule.re.test(txt)) {
+      const hit = FPD_OVERLAYS.find(o => o.id === ovRule.id);
+      if (hit) matchedOverlay = hit;
+      break;
+    }
+  }
+  return { route: matchedRoute, overlay: matchedOverlay };
+}
+
+function maybeAutoDirectImagePrompt(rawPrompt) {
+  const txt = String(rawPrompt || '').trim();
+  const chk = document.getElementById('chkAutoPortraitDirector');
+  if (!chk || !chk.checked) {
+    return { applied: false, prompt: txt, label: '' };
+  }
+  // 长段专业提示词、已是导演五段式、或包含模板标记/长英文提示词时，自动直通绝不乱改
+  if (
+    !txt ||
+    txt.length > 110 ||
+    txt.includes('【人物与气质】') ||
+    txt.includes('【镜头与画质】') ||
+    txt.includes('<Picture 1>') ||
+    txt.includes('<Subject 1>') ||
+    /[A-Za-z]{4,}(?:\s+[A-Za-z]{3,}){6,}/.test(txt)
+  ) {
+    return { applied: false, prompt: txt, label: '' };
+  }
+  const { route, overlay } = autoMatchFpdRouteAndOverlay(txt);
+  const expanded = buildFpdPromptFor(route.id, overlay.id, {
+    userMoment: txt,
+    userOutfit: '',
+    userScene: '',
+    ratio: 'keep',
+  });
+  const ovTag = overlay.id ? ` + ${overlay.name}` : '';
+  return {
+    applied: true,
+    prompt: expanded,
+    label: `${route.emoji} ${route.name}${ovTag}`,
+  };
 }
 
 function selectFpdCategory(cat) {
@@ -7587,17 +7715,97 @@ function selectFpdCategory(cat) {
   renderFpdRoutes();
 }
 
+function toggleFpdMultiMode() {
+  fpdMultiMode = !fpdMultiMode;
+  if (fpdMultiMode && fpdBatchQueue.length === 0 && fpdSelectedRouteId) {
+    fpdBatchQueue = [fpdSelectedRouteId];
+  } else if (!fpdMultiMode) {
+    fpdBatchQueue = [];
+  }
+  updateFpdBatchUI();
+  renderFpdRoutes();
+}
+
+function applyFpdBatchPreset(presetName) {
+  fpdMultiMode = true;
+  if (presetName === 'random4') {
+    const pool = [...FPD_ROUTES].sort(() => Math.random() - 0.5);
+    fpdBatchQueue = pool.slice(0, 4).map(r => r.id);
+  } else if (presetName === 'curve5') {
+    fpdBatchQueue = FPD_ROUTES.filter(r => r.cat === 'curve').map(r => r.id);
+  } else if (presetName === 'lifestyle4') {
+    fpdBatchQueue = FPD_ROUTES.filter(r => r.cat === 'lifestyle').map(r => r.id);
+  } else if (presetName === 'gufeng5') {
+    fpdBatchQueue = FPD_ROUTES.filter(r => r.cat === 'gufeng').map(r => r.id);
+  }
+  if (fpdBatchQueue.length > 0) {
+    fpdSelectedRouteId = fpdBatchQueue[0];
+  }
+  updateFpdBatchUI();
+  renderFpdRoutes();
+  renderFpdPreview();
+}
+
+function clearFpdBatchQueue() {
+  fpdBatchQueue = [];
+  fpdMultiMode = false;
+  updateFpdBatchUI();
+  renderFpdRoutes();
+}
+
+function updateFpdBatchUI() {
+  const btnMulti = document.getElementById('btnToggleFpdMulti');
+  const btnClr = document.getElementById('btnClearFpdBatch');
+  const summary = document.getElementById('fpdBatchSummaryBadge');
+  const btnPrimary = document.getElementById('btnFpdPrimaryAction');
+  const lblAutoOff = document.getElementById('lblFpdAutoShutdown');
+  const cnt = fpdBatchQueue.length;
+
+  if (btnMulti) {
+    btnMulti.innerText = fpdMultiMode ? '✅ 多选连拍已开启' : '☑️ 开启多选连拍';
+    btnMulti.style.borderColor = fpdMultiMode ? '#a855f7' : '#475569';
+    btnMulti.style.background = fpdMultiMode ? 'rgba(168,85,247,0.28)' : '#1e293b';
+    btnMulti.style.color = fpdMultiMode ? '#f3e8ff' : '#cbd5e1';
+  }
+  if (btnClr) btnClr.style.display = cnt > 0 ? 'inline-block' : 'none';
+  if (lblAutoOff) lblAutoOff.style.display = cnt >= 2 ? 'inline-flex' : 'none';
+  if (summary) {
+    if (cnt > 0) {
+      const names = fpdBatchQueue.map(id => {
+        const ro = FPD_ROUTES.find(x => x.id === id);
+        return ro ? ro.name : id;
+      });
+      summary.innerText = `🎬 连拍队列 (${cnt} 张)：` + names.slice(0, 3).join(' → ') + (cnt > 3 ? ` 等 ${cnt} 套` : '');
+      summary.style.color = '#f0abfc';
+    } else {
+      summary.innerText = '单张模式（点「开启多选连拍」或快捷套图即可全自动批量拍多张）';
+      summary.style.color = '#94a3b8';
+    }
+  }
+  if (btnPrimary) {
+    btnPrimary.innerText = cnt >= 2 ? `🚀 一键批量自动连拍 (${cnt} 张 4K)` : '🚀 填入并立即生成 4K';
+  }
+}
+
 function renderFpdRoutes() {
   const grid = document.getElementById('fpdRouteGrid');
   if (!grid) return;
   const list = fpdCurrentCat === 'all' ? FPD_ROUTES : FPD_ROUTES.filter(r => r.cat === fpdCurrentCat);
   grid.innerHTML = list.map(r => {
-    const active = r.id === fpdSelectedRouteId;
-    const border = active ? '1.5px solid #ec4899' : '1px solid #334155';
-    const bg = active ? 'linear-gradient(135deg,rgba(236,72,153,0.22),rgba(147,51,234,0.18))' : '#0f172a';
+    const qIdx = fpdBatchQueue.indexOf(r.id);
+    const inQueue = qIdx >= 0;
+    const active = fpdMultiMode ? inQueue : (r.id === fpdSelectedRouteId);
+    const border = active ? (inQueue ? '1.5px solid #a855f7' : '1.5px solid #ec4899') : '1px solid #334155';
+    const bg = active
+      ? (inQueue ? 'linear-gradient(135deg,rgba(168,85,247,0.28),rgba(236,72,153,0.18))' : 'linear-gradient(135deg,rgba(236,72,153,0.22),rgba(147,51,234,0.18))')
+      : '#0f172a';
     const shadow = active ? '0 0 0 1px rgba(236,72,153,0.35)' : 'none';
-    return `<button type="button" onclick="selectFpdRoute('${r.id}')" style="text-align:left;padding:8px 9px;border-radius:9px;border:${border};background:${bg};box-shadow:${shadow};cursor:pointer;display:flex;flex-direction:column;gap:3px;min-width:0;">
-      <div style="font-size:12px;font-weight:800;color:${active ? '#ffffff' : '#e2e8f0'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.emoji} ${r.name}</div>
+    const badgeHtml = inQueue
+      ? `<span style="position:absolute;top:5px;right:6px;padding:0 5px;height:16px;line-height:16px;border-radius:999px;background:#a855f7;color:#ffffff;font-size:10px;font-weight:900;">#${qIdx + 1}</span>`
+      : '';
+    return `<button type="button" onclick="selectFpdRoute('${r.id}')" style="position:relative;text-align:left;padding:8px 9px;border-radius:9px;border:${border};background:${bg};box-shadow:${shadow};cursor:pointer;display:flex;flex-direction:column;gap:3px;min-width:0;">
+      ${badgeHtml}
+      <div style="font-size:12px;font-weight:800;color:${active ? '#ffffff' : '#e2e8f0'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:${inQueue ? '26px' : '0'};">${r.emoji} ${r.name}</div>
       <div style="font-size:10.5px;color:${active ? '#fbcfe8' : '#94a3b8'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.tag}</div>
     </button>`;
   }).join('');
@@ -7605,6 +7813,15 @@ function renderFpdRoutes() {
 
 function selectFpdRoute(routeId) {
   fpdSelectedRouteId = routeId;
+  if (fpdMultiMode) {
+    const idx = fpdBatchQueue.indexOf(routeId);
+    if (idx >= 0) {
+      fpdBatchQueue.splice(idx, 1);
+    } else {
+      fpdBatchQueue.push(routeId);
+    }
+    updateFpdBatchUI();
+  }
   renderFpdRoutes();
   renderFpdPreview();
 }
@@ -7638,17 +7855,17 @@ function selectFpdRatio(ratioVal) {
   renderFpdPreview();
 }
 
-function buildFpdPrompt() {
-  const route = FPD_ROUTES.find(r => r.id === fpdSelectedRouteId) || FPD_ROUTES[0];
-  const overlay = FPD_OVERLAYS.find(o => o.id === fpdSelectedOverlayId) || FPD_OVERLAYS[0];
-  const userMoment = ((document.getElementById('fpdUserMoment') || {}).value || '').trim();
-  const userOutfit = ((document.getElementById('fpdUserOutfit') || {}).value || '').trim();
-  const userScene = ((document.getElementById('fpdUserScene') || {}).value || '').trim();
+function buildFpdPromptFor(routeId, overlayId, opts = {}) {
+  const route = FPD_ROUTES.find(r => r.id === routeId) || FPD_ROUTES[0];
+  const overlay = FPD_OVERLAYS.find(o => o.id === overlayId) || FPD_OVERLAYS[0];
+  const userMoment = String(opts.userMoment ?? '').trim();
+  const userOutfit = String(opts.userOutfit ?? '').trim();
+  const userScene = String(opts.userScene ?? '').trim();
+  const ratioVal = String(opts.ratio ?? fpdSelectedRatio ?? 'keep');
   const flags = _getFpdSlotFlags();
 
   const segs = [];
 
-  // 第一段：主体与参考图锁脸/气质定位
   if (flags.hasFace) {
     let s1 = `【人物与气质】以参考图①人物的面部五官、骨相轮廓与真实神态为绝对基准，完整锁定人物真实长相不漂移`;
     if (overlay && overlay.desc) s1 += `，${overlay.desc}`;
@@ -7659,7 +7876,6 @@ function buildFpdPrompt() {
     segs.push(s1 + '。');
   }
 
-  // 第二段：事件瞬间与姿态动作（优先锁定用户输入或参考图③）
   if (userMoment) {
     let s2 = `【动作与瞬间】${userMoment}`;
     if (flags.hasPose) s2 += '（身体姿态与重心自然贴合参考图③构图）';
@@ -7670,7 +7886,6 @@ function buildFpdPrompt() {
     segs.push(`【动作与瞬间】${route.defaultMoment}。`);
   }
 
-  // 第三段：服装穿搭（优先锁定用户输入或参考图②）
   if (userOutfit) {
     let s3 = `【服装穿搭】身穿${userOutfit}`;
     if (flags.hasOutfit) s3 += '，并结合参考图②的面料细节与版型结构保持高度还原';
@@ -7681,22 +7896,29 @@ function buildFpdPrompt() {
     segs.push(`【服装穿搭】身穿${route.defaultOutfit}。`);
   }
 
-  // 第四段：空间环境与光线色温（优先锁定用户输入或参考图④）
   let scenePart = userScene
     ? `置身于${userScene}`
     : (flags.hasScene ? '画面环境与空间纵深自然融入参考图④实景背景，人物与环境光影透视完全统一' : `置身于${route.defaultScene}`);
   segs.push(`【场景与光线】${scenePart}；${route.lighting}。`);
 
-  // 第五段：镜头焦段、画幅与正向真皮画质收尾
   const ratioLabelMap = {
     '3552x4736': '3:4 竖版人像构图',
     '3072x5472': '9:16 竖屏特写构图',
     '5472x3072': '16:9 电影宽幅构图',
   };
-  const ratioText = ratioLabelMap[fpdSelectedRatio] ? `${ratioLabelMap[fpdSelectedRatio]}，` : '';
+  const ratioText = ratioLabelMap[ratioVal] ? `${ratioLabelMap[ratioVal]}，` : '';
   segs.push(`【镜头与画质】${ratioText}${route.camera}。`);
 
   return segs.join('\n');
+}
+
+function buildFpdPrompt() {
+  return buildFpdPromptFor(fpdSelectedRouteId, fpdSelectedOverlayId, {
+    userMoment: ((document.getElementById('fpdUserMoment') || {}).value || '').trim(),
+    userOutfit: ((document.getElementById('fpdUserOutfit') || {}).value || '').trim(),
+    userScene: ((document.getElementById('fpdUserScene') || {}).value || '').trim(),
+    ratio: fpdSelectedRatio,
+  });
 }
 
 function renderFpdPreview() {
@@ -7730,6 +7952,14 @@ function clearFpdInputs() {
   renderFpdPreview();
 }
 
+function onFpdPrimaryActionClick() {
+  if (fpdBatchQueue.length >= 2) {
+    runFpdBatchAutoShoot();
+  } else {
+    applyFpdPromptToBox(true);
+  }
+}
+
 function applyFpdPromptToBox(runNow) {
   const box = document.getElementById('fpdPreviewBox');
   const pEl = document.getElementById('videoPrompt');
@@ -7745,6 +7975,213 @@ function applyFpdPromptToBox(runNow) {
   if (modal) modal.style.display = 'none';
   if (runNow && typeof startVideoGenerate === 'function') {
     startVideoGenerate('image');
+  }
+}
+
+function waitForSingleFpdImageJob(jobIdx, totalJobs, routeLabel, prevLatest) {
+  return new Promise(resolve => {
+    let pollInFlight = false;
+    let ticks = 0;
+    const st = document.getElementById('videoGenStatus');
+    const pBar = document.getElementById('videoProgressBar');
+    const timer = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      ticks += 1;
+      if (fpdBatchCancelled) {
+        clearInterval(timer);
+        pollInFlight = false;
+        resolve({ ok: false, cancelled: true });
+        return;
+      }
+      try {
+        const r = await fetch('/api/video_status');
+        const d = await r.json();
+        await pollLogs();
+        const pct = typeof d.pct === 'number' ? Math.max(8, Math.min(99, d.pct)) : 20;
+        if (pBar) pBar.style.width = `${pct}%`;
+        if (st && (d.running || d.auto_switching)) {
+          st.innerText = `🎬 [自动连拍 ${jobIdx}/${totalJobs} · ${routeLabel}] ${d.message || '正在生成 4K 大图...'}`;
+          st.style.color = '#f59e0b';
+        }
+        const gotNewFile = Boolean(d.latest_video && d.latest_video !== prevLatest);
+        if (!d.running && !d.auto_switching && (ticks >= 2 || gotNewFile || d.error)) {
+          clearInterval(timer);
+          pollInFlight = false;
+          if (d.error) {
+            resolve({ ok: false, error: d.error });
+          } else {
+            resolve({ ok: true, latest: d.latest_video || prevLatest });
+          }
+          return;
+        }
+      } catch (e) {}
+      pollInFlight = false;
+    }, 1800);
+  });
+}
+
+async function runFpdBatchAutoShoot() {
+  if (fpdBatchRunning) {
+    alert('当前已有自动连拍任务正在执行中，请先等待完成或点「🛑 停止」中止。');
+    return;
+  }
+  if (!isMachineUnlocked()) {
+    document.getElementById('portraitDirectorModal').style.display = 'none';
+    openBootModal('🔒 当前机器处于【已关机】状态，请先一键开机后再执行批量自动连拍！');
+    return;
+  }
+  const queueIds = [...fpdBatchQueue];
+  if (queueIds.length < 2) {
+    applyFpdPromptToBox(true);
+    return;
+  }
+  const autoShutdown = Boolean((document.getElementById('chkFpdAutoShutdown') || {}).checked);
+  const lockedMoment = ((document.getElementById('fpdUserMoment') || {}).value || '').trim();
+  const lockedOutfit = ((document.getElementById('fpdUserOutfit') || {}).value || '').trim();
+  const lockedScene = ((document.getElementById('fpdUserScene') || {}).value || '').trim();
+  const modal = document.getElementById('portraitDirectorModal');
+  if (modal) modal.style.display = 'none';
+
+  if (currentMiniMaxMode !== 'image') {
+    switchMiniMaxMode('image');
+  }
+  const resEl = document.getElementById('videoRes');
+  if (resEl && fpdSelectedRatio && fpdSelectedRatio !== 'keep') {
+    resEl.value = fpdSelectedRatio;
+  }
+
+  fpdBatchRunning = true;
+  fpdBatchCancelled = false;
+  let okCount = 0;
+  let prevLatest = lastCompletedVideoFile || '';
+  const st = document.getElementById('videoGenStatus');
+  const pWrap = document.getElementById('videoProgressWrap');
+  const pBar = document.getElementById('videoProgressBar');
+  if (pWrap) pWrap.style.display = 'block';
+
+  try {
+    const flags = _getFpdSlotFlags();
+    const hasAnyFusion = flags.hasFace || flags.hasOutfit || flags.hasPose || flags.hasScene;
+
+    for (let i = 0; i < queueIds.length; i++) {
+      if (fpdBatchCancelled) break;
+      const route = FPD_ROUTES.find(r => r.id === queueIds[i]) || FPD_ROUTES[0];
+      const routeLabel = `${route.emoji} ${route.name}`;
+      const promptTxt = buildFpdPromptFor(route.id, fpdSelectedOverlayId, {
+        userMoment: lockedMoment,
+        userOutfit: lockedOutfit,
+        userScene: lockedScene,
+        ratio: fpdSelectedRatio,
+      });
+
+      const pEl = document.getElementById('videoPrompt');
+      if (pEl) pEl.value = promptTxt;
+      setVideoBtnRunningState(true, `🛑 连拍 ${i + 1}/${queueIds.length} (点击停止)`);
+      if (pBar) pBar.style.width = '10%';
+      if (st) {
+        st.innerText = `🎬 [自动连拍 ${i + 1}/${queueIds.length}] 正在拍摄「${routeLabel}」...`;
+        st.style.color = '#f59e0b';
+      }
+
+      if (hasAnyFusion) {
+        const fpInp = document.getElementById('fusionPropsActionInput');
+        if (fpInp) fpInp.value = promptTxt;
+        const fResSel = document.getElementById('fusionResSelect');
+        const vResVal = (resEl && resEl.value) || 'auto';
+        if (fResSel) {
+          fResSel.innerHTML = `<option value="${vResVal}" selected>${vResVal}</option>`;
+          fResSel.value = vResVal;
+        }
+        await startFusionStudioGenerate();
+        if (!fpdBatchCancelled && !fusionBatchCancelled) {
+          okCount += 1;
+        } else {
+          break;
+        }
+      } else {
+        let resVal = (resEl && resEl.value) || '3552x4736';
+        if (resVal === 'auto') resVal = '3552x4736';
+        const [wStr, hStr] = resVal.split('x');
+        const chkClean = document.getElementById('chkCleanMatteWords');
+        const payload = {
+          prompt: promptTxt,
+          soundscape: '',
+          music: '',
+          negative_prompt: '',
+          resolution: resVal,
+          width: parseInt(wStr, 10) || 3552,
+          height: parseInt(hStr, 10) || 4736,
+          num_frames: 1,
+          steps: 6,
+          fps: 24,
+          seed: -1,
+          randomize_seed: true,
+          batch_count: 1,
+          mode: 'image',
+          ref_images_b64: h3ImgRefList.filter(Boolean),
+          edit_outfit: '',
+          edit_scene: '',
+          clean_matte: chkClean ? Boolean(chkClean.checked) : true,
+        };
+        const r = await fetch('/api/video_generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (!d.ok) {
+          if (st) {
+            st.innerText = `❌ [自动连拍 ${i + 1}/${queueIds.length} · ${routeLabel}] 启动失败: ${d.error || '未知错误'}`;
+            st.style.color = '#ef4444';
+          }
+          break;
+        }
+        const waitRes = await waitForSingleFpdImageJob(i + 1, queueIds.length, routeLabel, prevLatest);
+        if (waitRes.cancelled) break;
+        if (waitRes.ok) {
+          okCount += 1;
+          if (waitRes.latest) {
+            prevLatest = waitRes.latest;
+            lastCompletedVideoFile = waitRes.latest;
+            showVideoPreview(waitRes.latest);
+          }
+          await loadLocalVideos();
+        } else {
+          if (st) {
+            st.innerText = `⚠️ [自动连拍 ${i + 1}/${queueIds.length} · ${routeLabel}] 出错，继续下一套: ${waitRes.error || ''}`;
+            st.style.color = '#f59e0b';
+          }
+        }
+      }
+    }
+
+    if (fpdBatchCancelled) {
+      if (st) {
+        st.innerText = `🛑 [自动连拍已中止] 已完成 ${okCount}/${queueIds.length} 张 4K 大图`;
+        st.style.color = '#f59e0b';
+      }
+    } else {
+      if (pBar) pBar.style.width = '100%';
+      let finMsg = `✅ [人像导演自动连拍完成] 共成功生成 ${okCount}/${queueIds.length} 张 4K 大图，已全部保存至本地与云盘！`;
+      if (autoShutdown && okCount > 0) {
+        try {
+          const rs = await fetch('/api/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          const ds = await rs.json();
+          finMsg += ds && ds.ok ? ' 🛑 已按设定自动关机释放 GPU（0.00 CU/h）！' : '';
+          await refreshStatus(true);
+        } catch (e) {}
+      }
+      if (st) {
+        st.innerText = finMsg;
+        st.style.color = '#10b981';
+      }
+    }
+  } finally {
+    fpdBatchRunning = false;
+    setVideoBtnRunningState(false);
+    await loadLocalVideos();
+    await pollLogs();
   }
 }
 
@@ -8666,6 +9103,9 @@ function setUpscaleBtnRunningState(running) {
 }
 
 async function stopActiveVideoTask(targetMode = 'auto') {
+  fpdBatchCancelled = true;
+  fpdBatchRunning = false;
+  fusionBatchCancelled = true;
   const isUpscaling = (targetMode === 'upscale') || (targetMode === 'auto' && upscalePollTimer && !videoPollTimer);
   const st = document.getElementById('videoGenStatus');
   const tLabel = document.getElementById('taskProgressLabel');
@@ -9087,11 +9527,14 @@ async function startVideoGenerate(forceTarget = '') {
   const prompt = document.getElementById('videoPrompt').value.trim();
   const isImgMode = (forceTarget === 'image') || (currentMiniMaxMode === 'image');
   const isAvMode = currentMiniMaxMode === 'avatar';
+  let autoDirRes = { applied: false, prompt: prompt, label: '' };
   if (isImgMode) {
+    autoDirRes = maybeAutoDirectImagePrompt(prompt);
+    const effectiveImgPrompt = autoDirRes.applied ? autoDirRes.prompt : prompt;
     const hasAnyFusionSlot = Boolean(fusionSlotsB64[0] || fusionTargetList[0] || fusionTargetList[1] || fusionSlotsB64[2]);
     if (hasAnyFusionSlot) {
       const fpInp = document.getElementById('fusionPropsActionInput');
-      if (fpInp) fpInp.value = prompt;
+      if (fpInp) fpInp.value = effectiveImgPrompt;
       const fResSel = document.getElementById('fusionResSelect');
       const vResVal = (document.getElementById('videoRes') || {}).value || 'auto';
       if (fResSel) {
@@ -9101,7 +9544,7 @@ async function startVideoGenerate(forceTarget = '') {
       await startFusionStudioGenerate();
       return;
     }
-    if (!prompt) {
+    if (!effectiveImgPrompt) {
       alert('请输入 4K 写真画面提示词（或在上方四宫格上传参考图进行换脸换装）！');
       return;
     }
@@ -9122,9 +9565,11 @@ async function startVideoGenerate(forceTarget = '') {
   const autoGolden = Boolean(((document.getElementById('chkH3SentinelAutoGoldenSpec') || {}).checked));
   const autoSixSec = Boolean(((document.getElementById('chkAutoH3SixSection') || {}).checked));
   const hasRefFrame = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
-  const finalVideoPrompt = (!isImgMode && !isAvMode && autoSixSec)
-    ? compileVideoPromptToH3SixSection(prompt, soundTxt, musicTxt, hasRefFrame, loraPath)
-    : prompt;
+  const finalVideoPrompt = isImgMode
+    ? (autoDirRes.applied ? autoDirRes.prompt : prompt)
+    : ((!isAvMode && autoSixSec)
+        ? compileVideoPromptToH3SixSection(prompt, soundTxt, musicTxt, hasRefFrame, loraPath)
+        : prompt);
 
   const payload = {
     prompt: finalVideoPrompt,
@@ -9181,7 +9626,9 @@ async function startVideoGenerate(forceTarget = '') {
   pWrap.style.display = 'block';
   pBar.style.width = '8%';
   st.innerText = isImgMode
-    ? '⏳ 已提交至 MiniMax-H3-Image (33B · Heretic无审查) 引擎，正在进行 6 步极速扩散采样...'
+    ? (autoDirRes.applied
+        ? `🎬 [自动人像导演] 已匹配「${autoDirRes.label}」扩写，正在 6 步极速生成 4K 大图...`
+        : '⏳ 已提交至 MiniMax-H3-Image (33B · Heretic无审查) 引擎，正在进行 6 步极速扩散采样...')
     : (isAvMode
       ? '⏳ 已提交至 LongCat-Video-Avatar-1.6 引擎，正在分离人声并提取 Whisper-v3 唇形特征...'
       : `⏳ 已提交至 MiniMax-H3 引擎 (连抽 ${selectedBatchCount} 条)，正在调用多模态编码器...`);
