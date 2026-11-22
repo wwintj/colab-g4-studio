@@ -1958,7 +1958,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </h1>
   </div>
   <div class="btn-group" style="align-items:center;gap:8px;flex-wrap:nowrap;">
-    <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或添加 Google Colab Pro 账号" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(59,130,246,0.5);color:#93c5fd;font-size:12.5px;font-weight:700;">👤 <span id="headerAccountLabel">账号</span> ▾</button>
+    <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或管理 Google Colab 算力账户" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(59,130,246,0.5);color:#93c5fd;font-size:12.5px;font-weight:700;">👤 <span id="headerAccountLabel">账户</span> ▾</button>
     <button class="btn-outline" onclick="openApiConfigModal()" id="btnOpenApiModal" title="查看并复制 OpenAI 兼容 API 接入参数 (本机永久固定 URL / 公网 Tunnel URL / API Key / Model ID)" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);color:#e9d5ff;font-size:12.5px;font-weight:700;">🔗 API</button>
     <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="height:32px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:700;">🔄 刷新</button>
     <button class="btn-success" onclick="startDeploy(false, true)" id="btnQuickStart" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;transition:box-shadow 0.2s,transform 0.2s;">▶️ 一键开机</button>
@@ -1970,9 +1970,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     const _hc = JSON.parse(localStorage.getItem('easycolab_header_cache') || 'null');
     if (_hc) {
       const _sb = document.getElementById('sessionBadge');
-      const _al = document.getElementById('headerAccountLabel');
       if (_sb && _hc.badgeText) { _sb.innerText = _hc.badgeText; _sb.className = _hc.badgeClass || 'badge offline'; }
-      if (_al && _hc.accountEmail) { _al.innerText = _hc.accountEmail; }
     }
   } catch (e) {}
 </script>
@@ -3421,7 +3419,7 @@ function renderAccountBadgeAndModal(accInfo) {
   cachedAccountInfo = accInfo;
   const lbl = document.getElementById('headerAccountLabel');
   if (lbl) {
-    lbl.innerText = accInfo.active_email || '未登录 (点击绑定)';
+    lbl.innerText = '账户';
   }
   const listEl = document.getElementById('savedAccountsList');
   if (!listEl) return;
@@ -4663,8 +4661,7 @@ async function refreshStatus(force = false) {
     try {
       localStorage.setItem('easycolab_header_cache', JSON.stringify({
         badgeText: badge ? badge.innerText : '',
-        badgeClass: badge ? badge.className : '',
-        accountEmail: (d.account_info && d.account_info.active_email) || ''
+        badgeClass: badge ? badge.className : ''
       }));
     } catch (e) {}
 
