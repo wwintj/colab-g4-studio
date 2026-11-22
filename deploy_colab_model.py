@@ -6780,7 +6780,8 @@ def prompt_input(text: str, default: str) -> str:
 def run_local_wizard():
     parser = argparse.ArgumentParser(description="Colab + Google Drive Models 一键部署工具")
     parser.add_argument("--session", "-s", default="", help="Colab 会话名 (默认复用已有会话)")
-    parser.add_argument("--gpu", default="G4", help="GPU 型号: G4 / A100 / L4 / T4 (默认 G4)")
+    parser.add_argument("--gpu", default="G4", help="GPU 型号: G4 / H100 / A100 / L4 / T4 (默认 G4)")
+    parser.add_argument("--retry-until-ready", action="store_true", help="若目标 GPU 暂满或分配失败，每 12~18 秒持续重试直到成功开机")
     parser.add_argument("--repo", default="", help="HuggingFace 仓库 ID (例如 huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF)")
     parser.add_argument("--folder", default="", help="Google Drive models/ 下的子文件夹名")
     parser.add_argument("--pattern", default="", help="GGUF 文件通配符 (例如 Huihui-Qwen3.8-27B-abliterated-bf16.gguf)")
@@ -6874,13 +6875,31 @@ def run_local_wizard():
     save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": True})
 
     def _allocate_colab_session(sess_id: str) -> None:
+        import random
         target_gpu = (args.gpu or "G4").upper()
-        print(f"\n-> 正在申请分配 Google Colab {target_gpu} 实例 '{sess_id}'...", flush=True)
-        res_new = subprocess.run([colab_bin, "new", "-s", sess_id, "--gpu", target_gpu], check=False)
-        if res_new.returncode != 0:
+        attempt = 0
+        while True:
+            attempt += 1
+            if attempt == 1:
+                print(f"\n-> 正在申请分配 Google Colab {target_gpu} 实例 '{sess_id}'...", flush=True)
+            else:
+                print(f"\n🔄 [持续抢卡 · 第 {attempt} 次尝试] 正在申请 Google Colab {target_gpu} 实例 '{sess_id}'...", flush=True)
+            res_new = subprocess.run([colab_bin, "new", "-s", sess_id, "--gpu", target_gpu], check=False)
+            if res_new.returncode == 0:
+                if attempt > 1:
+                    print(f"\n🎉 [抢卡成功] 经过 {attempt} 次尝试，已成功分配到 Google Colab {target_gpu} 实例！", flush=True)
+                return
+            if args.retry_until_ready:
+                wait_s = random.randint(12, 18)
+                print(
+                    f"\n⏳ [持续抢卡 · 第 {attempt} 次未分配到 {target_gpu}] 当前算力池暂满，{wait_s} 秒后自动重试（可随时点击面板「🛑 停止当前任务」取消等待）...",
+                    flush=True,
+                )
+                time.sleep(wait_s)
+                continue
             print(
                 f"\n❌ [GPU_ALLOC_FAILED:{target_gpu}] 当前账户无法分配 {target_gpu} 实例（Colab 服务端返回无 {target_gpu} 权限或算力池暂无空闲）。\n"
-                f"   👉 请在控制台弹出的选择框中自主选择：重试 {target_gpu}、改用其他 GPU (A100 / L4 / T4)、或切换其他算力账户！",
+                f"   👉 请在控制台弹出的选择框中自主选择：重试 {target_gpu}、勾选「一直开直到开到为止」、改用其他 GPU (H100 / A100 / L4 / T4)、或切换其他算力账户！",
                 flush=True,
             )
             save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": False})

@@ -1529,7 +1529,7 @@ print("PANEL_JSON_START:" + json.dumps(res, ensure_ascii=False) + ":PANEL_JSON_E
         runtime.stop()
 
 
-def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu: str, download_only: bool = False):
+def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu: str, download_only: bool = False, retry_until_ready: bool = False):
     g4_only_folders = {
         "Huihui-Qwen3.8-27B-abliterated-GGUF",
         "MiniMax-H3",
@@ -1591,6 +1591,8 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
         ]
         if download_only:
             cmd.append("--download-only")
+        if retry_until_ready:
+            cmd.append("--retry-until-ready")
         try:
             proc = subprocess.Popen(
                 cmd,
@@ -1953,13 +1955,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或管理 Google Colab 算力账户" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(59,130,246,0.5);color:#93c5fd;font-size:12.5px;font-weight:700;">👤 <span id="headerAccountLabel">账户</span> ▾</button>
     <button class="btn-outline" onclick="openApiConfigModal()" id="btnOpenApiModal" title="查看并复制 OpenAI 兼容 API 接入参数 (本机永久固定 URL / 公网 Tunnel URL / API Key / Model ID)" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);color:#e9d5ff;font-size:12.5px;font-weight:700;">🔗 API</button>
     <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="height:32px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:700;">🔄 刷新</button>
-    <select id="headerGpuSelect" title="选择开机要申请的 Google Colab GPU 硬件型号（拒绝后台擅自降级）" style="height:32px;padding:0 8px;border-radius:8px;border:1px solid rgba(16,185,129,0.55);background:#0f172a;color:#34d399;font-size:12px;font-weight:800;cursor:pointer;">
-      <option value="G4" selected>🔥 G4 (96G)</option>
-      <option value="A100">🚀 A100</option>
-      <option value="L4">⚡ L4 (24G)</option>
-      <option value="T4">🟢 T4 (16G)</option>
-    </select>
-    <button class="btn-success" onclick="startDeploy(false, true)" id="btnQuickStart" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;transition:box-shadow 0.2s,transform 0.2s;">▶️ 一键开机</button>
+    <button class="btn-success" onclick="openBootModal()" id="btnQuickStart" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;transition:box-shadow 0.2s,transform 0.2s;">▶️ 一键开机</button>
     <button class="btn-danger" onclick="stopColab()" id="btnStop" style="height:32px;padding:0 14px;border-radius:8px;font-size:12.5px;font-weight:700;">🛑 关机</button>
   </div>
 </header>
@@ -2010,38 +2006,87 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<!-- GPU 权限不足 / 分配失败时的用户自主选择弹窗（绝不擅自后台降级为 T4） -->
+<!-- 一键开机 / GPU 硬件选择与持续抢卡弹窗（点击顶部「▶️ 一键开机」或分配失败时弹出） -->
 <div id="gpuChoiceModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(2,6,23,0.82);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
-  <div style="width:100%;max-width:540px;background:#1e293b;border:1.5px solid #f59e0b;border-radius:16px;padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.85);">
+  <div style="width:100%;max-width:560px;background:#1e293b;border:1.5px solid rgba(16,185,129,0.65);border-radius:16px;padding:18px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.85);">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);">
-      <span style="font-size:15.5px;font-weight:900;color:#fde68a;">⚠️ GPU 硬件权限确认 — 请选择启动方式</span>
-      <button type="button" onclick="document.getElementById('gpuChoiceModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 取消</button>
+      <span id="gpuChoiceModalTitle" style="font-size:15.5px;font-weight:900;color:#f8fafc;">🚀 一键开机 · 选择 GPU 显卡与启动模式</span>
+      <button type="button" onclick="document.getElementById('gpuChoiceModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 关闭</button>
     </div>
-    <div id="gpuChoiceModalReason" style="font-size:12.5px;color:#e2e8f0;line-height:1.55;margin-bottom:14px;padding:10px 12px;border-radius:8px;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.4);">
-      检测到当前账户无 G4 (RTX PRO 6000 · 96GB) 权限或算力池暂无空闲。系统已停止自动降级，请由您自主选择要加载的 GPU 规格：
+
+    <div id="gpuChoiceModalReason" style="display:none;font-size:12px;color:#fde68a;line-height:1.5;margin-bottom:12px;padding:9px 11px;border-radius:8px;background:rgba(245,158,11,0.16);border:1px solid rgba(245,158,11,0.48);"></div>
+
+    <!-- 本次开机加载模型快捷选择 -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border-radius:9px;background:#0f172a;border:1px solid var(--border);">
+      <span style="font-size:12px;font-weight:700;color:#94a3b8;white-space:nowrap;">📦 开机加载模型</span>
+      <select id="bootModelSelect" onchange="onBootModelSelectChange(this.value)" style="flex:1;height:28px;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#f8fafc;font-size:12.5px;font-weight:700;cursor:pointer;">
+        <option value="MiniMax-H3">🎬 MiniMax-H3 (33B · 有声视频主力 · 134 GB)</option>
+        <option value="MiniMax-H3-Image">📸 MiniMax-H3-Image (4K生图/换装 · 45.2 GB)</option>
+        <option value="LongCat-Video-Avatar-1.6">🎭 LongCat-Video-Avatar-1.6 (数字人配音 · 58.8 GB)</option>
+        <option value="Huihui-Qwen3.8-27B-abliterated-GGUF">🧠 Qwen3.8-27B (无审查对话/扩写 · 53.1 GB)</option>
+        <option value="CURRENT">⚙️ 保持当前模型管理中已选模型</option>
+      </select>
     </div>
-    <div style="display:flex;flex-direction:column;gap:9px;">
-      <button type="button" onclick="confirmGpuChoiceAndDeploy('G4')" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid #3b82f6;background:linear-gradient(135deg,rgba(37,99,235,0.28),rgba(15,23,42,0.95));color:#f8fafc;font-size:13px;font-weight:800;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-        <span>🔥 1. 强制尝试申请 G4 (RTX PRO 6000 · 96GB 满血版)</span>
-        <span style="font-size:11px;color:#93c5fd;font-weight:600;">直接向 Colab 请求 G4</span>
-      </button>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <button type="button" onclick="confirmGpuChoiceAndDeploy('A100')" style="padding:10px 12px;border-radius:10px;border:1px solid #a855f7;background:rgba(168,85,247,0.16);color:#f3e8ff;font-size:12.5px;font-weight:800;cursor:pointer;text-align:left;">
-          <div>🚀 2. 改用 A100 启动</div>
-          <div style="font-size:10.5px;color:#d8b4fe;font-weight:500;margin-top:2px;">申请 NVIDIA A100 实例</div>
-        </button>
-        <button type="button" onclick="confirmGpuChoiceAndDeploy('L4')" style="padding:10px 12px;border-radius:10px;border:1px solid #38bdf8;background:rgba(56,189,248,0.16);color:#e0f2fe;font-size:12.5px;font-weight:800;cursor:pointer;text-align:left;">
-          <div>⚡ 3. 改用 L4 (24GB) 启动</div>
-          <div style="font-size:10.5px;color:#bae6fd;font-weight:500;margin-top:2px;">申请 NVIDIA L4 实例</div>
-        </button>
+
+    <!-- 5 款 Colab GPU 显卡单选卡片（全部标清显存） -->
+    <div style="font-size:12px;font-weight:700;color:#94a3b8;margin-bottom:7px;">🎮 选择要申请的 Google Colab GPU 硬件（已标明显存容量）：</div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;" id="bootGpuCardsWrap">
+      <div class="boot-gpu-card" data-gpu="G4" onclick="selectBootGpuCard('G4')" style="padding:9px 12px;border-radius:10px;border:1.5px solid #10b981;background:rgba(16,185,129,0.16);cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#f8fafc;">🔥 G4 · RTX PRO 6000 Blackwell <span style="margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(16,185,129,0.25);color:#6ee7b7;font-size:11px;font-weight:800;">96 GB 显存</span></div>
+          <div style="font-size:11px;color:#cbd5e1;margin-top:2px;">满血主力 · 通吃 134G MiniMax-H3 / 4K生图 / 53G Qwen3.8 BF16（≈10.05 CU/h）</div>
+        </div>
+        <span class="boot-gpu-chk" style="color:#34d399;font-size:15px;font-weight:900;">✔</span>
       </div>
-      <button type="button" onclick="confirmGpuChoiceAndDeploy('T4')" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid #10b981;background:linear-gradient(135deg,rgba(16,185,129,0.24),rgba(15,23,42,0.95));color:#ecfdf5;font-size:13px;font-weight:800;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-        <span>🟢 4. 改用 T4 (16GB) 启动（自动匹配 T4 极速量化版模型）</span>
-        <span style="font-size:11px;color:#6ee7b7;font-weight:600;">免 CU · ~30秒极速加载</span>
-      </button>
-      <button type="button" onclick="document.getElementById('gpuChoiceModal').style.display='none';openAccountModal();" style="width:100%;padding:9px 14px;border-radius:10px;border:1px solid #64748b;background:#0f172a;color:#cbd5e1;font-size:12.5px;font-weight:700;cursor:pointer;text-align:center;">
-        👤 5. 打开「账户管理」切换至其他有 G4 算力额度的账户...
-      </button>
+
+      <div class="boot-gpu-card" data-gpu="H100" onclick="selectBootGpuCard('H100')" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#0f172a;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#f8fafc;">⚡ H100 · Hopper 顶级算力 <span style="margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(56,189,248,0.22);color:#7dd3fc;font-size:11px;font-weight:800;">80 GB 显存</span></div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">固定 80GB HBM3 大显存 · G4 算力池暂满时的最佳大显存替代</div>
+        </div>
+        <span class="boot-gpu-chk" style="color:#34d399;font-size:15px;font-weight:900;display:none;">✔</span>
+      </div>
+
+      <div class="boot-gpu-card" data-gpu="A100" onclick="selectBootGpuCard('A100')" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#0f172a;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
+        <div>
+          <div style="font-size:13px;font-weight:800;color:#f8fafc;">🚀 A100 · Ampere 高性能 <span style="margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(168,85,247,0.22);color:#d8b4fe;font-size:11px;font-weight:800;">40 / 80 GB 显存</span></div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">由 Google 后端按库存自动分配 40G 或 80G（接口不支持手动指定 40/80）</div>
+        </div>
+        <span class="boot-gpu-chk" style="color:#34d399;font-size:15px;font-weight:900;display:none;">✔</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
+        <div class="boot-gpu-card" data-gpu="L4" onclick="selectBootGpuCard('L4')" style="padding:9px 11px;border-radius:10px;border:1px solid var(--border);background:#0f172a;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
+          <div style="min-width:0;">
+            <div style="font-size:12.5px;font-weight:800;color:#f8fafc;">💎 L4 <span style="margin-left:4px;padding:1px 6px;border-radius:999px;background:rgba(59,130,246,0.22);color:#93c5fd;font-size:10.5px;font-weight:800;">24 GB 显存</span></div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">中阶省算力 · 量化版与中型模型</div>
+          </div>
+          <span class="boot-gpu-chk" style="color:#34d399;font-size:14px;font-weight:900;display:none;">✔</span>
+        </div>
+
+        <div class="boot-gpu-card" data-gpu="T4" onclick="selectBootGpuCard('T4')" style="padding:9px 11px;border-radius:10px;border:1px solid var(--border);background:#0f172a;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
+          <div style="min-width:0;">
+            <div style="font-size:12.5px;font-weight:800;color:#f8fafc;">🟢 T4 <span style="margin-left:4px;padding:1px 6px;border-radius:999px;background:rgba(16,185,129,0.2);color:#6ee7b7;font-size:10.5px;font-weight:800;">16 GB 显存</span></div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">0.00 CU/h · 自动匹配 T4 量化版</div>
+          </div>
+          <span class="boot-gpu-chk" style="color:#34d399;font-size:14px;font-weight:900;display:none;">✔</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 持续抢卡直到开到为止 开关 -->
+    <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;margin-bottom:14px;border-radius:9px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.42);color:#fde68a;font-size:12px;font-weight:700;cursor:pointer;user-select:none;">
+      <input type="checkbox" id="chkBootRetryUntilReady" style="width:15px;height:15px;accent-color:#f59e0b;cursor:pointer;margin:0;flex-shrink:0;">
+      <span>🔁 开不到就一直重试（每 12~18 秒自动蹲守抢卡，直到成功开机为止 · 随时可点「停止当前任务」取消）</span>
+    </label>
+
+    <!-- 底部操作按钮 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <button type="button" onclick="document.getElementById('gpuChoiceModal').style.display='none';openAccountModal();" style="height:36px;padding:0 12px;border-radius:9px;border:1px solid rgba(59,130,246,0.5);background:rgba(59,130,246,0.12);color:#93c5fd;font-size:12px;font-weight:700;cursor:pointer;">👤 切换账户...</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button type="button" onclick="document.getElementById('gpuChoiceModal').style.display='none'" style="height:36px;padding:0 14px;border-radius:9px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12.5px;font-weight:700;cursor:pointer;">取消</button>
+        <button type="button" id="btnConfirmBootModal" onclick="submitBootModal()" class="btn-success" style="height:36px;padding:0 18px;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;">🚀 立即开机启动</button>
+      </div>
     </div>
   </div>
 </div>
@@ -5034,36 +5079,89 @@ async function pollLogs() {
 
 let _pendingDeployDownloadOnly = false;
 let _pendingDeployFromQuickStart = true;
+let _selectedBootGpu = 'G4';
 
-function openGpuChoiceModal(reasonText, requestedGpu = 'G4') {
-  const m = document.getElementById('gpuChoiceModal');
-  const rEl = document.getElementById('gpuChoiceModalReason');
-  if (rEl && reasonText) {
-    rEl.innerText = reasonText;
+function selectBootGpuCard(gpuKey) {
+  _selectedBootGpu = (gpuKey || 'G4').toUpperCase();
+  document.querySelectorAll('#bootGpuCardsWrap .boot-gpu-card').forEach(el => {
+    const isAct = el.getAttribute('data-gpu') === _selectedBootGpu;
+    el.style.borderColor = isAct ? '#10b981' : 'var(--border)';
+    el.style.borderWidth = isAct ? '1.5px' : '1px';
+    el.style.background = isAct ? 'rgba(16,185,129,0.16)' : '#0f172a';
+    const chk = el.querySelector('.boot-gpu-chk');
+    if (chk) chk.style.display = isAct ? 'inline' : 'none';
+  });
+}
+
+function onBootModelSelectChange(folderVal) {
+  if (!folderVal || folderVal === 'CURRENT') return;
+  const map = {
+    'MiniMax-H3': ['preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors'],
+    'MiniMax-H3-Image': ['preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors'],
+    'LongCat-Video-Avatar-1.6': ['preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors'],
+    'Huihui-Qwen3.8-27B-abliterated-GGUF': ['preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf'],
+  };
+  if (map[folderVal]) {
+    const [cid, repo, fold, pat] = map[folderVal];
+    selectPresetModel(cid, repo, fold, pat, true);
   }
+}
+
+function openBootModal() {
+  _pendingDeployDownloadOnly = false;
+  _pendingDeployFromQuickStart = true;
+  const m = document.getElementById('gpuChoiceModal');
+  const tEl = document.getElementById('gpuChoiceModalTitle');
+  const rEl = document.getElementById('gpuChoiceModalReason');
+  const mSel = document.getElementById('bootModelSelect');
+  if (tEl) tEl.innerText = isInstanceOnline ? '🚀 当前实例已运行 · 选择重连/加载模型' : '🚀 一键开机 · 选择 GPU 显卡与启动模式';
+  if (rEl) rEl.style.display = 'none';
+  if (mSel) {
+    const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
+    mSel.value = known.has(curF) ? curF : 'CURRENT';
+  }
+  selectBootGpuCard(_selectedBootGpu || 'G4');
   if (m) m.style.display = 'flex';
 }
 
-async function confirmGpuChoiceAndDeploy(chosenGpu) {
+function openGpuChoiceModal(reasonText, requestedGpu = 'G4') {
   const m = document.getElementById('gpuChoiceModal');
-  if (m) m.style.display = 'none';
-  const hdrSel = document.getElementById('headerGpuSelect');
-  if (hdrSel) hdrSel.value = chosenGpu;
-  if (chosenGpu === 'T4') {
-    switchPresetTierTab('t4', true);
+  const tEl = document.getElementById('gpuChoiceModalTitle');
+  const rEl = document.getElementById('gpuChoiceModalReason');
+  const mSel = document.getElementById('bootModelSelect');
+  if (tEl) tEl.innerText = '⚠️ GPU 硬件权限 / 算力池确认 — 请自主选择';
+  if (rEl && reasonText) {
+    rEl.innerText = reasonText;
+    rEl.style.display = 'block';
   }
-  await startDeploy(_pendingDeployDownloadOnly, _pendingDeployFromQuickStart, chosenGpu, true);
+  if (mSel) {
+    const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
+    mSel.value = known.has(curF) ? curF : 'CURRENT';
+  }
+  selectBootGpuCard(requestedGpu || _selectedBootGpu || 'G4');
+  if (m) m.style.display = 'flex';
 }
 
-async function startDeploy(downloadOnly = false, fromQuickStart = false, overrideGpu = '', forceGpu = false) {
+async function submitBootModal() {
+  const m = document.getElementById('gpuChoiceModal');
+  if (m) m.style.display = 'none';
+  const retryForever = Boolean((document.getElementById('chkBootRetryUntilReady') || {}).checked);
+  if (_selectedBootGpu === 'T4') {
+    switchPresetTierTab('t4', true);
+  }
+  await startDeploy(_pendingDeployDownloadOnly, _pendingDeployFromQuickStart, _selectedBootGpu, true, retryForever);
+}
+
+async function startDeploy(downloadOnly = false, fromQuickStart = false, overrideGpu = '', forceGpu = false, retryUntilReady = false) {
   if (!fromQuickStart && !isMachineUnlocked()) {
     notifyMachineLocked();
     return;
   }
   _pendingDeployDownloadOnly = Boolean(downloadOnly);
   _pendingDeployFromQuickStart = Boolean(fromQuickStart);
-  const hdrSel = document.getElementById('headerGpuSelect');
-  const chosenGpu = (overrideGpu || (hdrSel ? hdrSel.value : 'G4') || 'G4').toUpperCase();
+  const chosenGpu = (overrideGpu || _selectedBootGpu || 'G4').toUpperCase();
   if (fromQuickStart) {
     isPowerBtnUnlocked = true;
     isDeployTaskRunning = true;
@@ -5077,7 +5175,8 @@ async function startDeploy(downloadOnly = false, fromQuickStart = false, overrid
     gpu: chosenGpu,
     download_only: Boolean(downloadOnly),
     from_power_btn: Boolean(fromQuickStart),
-    force_gpu: Boolean(forceGpu)
+    force_gpu: Boolean(forceGpu),
+    retry_until_ready: Boolean(retryUntilReady)
   };
   const r = await fetch('/api/deploy', {
     method: 'POST',
@@ -12211,6 +12310,7 @@ p.wait()
                 ctx=int(payload.get("ctx", 262144)),
                 gpu=req_gpu,
                 download_only=download_only,
+                retry_until_ready=bool(payload.get("retry_until_ready", False)),
             )
             self._send_json({"ok": ok, "message": msg})
             return
