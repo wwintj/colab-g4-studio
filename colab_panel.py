@@ -3372,10 +3372,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
 
       <!-- 3. 随机种子 -->
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;background:#1e293b;padding:0 10px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);">
-        <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">种子</span>
-        <input id="videoSeed" type="number" value="42" style="width:68px;padding:3px 6px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:12.5px;text-align:center;">
-        <label style="font-size:12px;color:#f8fafc;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;white-space:nowrap;">
+      <div style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:0 10px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);min-width:0;">
+        <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;flex-shrink:0;">种子</span>
+        <input id="videoSeed" type="text" inputmode="numeric" value="42" oninput="this.value=this.value.replace(/[^0-9]/g,'')" style="flex:1;min-width:84px;width:0;padding:3px 6px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-family:'SF Mono',Menlo,monospace;font-size:12px;text-align:center;">
+        <label style="font-size:12px;color:#f8fafc;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;white-space:nowrap;flex-shrink:0;">
           <input id="videoRandSeed" type="checkbox" checked style="width:14px;height:14px;accent-color:#3b82f6;margin:0;"> 随机
         </label>
         <input type="hidden" id="videoFps" value="24">
