@@ -4001,10 +4001,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </h2>
   <div id="taskProgressArea" style="margin-bottom:14px;padding:12px 14px;background:#0f172a;border:1px solid var(--border);border-radius:10px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;margin-bottom:6px;height:22px;overflow:hidden;">
-      <span id="taskProgressLabel" style="font-weight:600;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">当前进度：已就绪 (100%)</span>
-      <span id="taskProgressLlamaTotal" style="display:none;align-items:center;padding:1px 8px;border-radius:999px;background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.45);color:#e9d5ff;font-family:'SF Mono',Menlo,monospace;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;cursor:help;"></span>
-      <span id="taskProgressSpeed" style="font-family:'SF Mono',monospace;color:var(--green);white-space:nowrap;flex-shrink:0;">50.90 / 50.90 GB · 服务运行中</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;margin-bottom:6px;height:22px;overflow:hidden;font-variant-numeric:tabular-nums;">
+      <span id="taskProgressLabel" style="font-weight:600;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;font-variant-numeric:tabular-nums;">当前进度：已就绪 (100%)</span>
+      <span id="taskProgressLlamaTotal" style="display:none;align-items:center;justify-content:center;width:132px;padding:1px 0;border-radius:999px;background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.45);color:#e9d5ff;font-family:'SF Mono',Menlo,monospace;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;cursor:help;"></span>
+      <span id="taskProgressSpeed" style="font-family:'SF Mono',Menlo,monospace;color:var(--green);white-space:nowrap;flex-shrink:0;min-width:205px;text-align:right;font-variant-numeric:tabular-nums;">50.90 / 50.90 GB · 服务运行中</span>
     </div>
     <div class="progress-bar" style="height:10px;">
       <div class="progress-fill green" id="taskProgressBar" style="width:100%;transition:width 0.35s ease;"></div>
@@ -5666,15 +5666,15 @@ async function pollLogs() {
         const nGen = Number(ll.n_gen || 0);
         const tgAvg = (typeof ll.tg_avg === 'number') ? ll.tg_avg.toFixed(1) : '';
         const tg3s = (typeof ll.tg_3s === 'number') ? ll.tg_3s.toFixed(1) : '';
-        const mtpTag = ll.speculative ? ' · ⚡MTP' : '';
-        const ctxK = nCtx > 0 ? `${Math.round(nCtx / 1024)}K` : '';
+        const ctxK = nCtx > 0 ? `${Math.round(nCtx / 1024)}K` : '256K';
         if (ll.is_processing) {
+          window._llamaIdleStreak = 0;
           const prefillDone = nCache + nProc;
           const isPrefill = (nPrompt > 0 && prefillDone < nPrompt);
           if (isPrefill) {
             const pPct = Math.max(5, Math.min(99, Math.round((prefillDone / nPrompt) * 100)));
-            pLabel.innerText = `⚡ [${ll.model_short} 预填充上下文] ${prefillDone.toLocaleString()} / ${nPrompt.toLocaleString()} tokens (KV命中 ${nCache.toLocaleString()})`;
-            pSpeed.innerText = `${pPct}% · 窗口 ${ctxK}${mtpTag}`;
+            pLabel.innerText = `⚡ ${ll.model_short} · 预填充  ${prefillDone.toLocaleString()} / ${nPrompt.toLocaleString()}  (KV命中 ${nCache.toLocaleString()})`;
+            pSpeed.innerText = `预填充 ${String(pPct).padStart(2, ' ')}% · 窗口 ${ctxK}`;
             pBar.style.background = '';
             pBar.className = 'progress-fill';
             pBar.style.width = `${pPct}%`;
@@ -5683,11 +5683,11 @@ async function pollLogs() {
           } else {
             const totUsed = nPrompt + nGen;
             const ctxPct = nCtx > 0 ? Math.max(12, Math.min(98, Math.round((totUsed / nCtx) * 100))) : 65;
-            const genStr = nGen > 0 ? `已吐 ${nGen.toLocaleString()} tokens · ` : '';
-            pLabel.innerText = `🚀 [${ll.model_short} 实时生成中] ${genStr}上下文 ${totUsed.toLocaleString()} / ${nCtx.toLocaleString()}${mtpTag}`;
+            const genStr = nGen > 0 ? `  (已吐 ${nGen.toLocaleString()})` : '';
+            pLabel.innerText = `🚀 ${ll.model_short} · 生成中  上下文 ${totUsed.toLocaleString()} / ${ctxK}${genStr}`;
             pSpeed.innerText = tg3s
-              ? `瞬时 ${tg3s} t/s · 均速 ${tgAvg} t/s`
-              : (tgAvg ? `均速 ${tgAvg} t/s · 流式输出中` : `流式生成中 · 窗口 ${ctxK}`);
+              ? `瞬时 ${tg3s} · 均速 ${tgAvg} t/s`
+              : (tgAvg ? `均速 ${tgAvg} t/s · 流式输出` : `流式生成中 · 窗口 ${ctxK}`);
             pBar.style.background = '';
             pBar.className = 'progress-fill';
             pBar.style.width = `${ctxPct}%`;
@@ -5695,16 +5695,19 @@ async function pollLogs() {
             st.style.color = '#38bdf8';
           }
         } else {
-          pLabel.innerText = `✅ ${ll.model_short} 已就绪 (KV 缓存 ${nCache.toLocaleString()} / ${nCtx.toLocaleString()} tokens${mtpTag})`;
-          pSpeed.innerText = tgAvg
-            ? `上轮 ${nGen.toLocaleString()} tokens · 均速 ${tgAvg} t/s`
-            : `等待客户端请求 · 窗口 ${ctxK}`;
-          pBar.style.background = '';
-          pBar.className = 'progress-fill green';
-          pBar.style.width = '100%';
-          st.innerText = '🟢 推理引擎就绪';
-          st.style.color = '#10b981';
+          // 连续 2 次空闲才切回绿色就绪态，防止客户端连续多轮请求之间高频闪烁
+          window._llamaIdleStreak = (window._llamaIdleStreak || 0) + 1;
+          if (window._llamaIdleStreak >= 2 || !window._llamaHasShownBusy) {
+            pLabel.innerText = `✅ ${ll.model_short} · 已就绪  KV 缓存 ${nCache.toLocaleString()} / ${ctxK}`;
+            pSpeed.innerText = tgAvg ? `空闲 · 上轮均速 ${tgAvg} t/s` : `等待对话请求 · 窗口 ${ctxK}`;
+            pBar.style.background = '';
+            pBar.className = 'progress-fill green';
+            pBar.style.width = '100%';
+            st.innerText = '🟢 推理引擎就绪';
+            st.style.color = '#10b981';
+          }
         }
+        if (ll.is_processing) window._llamaHasShownBusy = true;
         return;
       }
       if (!d.running && latestUpscaleErr) {
