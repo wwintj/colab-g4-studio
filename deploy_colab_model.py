@@ -6142,6 +6142,15 @@ def run_remote_vm_main():
         for attempt_mtp in mtp_candidates:
             subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
 
+            weights_gb = sum(
+                os.path.getsize(p) / (1024 ** 3)
+                for p in (main_gguf, mmproj_gguf, attempt_mtp)
+                if p and os.path.exists(p)
+            )
+            f16_kv_need_gb = (CTX_LEN / 262144.0) * 17.6
+            use_f16_kv = (vram_gb >= 78.0) and ((vram_gb - weights_gb) >= (f16_kv_need_gb + 6.0))
+            kv_cache_type = "f16" if use_f16_kv else "q8_0"
+
             cmd = [
                 bin_path,
                 "-m", main_gguf,
@@ -6153,8 +6162,8 @@ def run_remote_vm_main():
                 "--kv-unified",
                 "--parallel", "1",
                 "--flash-attn", "on",
-                "--cache-type-k", "q8_0",
-                "--cache-type-v", "q8_0",
+                "--cache-type-k", kv_cache_type,
+                "--cache-type-v", kv_cache_type,
                 "-b", "2048",
                 "-ub", "1024",
                 "--backend-sampling",
@@ -6174,12 +6183,12 @@ def run_remote_vm_main():
                     "--spec-type", "draft-mtp",
                     "--spec-draft-n-max", "8",
                     "--spec-draft-p-min", "0.65",
-                    "--cache-type-k-draft", "q8_0",
-                    "--cache-type-v-draft", "q8_0",
+                    "--cache-type-k-draft", kv_cache_type,
+                    "--cache-type-v-draft", kv_cache_type,
                 ])
 
             mtp_tag = f" + MTP投机加速({os.path.basename(attempt_mtp)})" if attempt_mtp else ""
-            log(f"正在启动 llama-server 加载 {os.path.basename(main_gguf)}{mtp_tag} (上下文: {CTX_LEN})...")
+            log(f"正在启动 llama-server 加载 {os.path.basename(main_gguf)}{mtp_tag} (上下文: {CTX_LEN} · KV: {kv_cache_type})...")
             with open("/content/llama_server.log", "w") as lf:
                 proc = subprocess.Popen(
                     cmd,
@@ -6193,12 +6202,7 @@ def run_remote_vm_main():
 
             t0 = time.time()
             server_ok = False
-            weights_gb = sum(
-                os.path.getsize(p) / (1024 ** 3)
-                for p in (main_gguf, mmproj_gguf, attempt_mtp)
-                if p and os.path.exists(p)
-            )
-            kv_gb = (CTX_LEN / 262144.0) * 8.8
+            kv_gb = f16_kv_need_gb if use_f16_kv else (CTX_LEN / 262144.0) * 8.8
             expected_vram_gb = max(4.0, weights_gb + kv_gb)
             last_logged_pct = -1
 
