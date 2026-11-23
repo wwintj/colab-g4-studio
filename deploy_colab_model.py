@@ -5565,9 +5565,19 @@ def ensure_llama_server() -> Tuple[str, Dict[str, str]]:
     if bin_p:
         return bin_p, _build_env()
 
-    fallback_tag = "b12180"
+    fallback_tag = "b12651"
     main_url = f"https://github.com/ggml-org/llama.cpp/releases/download/{fallback_tag}/llama-{fallback_tag}-bin-ubuntu-cuda-12.8-x64.tar.gz"
     cudart_url = f"https://github.com/ggml-org/llama.cpp/releases/download/{fallback_tag}/cudart-llama-{fallback_tag}-bin-ubuntu-cuda-12.8-x64.tar.gz"
+
+    # 自动检测当前显卡驱动支持的最高 CUDA 版本（如 13.5 / 12.8），优先匹配最新 Blackwell 优化构建
+    driver_cuda = (12, 8)
+    try:
+        smi_out = subprocess.getoutput("nvidia-smi 2>/dev/null")
+        m_cu = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", smi_out)
+        if m_cu:
+            driver_cuda = (int(m_cu.group(1)), int(m_cu.group(2)))
+    except Exception:
+        pass
 
     try:
         req = urllib.request.Request(
@@ -5577,24 +5587,30 @@ def ensure_llama_server() -> Tuple[str, Dict[str, str]]:
         with urllib.request.urlopen(req, timeout=10) as resp:
             releases = json.loads(resp.read().decode("utf-8"))
         for rel in releases:
-            found_m, found_rt = None, None
+            cands: Dict[Tuple[int, int], Dict[str, str]] = {}
             for asset in rel.get("assets") or []:
                 aname = str(asset.get("name") or "")
                 aurl = str(asset.get("browser_download_url") or "")
-                if aname.endswith("-x64.tar.gz") and "ubuntu-cuda-12." in aname:
-                    if aname.startswith("llama-"):
-                        found_m = aurl
-                    elif aname.startswith("cudart-llama-"):
-                        found_rt = aurl
-            if found_m:
-                main_url = found_m
-                if found_rt:
-                    cudart_url = found_rt
+                m_ver = re.search(r"-bin-ubuntu-cuda-(\d+)\.(\d+)-x64\.tar\.gz$", aname)
+                if not m_ver:
+                    continue
+                ver_t = (int(m_ver.group(1)), int(m_ver.group(2)))
+                slot = cands.setdefault(ver_t, {})
+                if aname.startswith("llama-"):
+                    slot["main"] = aurl
+                elif aname.startswith("cudart-llama-"):
+                    slot["rt"] = aurl
+            # 从高到低选择第一个 <= 驱动 CUDA 版本且存在主包的构建
+            compatible = [v for v in sorted(cands.keys(), reverse=True) if v <= driver_cuda and "main" in cands[v]]
+            chosen_v = compatible[0] if compatible else (sorted([v for v in cands if "main" in cands[v]])[0] if any("main" in cands[v] for v in cands) else None)
+            if chosen_v is not None:
+                main_url = cands[chosen_v]["main"]
+                cudart_url = cands[chosen_v].get("rt", "")
                 break
     except Exception:
         pass
 
-    log(f"正在下载官方预编译 llama.cpp CUDA 引擎 ({os.path.basename(main_url)})...")
+    log(f"正在下载官方最新 llama.cpp CUDA 引擎 (驱动支持 CUDA {driver_cuda[0]}.{driver_cuda[1]} -> 选用 {os.path.basename(main_url)})...")
     subprocess.run(f'curl -fsSL "{main_url}" -o /tmp/llama.tar.gz && tar -xzf /tmp/llama.tar.gz -C {install_dir} && rm -f /tmp/llama.tar.gz', shell=True, check=True)
     if cudart_url:
         subprocess.run(f'curl -fsSL "{cudart_url}" -o /tmp/cudart.tar.gz && tar -xzf /tmp/cudart.tar.gz -C {install_dir} && rm -f /tmp/cudart.tar.gz', shell=True, check=True)
@@ -6147,6 +6163,8 @@ def run_remote_vm_main():
                 "-ngl", "999",
                 "--api-key", API_KEY,
             ]
+            if vram_gb >= 24.0:
+                cmd.append("--no-mmap")
             if mmproj_gguf:
                 cmd.extend(["--mmproj", mmproj_gguf, "--image-min-tokens", "1024"])
             if attempt_mtp:
@@ -6154,8 +6172,8 @@ def run_remote_vm_main():
                     "--model-draft", attempt_mtp,
                     "-ngld", "999",
                     "--spec-type", "draft-mtp",
-                    "--spec-draft-n-max", "4",
-                    "--spec-draft-p-min", "0.45",
+                    "--spec-draft-n-max", "8",
+                    "--spec-draft-p-min", "0.65",
                     "--cache-type-k-draft", "q8_0",
                     "--cache-type-v-draft", "q8_0",
                 ])
