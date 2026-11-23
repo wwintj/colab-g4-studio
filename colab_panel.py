@@ -1862,6 +1862,15 @@ def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = ""
                                                 continue
                                             cleaned.append(s)
                                         if cleaned:
+                                            if rname == "llama_server.log":
+                                                p_sum = sum(int(m) for m in re.findall(r"prompt eval time\s*=\s*[\d.]+\s*ms\s*/\s*(\d+)\s*tokens", txt))
+                                                g_sum = sum(int(m) for m in re.findall(r"\|\s+eval time\s*=\s*[\d.]+\s*ms\s*/\s*(\d+)\s*tokens", txt))
+                                                t_cnt = len(re.findall(r"prompt eval time\s*=", txt))
+                                                _REMOTE_LOG_FALLBACK_CACHE["llama_totals"] = {
+                                                    "done_turns": t_cnt,
+                                                    "done_prompt": p_sum,
+                                                    "done_gen": g_sum,
+                                                }
                                             tail = cleaned[-max_lines:]
                                             out_lines = [f"[云端实时日志 · /content/{rname}]"] + tail
                                             break
@@ -1915,15 +1924,19 @@ def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str], force
         _LLAMA_LIVE_CACHE["data"] = None
         return None
 
+    slot_task_id = int(slot_obj.get("id_task") or 0)
+    is_proc_now = bool(slot_obj.get("is_processing"))
     n_gen = 0
+    n_gen_task_id = 0
     tg_avg = None
     tg_3s = None
     for ln in reversed(remote_lines or []):
-        m_t = re.search(r"n_gen\s*=\s*(\d+),\s*tg\s*=\s*([\d.]+)\s*t/s(?:,\s*tg_3s\s*=\s*([\d.]+)\s*t/s)?", ln)
+        m_t = re.search(r"task\s+(\d+)\s*\|\s*n_gen\s*=\s*(\d+),\s*tg\s*=\s*([\d.]+)\s*t/s(?:,\s*tg_3s\s*=\s*([\d.]+)\s*t/s)?", ln)
         if m_t:
-            n_gen = int(m_t.group(1))
-            tg_avg = float(m_t.group(2))
-            tg_3s = float(m_t.group(3)) if m_t.group(3) else None
+            n_gen_task_id = int(m_t.group(1))
+            n_gen = int(m_t.group(2))
+            tg_avg = float(m_t.group(3))
+            tg_3s = float(m_t.group(4)) if m_t.group(4) else None
             break
         m_e = re.search(r"eval time\s*=.*?(\d+)\s*runs.*?\(\s*([\d.]+)\s*tokens per second\)", ln)
         if m_e:
@@ -1931,22 +1944,58 @@ def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str], force
             tg_avg = float(m_e.group(2))
             break
 
+    # 累计自本次启动以来的总消耗 tokens：优先尝试原生 Prometheus /metrics（--metrics），未开启时自动无缝使用全量 llama_server.log 累计 + 当前进行中轮次
+    tot_prompt = 0
+    tot_gen = 0
+    done_turns = 0
+    metrics_state = _LLAMA_LIVE_CACHE.setdefault("metrics_support", {})
+    if metrics_state.get(t_url) is not False:
+        try:
+            m_req = urllib.request.Request(f"{t_url}/metrics", headers=headers, method="GET")
+            with urllib.request.urlopen(m_req, timeout=1.5) as m_resp:
+                m_txt = m_resp.read().decode("utf-8", errors="ignore")
+                mp = re.search(r"^llamacpp:prompt_tokens_total\s+([\d.eE+-]+)", m_txt, re.M)
+                mg = re.search(r"^llamacpp:tokens_predicted_total\s+([\d.eE+-]+)", m_txt, re.M)
+                if mp or mg:
+                    metrics_state[t_url] = True
+                    tot_prompt = int(float(mp.group(1))) if mp else 0
+                    tot_gen = int(float(mg.group(1))) if mg else 0
+        except urllib.error.HTTPError as he:
+            if he.code in (404, 501):
+                metrics_state[t_url] = False
+        except Exception:
+            pass
+
+    log_tots = _REMOTE_LOG_FALLBACK_CACHE.get("llama_totals") or {}
+    done_turns = int(log_tots.get("done_turns") or 0)
+    if tot_prompt == 0 and tot_gen == 0 and log_tots:
+        tot_prompt = int(log_tots.get("done_prompt") or 0)
+        tot_gen = int(log_tots.get("done_gen") or 0)
+        if is_proc_now:
+            tot_prompt += int(slot_obj.get("n_prompt_tokens_processed") or 0)
+            if slot_task_id > 0 and n_gen_task_id == slot_task_id:
+                tot_gen += n_gen
+
     model_short = str(cfg.get("model_folder") or cfg.get("model_id") or "Qwen3.8-27B").split("/")[-1]
     if "qwen3.8" in model_short.lower():
         model_short = "Qwen3.8-27B (BF16)"
 
     res = {
         "model_short": model_short,
-        "is_processing": bool(slot_obj.get("is_processing")),
+        "is_processing": is_proc_now,
         "speculative": bool(slot_obj.get("speculative")),
         "n_ctx": int(slot_obj.get("n_ctx") or 0),
         "n_prompt_tokens": int(slot_obj.get("n_prompt_tokens") or 0),
         "n_prompt_tokens_processed": int(slot_obj.get("n_prompt_tokens_processed") or 0),
         "n_prompt_tokens_cache": int(slot_obj.get("n_prompt_tokens_cache") or 0),
-        "id_task": int(slot_obj.get("id_task") or 0),
-        "n_gen": n_gen,
+        "id_task": slot_task_id,
+        "n_gen": n_gen if (not is_proc_now or n_gen_task_id in (0, slot_task_id)) else 0,
         "tg_avg": tg_avg,
         "tg_3s": tg_3s,
+        "completed_turns": done_turns,
+        "total_prompt_tokens": tot_prompt,
+        "total_gen_tokens": tot_gen,
+        "total_tokens": tot_prompt + tot_gen,
     }
     _LLAMA_LIVE_CACHE["data"] = res
     return dict(res)
@@ -3952,8 +4001,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </h2>
   <div id="taskProgressArea" style="margin-bottom:14px;padding:12px 14px;background:#0f172a;border:1px solid var(--border);border-radius:10px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;font-size:13px;margin-bottom:6px;height:20px;overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;margin-bottom:6px;height:22px;overflow:hidden;">
       <span id="taskProgressLabel" style="font-weight:600;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">当前进度：已就绪 (100%)</span>
+      <span id="taskProgressLlamaTotal" style="display:none;align-items:center;padding:1px 8px;border-radius:999px;background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.45);color:#e9d5ff;font-family:'SF Mono',Menlo,monospace;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;cursor:help;"></span>
       <span id="taskProgressSpeed" style="font-family:'SF Mono',monospace;color:var(--green);white-space:nowrap;flex-shrink:0;">50.90 / 50.90 GB · 服务运行中</span>
     </div>
     <div class="progress-bar" style="height:10px;">
@@ -5588,6 +5638,24 @@ async function pollLogs() {
       }
       if (!d.running && (dramaPollTimer || videoPollTimer || upscalePollTimer || fusionBatchRunning)) {
         return;
+      }
+      const pTotalBadge = document.getElementById('taskProgressLlamaTotal');
+      if (pTotalBadge) {
+        if (!d.running && d.llama_live && Number(d.llama_live.total_tokens || 0) > 0) {
+          const tAll = Number(d.llama_live.total_tokens || 0);
+          const tIn = Number(d.llama_live.total_prompt_tokens || 0);
+          const tOut = Number(d.llama_live.total_gen_tokens || 0);
+          const tTurns = Number(d.llama_live.completed_turns || 0);
+          const fmtCompact = (v) => v >= 1000000 ? `${(v / 1000000).toFixed(2)}M` : (v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v));
+          pTotalBadge.innerText = `📊 累计 ${fmtCompact(tAll)} tok`;
+          const turnDesc = tTurns > 0
+            ? `已完成 ${tTurns} 轮${d.llama_live.is_processing ? ' + 当前进行中' : ''}`
+            : (d.llama_live.is_processing ? '当前首轮进行中' : '本次启动累计');
+          pTotalBadge.title = `本次启动累计消耗（${turnDesc}）\n• 新处理输入 (Prompt): ${tIn.toLocaleString()} tokens\n• 累计生成输出 (Output): ${tOut.toLocaleString()} tokens\n• 合计总消耗: ${tAll.toLocaleString()} tokens`;
+          pTotalBadge.style.display = 'inline-flex';
+        } else {
+          pTotalBadge.style.display = 'none';
+        }
       }
       if (!d.running && d.llama_live) {
         const ll = d.llama_live;

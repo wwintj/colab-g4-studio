@@ -6168,6 +6168,7 @@ def run_remote_vm_main():
                 "-ub", "1024",
                 "--backend-sampling",
                 "--jinja",
+                "--metrics",
                 "--reasoning-format", "deepseek",
                 "-ngl", "999",
                 "--api-key", API_KEY,
