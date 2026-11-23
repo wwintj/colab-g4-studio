@@ -2299,37 +2299,40 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
 <!-- OpenAI 兼容 API 接入参数弹窗 (点击顶部「🔗 API」按钮弹出) -->
 <div id="apiConfigModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,0.76);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
-  <div style="width:100%;max-width:560px;background:#1e293b;border:1px solid rgba(168,85,247,0.5);border-radius:16px;padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.75);">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:15.5px;font-weight:800;color:#f8fafc;">🔗 OpenAI 兼容 API 接入参数（客户端直接填）</span>
-        <span id="llamaBadgeModal" class="badge offline" style="font-size:11px">⚪ 推理引擎已关机</span>
+  <div style="width:100%;max-width:720px;background:#1e293b;border:1px solid rgba(168,85,247,0.5);border-radius:16px;padding:18px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.75);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);flex-wrap:nowrap;">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+        <span style="font-size:15.5px;font-weight:800;color:#f8fafc;white-space:nowrap;">🔗 OpenAI 兼容 API 接入参数</span>
+        <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap;">客户端直接填</span>
       </div>
-      <button type="button" onclick="document.getElementById('apiConfigModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 关闭</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <span id="llamaBadgeModal" class="badge offline" style="font-size:11.5px;white-space:nowrap;flex-shrink:0;">⚪ 推理引擎已关机</span>
+        <button type="button" onclick="document.getElementById('apiConfigModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;white-space:nowrap;flex-shrink:0;cursor:pointer;">✕ 关闭</button>
+      </div>
     </div>
 
-    <div class="kv-row">
-      <span class="kv-label">本机永久固定 URL</span>
-      <span class="kv-val" id="fixedUrl">http://127.0.0.1:30000/v1</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('fixedUrl')">复制</button>
+    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;">
+      <span class="kv-label" style="width:auto;white-space:nowrap;">本机永久固定 URL</span>
+      <span class="kv-val" id="fixedUrl" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">http://127.0.0.1:30000/v1</span>
+      <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('fixedUrl')">复制</button>
     </div>
 
-    <div class="kv-row">
-      <span class="kv-label">公网临时 Tunnel URL</span>
-      <span class="kv-val" id="tunnelUrl">--</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('tunnelUrl')">复制</button>
+    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;">
+      <span class="kv-label" style="width:auto;white-space:nowrap;">公网临时 Tunnel</span>
+      <span class="kv-val" id="tunnelUrl" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">--</span>
+      <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('tunnelUrl')">复制</button>
     </div>
 
-    <div class="kv-row">
-      <span class="kv-label">永久固定 API Key</span>
-      <span class="kv-val" id="apiKey">sk-colab-ed28e54eb298d0c1</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('apiKey')">复制</button>
+    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;">
+      <span class="kv-label" style="width:auto;white-space:nowrap;">永久固定 API Key</span>
+      <span class="kv-val" id="apiKey" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">sk-colab-ed28e54eb298d0c1</span>
+      <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('apiKey')">复制</button>
     </div>
 
-    <div class="kv-row" style="margin-bottom:0;">
-      <span class="kv-label">Model ID (模型名)</span>
-      <span class="kv-val" id="modelId">huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF</span>
-      <button class="btn-outline" style="padding:4px 10px;font-size:12px" onclick="copyText('modelId')">复制</button>
+    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;margin-bottom:0;">
+      <span class="kv-label" style="width:auto;white-space:nowrap;">Model ID (模型名)</span>
+      <span class="kv-val" id="modelId" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF</span>
+      <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('modelId')">复制</button>
     </div>
   </div>
 </div>
