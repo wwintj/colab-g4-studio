@@ -1223,8 +1223,10 @@ def _run_video_job(payload: dict):
 
             rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
             if os.path.exists(rc_conf) and shutil.which("rclone"):
+                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
                 subprocess.Popen(
-                    ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -1872,8 +1874,10 @@ def _run_t4_video_job(payload: dict):
 
             rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
             if os.path.exists(rc_conf) and shutil.which("rclone"):
+                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
                 subprocess.Popen(
-                    ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -3406,8 +3410,10 @@ def _run_avatar_job(payload: dict):
 
             rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
             if os.path.exists(rc_conf) and shutil.which("rclone"):
+                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
                 subprocess.Popen(
-                    ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -4494,8 +4500,10 @@ def _run_image_job(payload: dict):
                 JOB_STATE["completed_videos"] = list(completed_imgs)
                 del decoded, sampled
                 if os.path.exists(rc_conf) and shutil.which("rclone"):
+                    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                    _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
                     subprocess.Popen(
-                        ["rclone", "copy", out_path, "gdrive:models/MiniMax-H3_outputs", "--config", rc_conf],
+                        ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
@@ -5226,16 +5234,21 @@ def _run_upscale_job(payload: dict):
 
             def _bg_sync_drive(p: Path):
                 try:
-                    if DRIVE_OUT_DIR.parent.exists():
-                        DRIVE_OUT_DIR.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(p, DRIVE_OUT_DIR / p.name)
-                    elif os.path.isfile("/root/.config/rclone/rclone.conf"):
+                    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                    _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
+                    drive_root = Path("/content/drive/MyDrive")
+                    rc_conf_p = os.path.expanduser("~/.config/rclone/rclone.conf")
+                    if os.path.isfile(rc_conf_p) and shutil.which("rclone"):
                         subprocess.run(
-                            ["rclone", "copy", str(p), "gdrive:models/MiniMax-H3/outputs", "--transfers=4"],
+                            ["rclone", "copy", str(p), f"gdrive:pro6000-output/{_ym}", "--config", rc_conf_p, "--transfers=4"],
                             check=False,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                         )
+                    elif drive_root.exists():
+                        month_dir = drive_root / "pro6000-output" / _ym
+                        month_dir.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(p, month_dir / p.name)
                 except Exception:
                     pass
 

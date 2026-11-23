@@ -483,6 +483,48 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
     return {"elapsed_sec": elapsed_sec, "eta_sec": eta_sec}
 
 
+GDRIVE_OUTPUT_ROOT = "pro6000-output"
+
+
+def _get_gdrive_monthly_output_dir(ts_epoch: Optional[float] = None) -> str:
+    ym = time.strftime("%Y.%m", time.localtime(ts_epoch) if ts_epoch else time.localtime())
+    return f"gdrive:{GDRIVE_OUTPUT_ROOT}/{ym}"
+
+
+def _sync_output_to_gdrive_monthly(local_path: Path, quiet: bool = False):
+    """后台将本地生成的视频/图片同步归档至 Google Drive 的 pro6000-output/YYYY.MM/ 目录（自动建目录且同文件去重）"""
+    p = Path(local_path)
+    if not (p.is_file() and p.stat().st_size > 1024):
+        return
+    rclone_bin = BASE_DIR / ".venv" / "bin" / "rclone"
+    rclone_conf = BASE_DIR / ".gdrive_rclone.conf"
+    if not (rclone_bin.exists() and rclone_conf.exists()):
+        return
+
+    def _bg_upload():
+        try:
+            ym = time.strftime("%Y.%m", time.localtime(p.stat().st_mtime))
+            remote_dir = f"gdrive:{GDRIVE_OUTPUT_ROOT}/{ym}"
+            res = subprocess.run(
+                [
+                    str(rclone_bin), "copy",
+                    str(p),
+                    remote_dir,
+                    "--config", str(rclone_conf),
+                    "--transfers", "4",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=300,
+            )
+            if res.returncode == 0 and not quiet:
+                _append_panel_log(f"☁️ [云盘按月归档] {p.name} 已同步至 Google Drive/{GDRIVE_OUTPUT_ROOT}/{ym}/")
+        except Exception:
+            pass
+
+    threading.Thread(target=_bg_upload, daemon=True).start()
+
+
 def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
     if not fname:
         return False
@@ -635,12 +677,12 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
                         time.sleep(1.2)
                         if rclone_won.is_set():
                             return
-                        out_sub = "LongCat-Avatar_outputs" if "longcat" in safe_name.lower() else "MiniMax-H3_outputs"
+                        remote_ym_dir = _get_gdrive_monthly_output_dir()
                         try:
                             rc_res = subprocess.run(
                                 [
                                     str(rclone_bin), "copyto",
-                                    f"gdrive:models/{out_sub}/{safe_name}",
+                                    f"{remote_ym_dir}/{safe_name}",
                                     str(tmp_rc_path),
                                     "--config", str(rclone_conf),
                                     "--multi-thread-streams", "8",
@@ -695,6 +737,7 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
                 meta_map[safe_name] = float(elapsed_s)
                 ELAPSED_META_FILE.write_text(json.dumps(meta_map, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             _append_panel_log(f"✅ [{done_tag}] {safe_name} 已完整保存至 {LOCAL_MOVIES_DIR}/{safe_name}")
+            _sync_output_to_gdrive_monthly(dest_path)
             return True
         except Exception as ex:
             _append_panel_log(f"⚠️ [{dl_tag}重试] {safe_name}: {ex}")
@@ -3444,7 +3487,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <div style="font-family:'SF Mono',Menlo,monospace;font-size:11.5px;color:#93c5fd;" id="videoGenStatus">
-          状态：等待任务...（自动保存至 <b>~/Movies/EasyColab/</b> 与云盘双备份）
+          状态：等待任务...（自动保存至 <b>~/Movies/EasyColab/</b> 与云盘 <b>pro6000-output/YYYY.MM</b> 双备份）
         </div>
         <button type="button" id="btnStopTaskTop" onclick="stopActiveVideoTask()" style="display:none;padding:3px 10px;font-size:11.5px;font-weight:800;border-radius:6px;border:1px solid rgba(239,68,68,0.65);background:rgba(239,68,68,0.18);color:#fca5a5;cursor:pointer;">🛑 停止</button>
       </div>
@@ -3596,7 +3639,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div id="videoEmptyPlaceholder" style="height:520px;border-radius:12px;background:#000000;border:1px dashed #334155;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);font-size:13.5px;text-align:center;padding:24px;">
         <div style="font-size:40px;margin-bottom:10px;">🎬</div>
         <div style="color:#e2e8f0;font-weight:700;">点击右侧「本地历史」即可直接播放已生成的视频，或在上方点击「开始生成音视频」</div>
-        <div style="font-size:12px;margin-top:6px;color:#94a3b8;">本机视频保存位置：<code style="color:#93c5fd;">~/Movies/EasyColab/</code>（同时自动备份至 Google Drive）</div>
+        <div style="font-size:12px;margin-top:6px;color:#94a3b8;">本机保存位置：<code style="color:#93c5fd;">~/Movies/EasyColab/</code>（同时按月自动归档至 Google Drive <code style="color:#6ee7b7;">pro6000-output/YYYY.MM/</code>）</div>
       </div>
 
       <div id="videoResultWrap" style="display:none;">
@@ -12482,6 +12525,7 @@ def _run_h3_video_facefix(
             check=True,
             timeout=180,
         )
+        _sync_output_to_gdrive_monthly(out_path)
     finally:
         try:
             os.unlink(tmp_vid)
@@ -16641,6 +16685,7 @@ def _drama_assemble_30s_movie(work_dir: Path, aspect: str = "16:9", auto_2k: boo
         timeout=90,
     )
     shutil.copy2(final_work_p, final_gallery_p)
+    _sync_output_to_gdrive_monthly(final_gallery_p)
     _append_panel_log(f"🎉 [自动导演·合片完成] {tot_dur} 秒 {len(vid_tasks)} 镜完整短剧成片已生成 → {final_gallery_p}")
 
     if auto_2k:
