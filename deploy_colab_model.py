@@ -6172,8 +6172,6 @@ def run_remote_vm_main():
                 "-ngl", "999",
                 "--api-key", API_KEY,
             ]
-            if vram_gb >= 24.0:
-                cmd.append("--no-mmap")
             if mmproj_gguf:
                 cmd.extend(["--mmproj", mmproj_gguf, "--image-min-tokens", "1024"])
             if attempt_mtp:
