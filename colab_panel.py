@@ -486,13 +486,23 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
 GDRIVE_OUTPUT_ROOT = "pro6000-output"
 
 
-def _get_gdrive_monthly_output_dir(ts_epoch: Optional[float] = None) -> str:
+def _infer_gdrive_output_subdir(filename: str) -> str:
+    ext = Path(str(filename or "")).suffix.lower()
+    if ext in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+        return "images"
+    return "videos"
+
+
+def _get_gdrive_monthly_output_dir(subdir: str = "", ts_epoch: Optional[float] = None) -> str:
     ym = time.strftime("%Y.%m", time.localtime(ts_epoch) if ts_epoch else time.localtime())
+    sub = str(subdir or "").strip().lower()
+    if sub in ("videos", "images", "temp"):
+        return f"gdrive:{GDRIVE_OUTPUT_ROOT}/{ym}/{sub}"
     return f"gdrive:{GDRIVE_OUTPUT_ROOT}/{ym}"
 
 
-def _sync_output_to_gdrive_monthly(local_path: Path, quiet: bool = False):
-    """后台将本地生成的视频/图片同步归档至 Google Drive 的 pro6000-output/YYYY.MM/ 目录（自动建目录且同文件去重）"""
+def _sync_output_to_gdrive_monthly(local_path: Path, subdir: Optional[str] = None, quiet: bool = False):
+    """后台将本地生成的视频/图片分类归档至 Google Drive 的 pro6000-output/YYYY.MM/(videos|images|temp)/（自动建目录且同文件去重）"""
     p = Path(local_path)
     if not (p.is_file() and p.stat().st_size > 1024):
         return
@@ -501,10 +511,14 @@ def _sync_output_to_gdrive_monthly(local_path: Path, quiet: bool = False):
     if not (rclone_bin.exists() and rclone_conf.exists()):
         return
 
+    target_sub = str(subdir or "").strip().lower()
+    if target_sub not in ("videos", "images", "temp"):
+        target_sub = _infer_gdrive_output_subdir(p.name)
+
     def _bg_upload():
         try:
             ym = time.strftime("%Y.%m", time.localtime(p.stat().st_mtime))
-            remote_dir = f"gdrive:{GDRIVE_OUTPUT_ROOT}/{ym}"
+            remote_dir = f"gdrive:{GDRIVE_OUTPUT_ROOT}/{ym}/{target_sub}"
             res = subprocess.run(
                 [
                     str(rclone_bin), "copy",
@@ -518,14 +532,14 @@ def _sync_output_to_gdrive_monthly(local_path: Path, quiet: bool = False):
                 timeout=300,
             )
             if res.returncode == 0 and not quiet:
-                _append_panel_log(f"☁️ [云盘按月归档] {p.name} 已同步至 Google Drive/{GDRIVE_OUTPUT_ROOT}/{ym}/")
+                _append_panel_log(f"☁️ [云盘按月归档] {p.name} 已同步至 Google Drive/{GDRIVE_OUTPUT_ROOT}/{ym}/{target_sub}/")
         except Exception:
             pass
 
     threading.Thread(target=_bg_upload, daemon=True).start()
 
 
-def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
+def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0, drive_subdir: Optional[str] = None) -> bool:
     if not fname:
         return False
     safe_name = os.path.basename(fname)
@@ -677,7 +691,8 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
                         time.sleep(1.2)
                         if rclone_won.is_set():
                             return
-                        remote_ym_dir = _get_gdrive_monthly_output_dir()
+                        race_sub = drive_subdir if drive_subdir in ("videos", "images", "temp") else _infer_gdrive_output_subdir(safe_name)
+                        remote_ym_dir = _get_gdrive_monthly_output_dir(race_sub)
                         try:
                             rc_res = subprocess.run(
                                 [
@@ -737,7 +752,7 @@ def _download_remote_video_to_local(fname: str, elapsed_s: float = 0.0) -> bool:
                 meta_map[safe_name] = float(elapsed_s)
                 ELAPSED_META_FILE.write_text(json.dumps(meta_map, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             _append_panel_log(f"✅ [{done_tag}] {safe_name} 已完整保存至 {LOCAL_MOVIES_DIR}/{safe_name}")
-            _sync_output_to_gdrive_monthly(dest_path)
+            _sync_output_to_gdrive_monthly(dest_path, subdir=drive_subdir)
             return True
         except Exception as ex:
             _append_panel_log(f"⚠️ [{dl_tag}重试] {safe_name}: {ex}")
@@ -16089,6 +16104,9 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
         "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
         "User-Agent": "ColabPanel/1.0",
     }
+    if str(job_payload.get("mode") or "").strip().lower() == "image":
+        job_payload = dict(job_payload)
+        job_payload.setdefault("drive_subdir", "temp")
     body = json.dumps(job_payload).encode("utf-8")
 
     # 记录提交前云端已存在的所有旧文件名 (completed_videos / latest_video / history)，彻底杜绝极速轮询误取上一镜或历史旧视频导致片段重复！
@@ -16192,7 +16210,8 @@ def _drama_submit_and_wait_media(job_payload: Dict[str, Any], out_path: Path, st
         if _VIDEO_DL_STATE.get("active"):
             time.sleep(1.0)
             continue
-        _download_remote_video_to_local(remote_fname, 0.0)
+        _drama_dl_sub = "temp" if str(job_payload.get("mode") or "").strip().lower() == "image" else "videos"
+        _download_remote_video_to_local(remote_fname, 0.0, drive_subdir=_drama_dl_sub)
         if local_dl.is_file() and local_dl.stat().st_size > 4096:
             break
         time.sleep(1.2)

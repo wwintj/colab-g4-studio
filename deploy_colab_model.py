@@ -1226,7 +1226,7 @@ def _run_video_job(payload: dict):
                 from datetime import datetime as _dt, timezone as _tz, timedelta as _td
                 _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
                 subprocess.Popen(
-                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
+                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}/videos", "--config", rc_conf],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -1877,7 +1877,7 @@ def _run_t4_video_job(payload: dict):
                 from datetime import datetime as _dt, timezone as _tz, timedelta as _td
                 _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
                 subprocess.Popen(
-                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
+                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}/videos", "--config", rc_conf],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -3413,7 +3413,7 @@ def _run_avatar_job(payload: dict):
                 from datetime import datetime as _dt, timezone as _tz, timedelta as _td
                 _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
                 subprocess.Popen(
-                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
+                    ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}/videos", "--config", rc_conf],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -4502,8 +4502,11 @@ def _run_image_job(payload: dict):
                 if os.path.exists(rc_conf) and shutil.which("rclone"):
                     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
                     _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
+                    _dsub = str(payload.get("drive_subdir") or "images").strip().lower()
+                    if _dsub not in ("images", "temp"):
+                        _dsub = "images"
                     subprocess.Popen(
-                        ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}", "--config", rc_conf],
+                        ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}/{_dsub}", "--config", rc_conf],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
@@ -5240,13 +5243,13 @@ def _run_upscale_job(payload: dict):
                     rc_conf_p = os.path.expanduser("~/.config/rclone/rclone.conf")
                     if os.path.isfile(rc_conf_p) and shutil.which("rclone"):
                         subprocess.run(
-                            ["rclone", "copy", str(p), f"gdrive:pro6000-output/{_ym}", "--config", rc_conf_p, "--transfers=4"],
+                            ["rclone", "copy", str(p), f"gdrive:pro6000-output/{_ym}/videos", "--config", rc_conf_p, "--transfers=4"],
                             check=False,
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                         )
                     elif drive_root.exists():
-                        month_dir = drive_root / "pro6000-output" / _ym
+                        month_dir = drive_root / "pro6000-output" / _ym / "videos"
                         month_dir.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(p, month_dir / p.name)
                 except Exception:
