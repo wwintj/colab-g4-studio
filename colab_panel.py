@@ -1812,7 +1812,7 @@ def _is_active_llama_llm_cfg(cfg: Dict[str, Any]) -> bool:
 
 
 def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = "", ttl_sec: float = 6.0) -> List[str]:
-    """根据当前活跃模型精准拉取对应远端服务日志尾部（自动去 ANSI 颜色码并过滤 /slots /health 轮询噪音）"""
+    """根据当前活跃模型异步非阻塞拉取对应远端服务日志尾部（stale-while-revalidate，绝不卡顿 /api/logs 响应）"""
     now_ts = time.time()
     hint_low = str(active_hint or "").lower()
     if "minimax-h3-image" in hint_low:
@@ -1827,52 +1827,58 @@ def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = ""
         order = ("llama_server.log", "minimax_server.log", "minimax_image_server.log", "longcat_avatar_server.log")
 
     want_primary = order[0]
-    if (
-        _REMOTE_LOG_FALLBACK_CACHE.get("file") == want_primary
-        and now_ts - float(_REMOTE_LOG_FALLBACK_CACHE.get("ts") or 0.0) < ttl_sec
-    ):
-        return list(_REMOTE_LOG_FALLBACK_CACHE.get("lines") or [])
+    cache_file = _REMOTE_LOG_FALLBACK_CACHE.get("file")
+    cached_lines = list(_REMOTE_LOG_FALLBACK_CACHE.get("lines") or []) if cache_file == want_primary else []
+    in_flight = bool(_REMOTE_LOG_FALLBACK_CACHE.get("in_flight"))
+    need_refresh = (cache_file != want_primary) or (now_ts - float(_REMOTE_LOG_FALLBACK_CACHE.get("ts") or 0.0) >= ttl_sec)
 
-    _REMOTE_LOG_FALLBACK_CACHE["ts"] = now_ts
-    _REMOTE_LOG_FALLBACK_CACHE["file"] = want_primary
-    out_lines: List[str] = []
-    try:
-        sessions = _list_active_sessions(force=False)
-        if not sessions:
-            _REMOTE_LOG_FALLBACK_CACHE["lines"] = []
-            return []
-        from colab_cli.common import state as _st_log
-        so = _st_log.get_session(sessions[0]["name"])
-        if not so or not getattr(so, "url", None) or not getattr(so, "token", None):
-            return []
-        base_u = so.url.rstrip("/")
-        ansi_re = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-        for rname in order:
+    if need_refresh and not in_flight:
+        _REMOTE_LOG_FALLBACK_CACHE["in_flight"] = True
+
+        def _bg_fetch():
+            out_lines: List[str] = []
             try:
-                u = f"{base_u}/api/contents/content/{rname}?colab-runtime-proxy-token={urllib.parse.quote(so.token)}"
-                req = urllib.request.Request(u, headers={"X-Colab-Runtime-Proxy-Token": so.token})
-                with urllib.request.urlopen(req, timeout=2.5) as resp:
-                    obj = json.loads(resp.read().decode("utf-8", errors="ignore"))
-                    txt = str(obj.get("content") or "")
-                    if txt.strip():
-                        cleaned = []
-                        for raw_ln in txt.splitlines():
-                            s = ansi_re.sub("", raw_ln).rstrip()
-                            if not s.strip():
+                sessions = _list_active_sessions(force=False)
+                if sessions:
+                    from colab_cli.common import state as _st_log
+                    so = _st_log.get_session(sessions[0]["name"])
+                    if so and getattr(so, "url", None) and getattr(so, "token", None):
+                        base_u = so.url.rstrip("/")
+                        ansi_re = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+                        for rname in order:
+                            try:
+                                u = f"{base_u}/api/contents/content/{rname}?colab-runtime-proxy-token={urllib.parse.quote(so.token)}"
+                                req = urllib.request.Request(u, headers={"X-Colab-Runtime-Proxy-Token": so.token})
+                                with urllib.request.urlopen(req, timeout=8.0) as resp:
+                                    obj = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                                    txt = str(obj.get("content") or "")
+                                    if txt.strip():
+                                        cleaned = []
+                                        for raw_ln in txt.splitlines():
+                                            s = ansi_re.sub("", raw_ln).rstrip()
+                                            if not s.strip():
+                                                continue
+                                            if rname == "llama_server.log" and ("GET /slots" in s or "GET /health" in s):
+                                                continue
+                                            cleaned.append(s)
+                                        if cleaned:
+                                            tail = cleaned[-max_lines:]
+                                            out_lines = [f"[云端实时日志 · /content/{rname}]"] + tail
+                                            break
+                            except Exception:
                                 continue
-                            if rname == "llama_server.log" and ("GET /slots" in s or "GET /health" in s):
-                                continue
-                            cleaned.append(s)
-                        if cleaned:
-                            tail = cleaned[-max_lines:]
-                            out_lines = [f"[云端实时日志 · /content/{rname}]"] + tail
-                            break
             except Exception:
-                continue
-    except Exception:
-        pass
-    _REMOTE_LOG_FALLBACK_CACHE["lines"] = out_lines
-    return out_lines
+                pass
+            finally:
+                _REMOTE_LOG_FALLBACK_CACHE["ts"] = time.time()
+                _REMOTE_LOG_FALLBACK_CACHE["file"] = want_primary
+                if out_lines:
+                    _REMOTE_LOG_FALLBACK_CACHE["lines"] = out_lines
+                _REMOTE_LOG_FALLBACK_CACHE["in_flight"] = False
+
+        threading.Thread(target=_bg_fetch, daemon=True).start()
+
+    return cached_lines
 
 
 def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str]) -> Optional[Dict[str, Any]]:
