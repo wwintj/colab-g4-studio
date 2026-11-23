@@ -1881,10 +1881,10 @@ def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = ""
     return cached_lines
 
 
-def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str]) -> Optional[Dict[str, Any]]:
+def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str], force: bool = False) -> Optional[Dict[str, Any]]:
     """直连远端 tunnel_url/slots 查询 llama-server 实时推理状态（不经过本机 30000 代理，绝不误刷新闲置关机计时器）"""
     now_ts = time.time()
-    if now_ts - float(_LLAMA_LIVE_CACHE.get("ts") or 0.0) < 1.8:
+    if not force and now_ts - float(_LLAMA_LIVE_CACHE.get("ts") or 0.0) < 1.8:
         cached = _LLAMA_LIVE_CACHE.get("data")
         return dict(cached) if isinstance(cached, dict) else None
     _LLAMA_LIVE_CACHE["ts"] = now_ts
@@ -1950,6 +1950,31 @@ def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str]) -> Op
     }
     _LLAMA_LIVE_CACHE["data"] = res
     return dict(res)
+
+
+def _check_active_llama_shield(payload: Dict[str, Any], action_desc: str) -> Optional[Dict[str, Any]]:
+    """后台 Qwen 防误杀护盾：若当前云端 llama-server 正在推理 (is_processing=True) 且未携带 force_interrupt_llm，则返回拦截响应"""
+    if bool((payload or {}).get("force_interrupt_llm")):
+        return None
+    sessions = _list_active_sessions(force=False)
+    if not sessions:
+        return None
+    cfg = _load_endpoint_cfg()
+    if not (_is_active_llama_llm_cfg(cfg) and cfg.get("tunnel_url")):
+        return None
+    cached_lines = list(_REMOTE_LOG_FALLBACK_CACHE.get("lines") or [])
+    live = _query_live_llama_status(cfg, cached_lines, force=True)
+    if not live or not live.get("is_processing"):
+        return None
+    tot_tok = int(live.get("n_prompt_tokens") or 0) + int(live.get("n_gen") or 0)
+    return {
+        "ok": False,
+        "llm_busy_shield": True,
+        "action_desc": action_desc,
+        "llama_live": live,
+        "error": f"⚠️ 后台 {live.get('model_short') or 'Qwen3.8'} 正在推理中（上下文 {tot_tok:,} tokens），已拦截「{action_desc}」以防误杀！",
+        "message": f"⚠️ 后台 {live.get('model_short') or 'Qwen3.8'} 正在推理中（上下文 {tot_tok:,} tokens），已拦截「{action_desc}」以防误杀！",
+    }
 
 
 def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu: str, download_only: bool = False, retry_until_ready: bool = False):
@@ -2632,6 +2657,59 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(51,65,85,0.55);font-size:10.5px;color:#64748b;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
       <span>摄影视觉路由体系改编自开源项目 liyue-aigc/female-portrait-director (MIT License)</span>
       <span>已自动剔除磨砂假皮词与无效负向词 · 支持四宫格参考图自动锁脸/保真穿搭</span>
+    </div>
+  </div>
+</div>
+
+<!-- 🛡️ 后台 Qwen 推理防误杀护盾弹窗（实时跳动 tokens/速度 · 支持取消 / 等跑完自动继续 / 强制打断） -->
+<div id="llmBusyShieldModal" onclick="if(event.target===this)closeLlmBusyShieldModal()" style="display:none;position:fixed;inset:0;z-index:10025;background:rgba(2,6,23,0.84);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
+  <div style="width:100%;max-width:600px;background:#1e293b;border:1.5px solid rgba(245,158,11,0.72);border-radius:16px;padding:20px 22px;box-shadow:0 28px 65px rgba(0,0,0,0.85);color:#f8fafc;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);flex-wrap:nowrap;">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+        <span style="font-size:16px;font-weight:900;color:#fde68a;white-space:nowrap;">🛡️ 后台 Qwen 推理防误杀护盾</span>
+      </div>
+      <span id="llmShieldStatePill" class="badge" style="background:rgba(245,158,11,0.2);color:#fde68a;border:1px solid rgba(245,158,11,0.55);font-size:11.5px;white-space:nowrap;flex-shrink:0;">⚡ 正在推理中</span>
+    </div>
+
+    <div id="llmShieldActionDesc" style="font-size:12.5px;color:#cbd5e1;line-height:1.55;margin-bottom:12px;">
+      检测到后台正在运行长对话推理，已暂时拦截您的操作以防误杀正在生成的回答。
+    </div>
+
+    <!-- 实时跳动数据卡片（每 2 秒自动更新） -->
+    <div style="padding:12px 14px;border-radius:11px;background:#0f172a;border:1px solid #334155;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+        <span id="llmShieldLiveTitle" style="font-size:13px;font-weight:800;color:#38bdf8;">🚀 正在读取实时推理状态...</span>
+        <span id="llmShieldLiveSpeed" style="font-size:12px;font-family:'SF Mono',Menlo,monospace;font-weight:700;color:#6ee7b7;white-space:nowrap;">-- t/s</span>
+      </div>
+      <div class="progress-bar" style="height:8px;margin-bottom:8px;">
+        <div class="progress-fill" id="llmShieldLiveBar" style="width:45%;transition:width 0.35s ease;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:8px;font-size:11.5px;font-family:'SF Mono',Menlo,monospace;">
+        <div style="padding:6px 8px;border-radius:7px;background:#1e293b;border:1px solid #334155;">
+          <div style="color:#94a3b8;font-size:10.5px;margin-bottom:2px;">当前上下文</div>
+          <div id="llmShieldTokCtx" style="color:#f8fafc;font-weight:800;">--</div>
+        </div>
+        <div style="padding:6px 8px;border-radius:7px;background:#1e293b;border:1px solid #334155;">
+          <div style="color:#94a3b8;font-size:10.5px;margin-bottom:2px;">KV 缓存命中</div>
+          <div id="llmShieldTokCache" style="color:#93c5fd;font-weight:800;">--</div>
+        </div>
+        <div style="padding:6px 8px;border-radius:7px;background:#1e293b;border:1px solid #334155;">
+          <div style="color:#94a3b8;font-size:10.5px;margin-bottom:2px;">本轮已吐字数</div>
+          <div id="llmShieldTokGen" style="color:#6ee7b7;font-weight:800;">--</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="llmShieldAutoWaitNotice" style="display:none;margin-bottom:12px;padding:8px 11px;border-radius:8px;background:rgba(59,130,246,0.16);border:1px solid rgba(59,130,246,0.5);color:#bfdbfe;font-size:12px;font-weight:700;">
+      ⏳ 自动守候已开启：正在持续监听云端状态，本轮 Qwen 跑完后将立即自动继续执行！
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button type="button" onclick="closeLlmBusyShieldModal()" style="height:36px;padding:0 13px;border-radius:9px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:12.5px;font-weight:700;cursor:pointer;">🛡️ 取消（保留后台 Qwen）</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button type="button" id="btnLlmShieldAutoWait" onclick="toggleLlmShieldAutoWait()" style="height:36px;padding:0 13px;border-radius:9px;border:1px solid rgba(59,130,246,0.65);background:rgba(59,130,246,0.2);color:#93c5fd;font-size:12.5px;font-weight:800;cursor:pointer;">⏳ 等它跑完自动继续</button>
+        <button type="button" id="btnLlmShieldForce" onclick="confirmLlmShieldForceProceed()" style="height:36px;padding:0 14px;border-radius:9px;border:1px solid rgba(239,68,68,0.75);background:linear-gradient(135deg,#ef4444,#dc2626);color:#ffffff;font-size:12.5px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,0.4);">⚡ 强制打断并继续</button>
+      </div>
     </div>
   </div>
 </div>
@@ -5504,6 +5582,10 @@ async function pollLogs() {
       const pBar = document.getElementById('taskProgressBar');
       const st = document.getElementById('deployStateText');
 
+      window._latestLlamaLive = d.llama_live || null;
+      if (typeof refreshLlmBusyShieldTelemetry === 'function') {
+        refreshLlmBusyShieldTelemetry(d.llama_live || null);
+      }
       if (!d.running && (dramaPollTimer || videoPollTimer || upscalePollTimer || fusionBatchRunning)) {
         return;
       }
@@ -5776,7 +5858,157 @@ async function submitBootModal() {
   await startDeploy(_pendingDeployDownloadOnly, _pendingDeployFromQuickStart, _selectedBootGpu, true, retryForever);
 }
 
-async function startDeploy(downloadOnly = false, fromQuickStart = false, overrideGpu = '', forceGpu = false, retryUntilReady = false) {
+let _llmShieldPendingProceed = null;
+let _llmShieldAutoWaitArmed = false;
+
+function openLlmBusyShieldModal(shieldData, proceedFn) {
+  _llmShieldPendingProceed = typeof proceedFn === 'function' ? proceedFn : null;
+  _llmShieldAutoWaitArmed = false;
+  const modal = document.getElementById('llmBusyShieldModal');
+  const descEl = document.getElementById('llmShieldActionDesc');
+  const noticeEl = document.getElementById('llmShieldAutoWaitNotice');
+  const btnWait = document.getElementById('btnLlmShieldAutoWait');
+  const actText = (shieldData && shieldData.action_desc) ? shieldData.action_desc : '切换/生成任务';
+  if (descEl) {
+    descEl.innerHTML = `您刚才触发了：<b style="color:#fde68a;">「${actText}」</b>。<br>当前后台 Qwen 正在推理中，直接继续会强制中断正在生成的回答并清空 KV 缓存（下方数据每 2 秒自动实时刷新）：`;
+  }
+  if (noticeEl) noticeEl.style.display = 'none';
+  if (btnWait) {
+    btnWait.innerText = '⏳ 等它跑完自动继续';
+    btnWait.style.background = 'rgba(59,130,246,0.2)';
+    btnWait.style.borderColor = 'rgba(59,130,246,0.65)';
+    btnWait.style.color = '#93c5fd';
+  }
+  refreshLlmBusyShieldTelemetry((shieldData && shieldData.llama_live) || window._latestLlamaLive || null, true);
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeLlmBusyShieldModal() {
+  _llmShieldAutoWaitArmed = false;
+  _llmShieldPendingProceed = null;
+  const modal = document.getElementById('llmBusyShieldModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function toggleLlmShieldAutoWait() {
+  const noticeEl = document.getElementById('llmShieldAutoWaitNotice');
+  const btnWait = document.getElementById('btnLlmShieldAutoWait');
+  _llmShieldAutoWaitArmed = !_llmShieldAutoWaitArmed;
+  if (noticeEl) noticeEl.style.display = _llmShieldAutoWaitArmed ? 'block' : 'none';
+  if (btnWait) {
+    if (_llmShieldAutoWaitArmed) {
+      btnWait.innerText = '⏳ 守候中（点此取消自动）';
+      btnWait.style.background = 'rgba(245,158,11,0.24)';
+      btnWait.style.borderColor = 'rgba(245,158,11,0.75)';
+      btnWait.style.color = '#fde68a';
+    } else {
+      btnWait.innerText = '⏳ 等它跑完自动继续';
+      btnWait.style.background = 'rgba(59,130,246,0.2)';
+      btnWait.style.borderColor = 'rgba(59,130,246,0.65)';
+      btnWait.style.color = '#93c5fd';
+    }
+  }
+  // 若点下瞬间 Qwen 刚好已经结束，立刻执行
+  if (_llmShieldAutoWaitArmed && window._latestLlamaLive && !window._latestLlamaLive.is_processing) {
+    confirmLlmShieldForceProceed();
+  }
+}
+
+function confirmLlmShieldForceProceed() {
+  const fn = _llmShieldPendingProceed;
+  closeLlmBusyShieldModal();
+  if (typeof fn === 'function') {
+    fn();
+  }
+}
+
+function refreshLlmBusyShieldTelemetry(liveObj, forceRender = false) {
+  const modal = document.getElementById('llmBusyShieldModal');
+  if (!modal || (!forceRender && modal.style.display !== 'flex')) return;
+  const pill = document.getElementById('llmShieldStatePill');
+  const titleEl = document.getElementById('llmShieldLiveTitle');
+  const spdEl = document.getElementById('llmShieldLiveSpeed');
+  const barEl = document.getElementById('llmShieldLiveBar');
+  const ctxEl = document.getElementById('llmShieldTokCtx');
+  const cacheEl = document.getElementById('llmShieldTokCache');
+  const genEl = document.getElementById('llmShieldTokGen');
+  const btnForce = document.getElementById('btnLlmShieldForce');
+
+  if (!liveObj || !liveObj.is_processing) {
+    if (pill) {
+      pill.innerText = '✅ 本轮已跑完 · 可安全继续';
+      pill.style.background = 'rgba(16,185,129,0.22)';
+      pill.style.color = '#6ee7b7';
+      pill.style.borderColor = 'rgba(16,185,129,0.65)';
+    }
+    if (titleEl) {
+      titleEl.innerText = `✅ ${(liveObj && liveObj.model_short) || 'Qwen3.8'} 已进入空闲状态，现在可以安全执行！`;
+      titleEl.style.color = '#34d399';
+    }
+    if (barEl) {
+      barEl.className = 'progress-fill green';
+      barEl.style.width = '100%';
+    }
+    if (btnForce) {
+      btnForce.innerText = '🚀 立即安全继续';
+      btnForce.style.background = 'linear-gradient(135deg,#10b981,#059669)';
+      btnForce.style.borderColor = 'rgba(16,185,129,0.75)';
+    }
+    if (liveObj) {
+      const nCtx = Number(liveObj.n_ctx || 0);
+      const nCache = Number(liveObj.n_prompt_tokens_cache || 0);
+      const nGen = Number(liveObj.n_gen || 0);
+      const tgAvg = (typeof liveObj.tg_avg === 'number') ? `${liveObj.tg_avg.toFixed(1)} t/s` : '空闲';
+      if (spdEl) spdEl.innerText = `均速 ${tgAvg}`;
+      if (ctxEl) ctxEl.innerText = `${nCache.toLocaleString()} / ${Math.round(nCtx / 1024)}K`;
+      if (cacheEl) cacheEl.innerText = nCache.toLocaleString();
+      if (genEl) genEl.innerText = nGen.toLocaleString();
+    }
+    if (_llmShieldAutoWaitArmed && _llmShieldPendingProceed) {
+      confirmLlmShieldForceProceed();
+    }
+    return;
+  }
+
+  const nCtx = Number(liveObj.n_ctx || 0);
+  const nPrompt = Number(liveObj.n_prompt_tokens || 0);
+  const nCache = Number(liveObj.n_prompt_tokens_cache || 0);
+  const nProc = Number(liveObj.n_prompt_tokens_processed || 0);
+  const nGen = Number(liveObj.n_gen || 0);
+  const prefillDone = nCache + nProc;
+  const isPrefill = (nPrompt > 0 && prefillDone < nPrompt);
+  const tgAvg = (typeof liveObj.tg_avg === 'number') ? liveObj.tg_avg.toFixed(1) : '';
+  const tg3s = (typeof liveObj.tg_3s === 'number') ? liveObj.tg_3s.toFixed(1) : '';
+  const totUsed = nPrompt + nGen;
+
+  if (pill) {
+    pill.innerText = isPrefill ? '⚡ 预填充上下文中' : '🚀 实时生成中';
+    pill.style.background = 'rgba(245,158,11,0.2)';
+    pill.style.color = '#fde68a';
+    pill.style.borderColor = 'rgba(245,158,11,0.55)';
+  }
+  if (btnForce) {
+    btnForce.innerText = '⚡ 强制打断并继续';
+    btnForce.style.background = 'linear-gradient(135deg,#ef4444,#dc2626)';
+    btnForce.style.borderColor = 'rgba(239,68,68,0.75)';
+  }
+  if (isPrefill) {
+    const pPct = Math.max(5, Math.min(99, Math.round((prefillDone / nPrompt) * 100)));
+    if (titleEl) { titleEl.innerText = `⚡ ${liveObj.model_short} 正在预填充长上下文 (${pPct}%)`; titleEl.style.color = '#fbbf24'; }
+    if (spdEl) spdEl.innerText = `${prefillDone.toLocaleString()} / ${nPrompt.toLocaleString()}`;
+    if (barEl) { barEl.className = 'progress-fill'; barEl.style.width = `${pPct}%`; }
+  } else {
+    const ctxPct = nCtx > 0 ? Math.max(12, Math.min(98, Math.round((totUsed / nCtx) * 100))) : 60;
+    if (titleEl) { titleEl.innerText = `🚀 ${liveObj.model_short} 正在流式生成${liveObj.speculative ? ' (⚡MTP)' : ''}`; titleEl.style.color = '#38bdf8'; }
+    if (spdEl) spdEl.innerText = tg3s ? `瞬时 ${tg3s} t/s · 均速 ${tgAvg} t/s` : (tgAvg ? `均速 ${tgAvg} t/s` : '推理中...');
+    if (barEl) { barEl.className = 'progress-fill'; barEl.style.width = `${ctxPct}%`; }
+  }
+  if (ctxEl) ctxEl.innerText = `${totUsed.toLocaleString()} / ${nCtx > 0 ? Math.round(nCtx / 1024) + 'K' : '--'}`;
+  if (cacheEl) cacheEl.innerText = nCache.toLocaleString();
+  if (genEl) genEl.innerText = nGen.toLocaleString();
+}
+
+async function startDeploy(downloadOnly = false, fromQuickStart = false, overrideGpu = '', forceGpu = false, retryUntilReady = false, forceInterruptLlm = false) {
   if (!fromQuickStart && !isMachineUnlocked()) {
     notifyMachineLocked();
     return;
@@ -5798,7 +6030,8 @@ async function startDeploy(downloadOnly = false, fromQuickStart = false, overrid
     download_only: Boolean(downloadOnly),
     from_power_btn: Boolean(fromQuickStart),
     force_gpu: Boolean(forceGpu),
-    retry_until_ready: Boolean(retryUntilReady)
+    retry_until_ready: Boolean(retryUntilReady),
+    force_interrupt_llm: Boolean(forceInterruptLlm)
   };
   const r = await fetch('/api/deploy', {
     method: 'POST',
@@ -5806,6 +6039,10 @@ async function startDeploy(downloadOnly = false, fromQuickStart = false, overrid
     body: JSON.stringify(payload)
   });
   const d = await r.json();
+  if (d.llm_busy_shield) {
+    openLlmBusyShieldModal(d, () => startDeploy(downloadOnly, fromQuickStart, overrideGpu, forceGpu, retryUntilReady, true));
+    return;
+  }
   if (!d.ok && !isInstanceOnline) {
     isPowerBtnUnlocked = false;
     isDeployTaskRunning = false;
@@ -5820,15 +6057,23 @@ async function startDeploy(downloadOnly = false, fromQuickStart = false, overrid
   pollLogs();
 }
 
-async function stopColab() {
-  if (!confirm('确定要关闭当前运行的 Colab RTX PRO 6000 实例吗？\n关闭后将立即停止消耗算力单元 (CU)，已同步到 Google Drive 的模型不会丢失。')) return;
+async function stopColab(forceInterruptLlm = false) {
+  if (!forceInterruptLlm && !confirm('确定要关闭当前运行的 Colab RTX PRO 6000 实例吗？\n关闭后将立即停止消耗算力单元 (CU)，已同步到 Google Drive 的模型不会丢失。')) return;
   const btn = document.getElementById('btnStop');
   const relBtn = document.getElementById('btnReleaseAll');
   if (btn) { btn.disabled = true; btn.innerText = '🛑 正在关机...'; }
   if (relBtn) { relBtn.disabled = true; relBtn.innerText = '🛑 正在释放远端实例...'; }
   try {
-    const r = await fetch('/api/stop', {method: 'POST'});
+    const r = await fetch('/api/stop', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({force_interrupt_llm: Boolean(forceInterruptLlm)})
+    });
     const d = await r.json();
+    if (d.llm_busy_shield) {
+      openLlmBusyShieldModal(d, () => stopColab(true));
+      return;
+    }
     isInstanceOnline = false;
     isDeployTaskRunning = false;
     isPowerBtnUnlocked = false;
@@ -7011,7 +7256,7 @@ function waitForSingleFusionJobCompletion(jobIdx, totalJobs, prevLatestFile) {
   });
 }
 
-async function startFusionStudioGenerate() {
+async function startFusionStudioGenerate(forceInterruptLlm = false) {
   if (fusionBatchRunning) return;
   if (!isMachineUnlocked()) {
     notifyMachineLocked();
@@ -7155,6 +7400,7 @@ async function startFusionStudioGenerate() {
         edit_outfit: '',
         edit_scene: '',
         clean_matte: true,
+        force_interrupt_llm: Boolean(forceInterruptLlm),
       };
 
       if (stEl) {
@@ -7168,6 +7414,14 @@ async function startFusionStudioGenerate() {
         body: JSON.stringify(payload),
       });
       const d = await r.json();
+      if (d.llm_busy_shield) {
+        if (stEl) {
+          stEl.innerText = '🛡️ 后台 Qwen 正在推理中，已暂停合成等待您确认...';
+          stEl.style.color = '#f59e0b';
+        }
+        openLlmBusyShieldModal(d, () => startFusionStudioGenerate(true));
+        break;
+      }
       if (!d.ok) {
         if (stEl) {
           stEl.innerText = `❌ 第 ${i + 1} 张启动失败: ` + (d.error || '未知错误');
@@ -8250,7 +8504,7 @@ function waitForSingleFpdImageJob(jobIdx, totalJobs, routeLabel, prevLatest) {
   });
 }
 
-async function runFpdBatchAutoShoot() {
+async function runFpdBatchAutoShoot(forceInterruptLlm = false) {
   if (fpdBatchRunning) {
     alert('当前已有自动连拍任务正在执行中，请先等待完成或点「🛑 停止」中止。');
     return;
@@ -8322,7 +8576,7 @@ async function runFpdBatchAutoShoot() {
           fResSel.innerHTML = `<option value="${vResVal}" selected>${vResVal}</option>`;
           fResSel.value = vResVal;
         }
-        await startFusionStudioGenerate();
+        await startFusionStudioGenerate(forceInterruptLlm);
         if (!fpdBatchCancelled && !fusionBatchCancelled) {
           okCount += 1;
         } else {
@@ -8352,6 +8606,7 @@ async function runFpdBatchAutoShoot() {
           edit_outfit: '',
           edit_scene: '',
           clean_matte: chkClean ? Boolean(chkClean.checked) : true,
+          force_interrupt_llm: Boolean(forceInterruptLlm),
         };
         const r = await fetch('/api/video_generate', {
           method: 'POST',
@@ -8359,6 +8614,14 @@ async function runFpdBatchAutoShoot() {
           body: JSON.stringify(payload),
         });
         const d = await r.json();
+        if (d.llm_busy_shield) {
+          if (st) {
+            st.innerText = '🛡️ 后台 Qwen 正在推理中，已暂停自动连拍等待您确认...';
+            st.style.color = '#f59e0b';
+          }
+          openLlmBusyShieldModal(d, () => runFpdBatchAutoShoot(true));
+          break;
+        }
         if (!d.ok) {
           if (st) {
             st.innerText = `❌ [自动连拍 ${i + 1}/${queueIds.length} · ${routeLabel}] 启动失败: ${d.error || '未知错误'}`;
@@ -9718,7 +9981,7 @@ function compileCurrentVideoPromptToH3SixSection(showToast = true) {
   }
 }
 
-async function startVideoGenerate(forceTarget = '') {
+async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
   const btnVid = document.getElementById('btnVideoGen');
   const btnImg = document.getElementById('btnImageOnlyGen');
   if (fusionBatchRunning) {
@@ -9770,7 +10033,7 @@ async function startVideoGenerate(forceTarget = '') {
         fResSel.innerHTML = `<option value="${vResVal}" selected>${vResVal}</option>`;
         fResSel.value = vResVal;
       }
-      await startFusionStudioGenerate();
+      await startFusionStudioGenerate(forceInterruptLlm);
       return;
     }
     if (!effectiveImgPrompt) {
@@ -9815,6 +10078,7 @@ async function startVideoGenerate(forceTarget = '') {
     randomize_seed: randSeed,
     batch_count: isImgMode ? 1 : selectedBatchCount,
     auto_h3_six_section: autoSixSec,
+    force_interrupt_llm: Boolean(forceInterruptLlm),
   };
   if (loraPath) {
     payload.lora_path = loraPath;
@@ -9869,6 +10133,13 @@ async function startVideoGenerate(forceTarget = '') {
       body: JSON.stringify(payload)
     });
     const d = await r.json();
+    if (d.llm_busy_shield) {
+      st.innerText = '🛡️ 后台 Qwen 正在推理中，已拦截任务等待您确认...';
+      st.style.color = '#f59e0b';
+      setVideoBtnRunningState(false);
+      openLlmBusyShieldModal(d, () => startVideoGenerate(forceTarget, true));
+      return;
+    }
     if (!d.ok) {
       if (String(d.error || '').includes('正在生成中')) {
         st.innerText = '⏳ ' + d.error + '（已自动为您恢复实时进度监控）';
@@ -11910,7 +12181,7 @@ async function confirmDramaGachaContinue() {
   }
 }
 
-async function startAutoDramaPipeline() {
+async function startAutoDramaPipeline(forceInterruptLlm = false) {
   const aspect = ((document.getElementById('dramaAspectSelect') || {}).value || '16:9').trim();
   const confirmMode = ((document.getElementById('dramaConfirmModeSelect') || {}).value || 'auto').trim();
   const resume = Boolean(((document.getElementById('chkDramaResume') || {}).checked) ?? true);
@@ -11927,9 +12198,18 @@ async function startAutoDramaPipeline() {
     const r = await fetch('/api/drama_auto_start', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({aspect, resume, auto_2k: auto2k, confirm_mode: confirmMode}),
+      body: JSON.stringify({aspect, resume, auto_2k: auto2k, confirm_mode: confirmMode, force_interrupt_llm: Boolean(forceInterruptLlm)}),
     });
     const d = await r.json();
+    if (d.llm_busy_shield) {
+      if (stEl) {
+        stEl.innerText = '🛡️ 后台 Qwen 正在推理中，已暂停短剧流水线等待确认...';
+        stEl.style.color = '#f59e0b';
+      }
+      if (btnStart) btnStart.disabled = false;
+      openLlmBusyShieldModal(d, () => startAutoDramaPipeline(true));
+      return;
+    }
     if (!d.ok) {
       if (stEl) {
         stEl.innerText = '❌ ' + (d.error || '启动失败');
@@ -13820,6 +14100,11 @@ p.wait()
                         return
                 except Exception:
                     pass
+            if not download_only:
+                shield_blk = _check_active_llama_shield(payload, f"切换/加载模型 ({payload.get('folder') or payload.get('repo') or '目标模型'})")
+                if shield_blk:
+                    self._send_json(shield_blk)
+                    return
             ok, msg = _start_deploy_background(
                 repo=payload.get("repo", "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"),
                 folder=payload.get("folder", "Huihui-Qwen3.8-27B-abliterated-GGUF"),
@@ -13836,6 +14121,10 @@ p.wait()
             sessions = _list_active_sessions()
             if not sessions:
                 self._send_json({"ok": True, "message": "✅ 当前没有运行中的 Colab 实例（已处于关机零扣费状态）。"})
+                return
+            shield_blk = _check_active_llama_shield(payload, "关闭并释放 Colab GPU 实例")
+            if shield_blk:
+                self._send_json(shield_blk)
                 return
             stopped = []
             for s in sessions:
@@ -13949,6 +14238,12 @@ p.wait()
             return
 
         if self.path == "/api/video_generate":
+            req_mode_chk = str(payload.get("mode") or "t2va").strip()
+            mode_cn = {"image": "01·4K生图/换装", "avatar": "04·数字人说话"}.get(req_mode_chk, "视频生成")
+            shield_blk = _check_active_llama_shield(payload, f"切换至 {mode_cn} 引擎并开始生成")
+            if shield_blk:
+                self._send_json(shield_blk)
+                return
             is_t4_account = False
             try:
                 cu_chk = _query_cu_usage(force=False)
@@ -14797,6 +15092,10 @@ p.wait()
         if self.path == "/api/drama_auto_start":
             if _DRAMA_STATE["running"]:
                 self._send_json({"ok": True, "already_running": True, "message": "全自动导演流水线已在运行中"})
+                return
+            shield_blk = _check_active_llama_shield(payload, "启动 05·短剧全自动导演流水线")
+            if shield_blk:
+                self._send_json(shield_blk)
                 return
             aspect = str(payload.get("aspect") or "16:9").strip()
             resume = bool(payload.get("resume", True))
