@@ -1863,13 +1863,69 @@ def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = ""
                                             cleaned.append(s)
                                         if cleaned:
                                             if rname == "llama_server.log":
-                                                p_sum = sum(int(m) for m in re.findall(r"prompt eval time\s*=\s*[\d.]+\s*ms\s*/\s*(\d+)\s*tokens", txt))
-                                                g_sum = sum(int(m) for m in re.findall(r"\|\s+eval time\s*=\s*[\d.]+\s*ms\s*/\s*(\d+)\s*tokens", txt))
-                                                t_cnt = len(re.findall(r"prompt eval time\s*=", txt))
+                                                tasks_map: Dict[int, Dict[str, Any]] = {}
+                                                for _ln in txt.splitlines():
+                                                    _m = re.search(r"task\s+(\d+)\s*\|", _ln)
+                                                    if not _m:
+                                                        continue
+                                                    _tid = int(_m.group(1))
+                                                    _tm = tasks_map.setdefault(_tid, {})
+                                                    _mp = re.search(r"prompt eval time\s*=\s*([\d.]+)\s*ms\s*/\s*(\d+)\s*tokens", _ln)
+                                                    if _mp:
+                                                        _tm["prompt_ms"] = float(_mp.group(1))
+                                                        _tm["prompt_tok"] = int(_mp.group(2))
+                                                        continue
+                                                    _me = re.search(r"\|\s+eval time\s*=\s*([\d.]+)\s*ms\s*/\s*(\d+)\s*tokens", _ln)
+                                                    if _me:
+                                                        _tm["eval_ms"] = float(_me.group(1))
+                                                        _tm["eval_tok"] = int(_me.group(2))
+                                                        continue
+                                                    _mt = re.search(r"\|\s+total time\s*=\s*([\d.]+)\s*ms", _ln)
+                                                    if _mt:
+                                                        _tm["total_ms"] = float(_mt.group(1))
+                                                        continue
+                                                    _md = re.search(r"draft acceptance\s*=\s*([\d.]+)\s*\(\s*(\d+)\s*accepted\s*/\s*(\d+)\s*generated\)", _ln)
+                                                    if _md:
+                                                        _tm["draft_acc"] = int(_md.group(2))
+                                                        _tm["draft_gen"] = int(_md.group(3))
+                                                        continue
+                                                    _mr = re.search(r"stop processing:\s*n_tokens\s*=\s*(\d+)", _ln)
+                                                    if _mr:
+                                                        _tm["end_tokens"] = int(_mr.group(1))
+                                                p_sum = 0
+                                                g_sum = 0
+                                                c_sum = 0
+                                                p_ms_sum = 0.0
+                                                e_ms_sum = 0.0
+                                                t_ms_sum = 0.0
+                                                d_acc_sum = 0
+                                                d_gen_sum = 0
+                                                t_cnt = 0
+                                                for _tm in tasks_map.values():
+                                                    pt = int(_tm.get("prompt_tok") or 0)
+                                                    gt = int(_tm.get("eval_tok") or 0)
+                                                    if pt > 0 or gt > 0:
+                                                        t_cnt += 1
+                                                        p_sum += pt
+                                                        g_sum += gt
+                                                        p_ms_sum += float(_tm.get("prompt_ms") or 0.0)
+                                                        e_ms_sum += float(_tm.get("eval_ms") or 0.0)
+                                                        t_ms_sum += float(_tm.get("total_ms") or (float(_tm.get("prompt_ms") or 0.0) + float(_tm.get("eval_ms") or 0.0)))
+                                                        end_t = int(_tm.get("end_tokens") or 0)
+                                                        if end_t > pt + gt:
+                                                            c_sum += (end_t - pt - gt)
+                                                        d_acc_sum += int(_tm.get("draft_acc") or 0)
+                                                        d_gen_sum += int(_tm.get("draft_gen") or 0)
                                                 _REMOTE_LOG_FALLBACK_CACHE["llama_totals"] = {
                                                     "done_turns": t_cnt,
                                                     "done_prompt": p_sum,
                                                     "done_gen": g_sum,
+                                                    "done_cache": c_sum,
+                                                    "done_prompt_ms": p_ms_sum,
+                                                    "done_eval_ms": e_ms_sum,
+                                                    "done_total_ms": t_ms_sum,
+                                                    "draft_acc": d_acc_sum,
+                                                    "draft_gen": d_gen_sum,
                                                 }
                                             tail = cleaned[-max_lines:]
                                             out_lines = [f"[云端实时日志 · /content/{rname}]"] + tail
@@ -1968,13 +2024,28 @@ def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str], force
 
     log_tots = _REMOTE_LOG_FALLBACK_CACHE.get("llama_totals") or {}
     done_turns = int(log_tots.get("done_turns") or 0)
+    tot_cache = int(log_tots.get("done_cache") or 0)
     if tot_prompt == 0 and tot_gen == 0 and log_tots:
         tot_prompt = int(log_tots.get("done_prompt") or 0)
         tot_gen = int(log_tots.get("done_gen") or 0)
         if is_proc_now:
             tot_prompt += int(slot_obj.get("n_prompt_tokens_processed") or 0)
+            tot_cache += int(slot_obj.get("n_prompt_tokens_cache") or 0)
             if slot_task_id > 0 and n_gen_task_id == slot_task_id:
                 tot_gen += n_gen
+    elif is_proc_now:
+        tot_cache += int(slot_obj.get("n_prompt_tokens_cache") or 0)
+
+    done_prompt_ms = float(log_tots.get("done_prompt_ms") or 0.0)
+    done_eval_ms = float(log_tots.get("done_eval_ms") or 0.0)
+    done_total_ms = float(log_tots.get("done_total_ms") or 0.0)
+    draft_acc = int(log_tots.get("draft_acc") or 0)
+    draft_gen = int(log_tots.get("draft_gen") or 0)
+    avg_ttft_sec = round((done_prompt_ms / done_turns) / 1000.0, 1) if done_turns > 0 else None
+    global_tps = round(float(log_tots.get("done_gen") or 0) / (done_eval_ms / 1000.0), 1) if done_eval_ms > 50 else tg_avg
+    mtp_accept_pct = round((draft_acc * 100.0) / draft_gen, 1) if draft_gen > 0 else None
+    total_all_tokens = tot_prompt + tot_cache + tot_gen
+    cache_hit_pct = round((tot_cache * 100.0) / max(1, tot_cache + tot_prompt)) if (tot_cache + tot_prompt) > 0 else 0
 
     model_short = str(cfg.get("model_folder") or cfg.get("model_id") or "Qwen3.8-27B").split("/")[-1]
     if "qwen3.8" in model_short.lower():
@@ -1994,8 +2065,14 @@ def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str], force
         "tg_3s": tg_3s,
         "completed_turns": done_turns,
         "total_prompt_tokens": tot_prompt,
+        "total_cache_tokens": tot_cache,
         "total_gen_tokens": tot_gen,
-        "total_tokens": tot_prompt + tot_gen,
+        "total_tokens": total_all_tokens,
+        "cache_hit_pct": cache_hit_pct,
+        "model_time_sec": int(round(done_total_ms / 1000.0)),
+        "avg_ttft_sec": avg_ttft_sec,
+        "global_tps": global_tps,
+        "mtp_accept_pct": mtp_accept_pct,
     }
     _LLAMA_LIVE_CACHE["data"] = res
     return dict(res)
@@ -2452,6 +2529,104 @@ HTML_PAGE = r"""<!DOCTYPE html>
     background: rgba(239,68,68,0.18);
     border-color: rgba(239,68,68,0.45);
     color: #fca5a5;
+  }
+  .ds-hud-bar {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .ds-pill-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .ds-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 8px;
+    background: #141a26;
+    border: 1px solid #2d374b;
+    color: #cbd5e1;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: default;
+    user-select: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .ds-pill-wrap:hover .ds-pill {
+    border-color: #475569;
+    background: #1a2233;
+    color: #f8fafc;
+  }
+  .ds-popover {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    right: 0;
+    width: 280px;
+    background: #1c222e;
+    border: 1px solid #354056;
+    border-radius: 12px;
+    padding: 13px 15px;
+    box-shadow: 0 20px 45px rgba(0,0,0,0.72);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(4px);
+    transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s;
+    z-index: 300;
+    pointer-events: none;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  }
+  .ds-popover::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 12px;
+  }
+  .ds-pill-wrap:hover .ds-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .ds-pop-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 9px;
+    margin-bottom: 9px;
+    border-bottom: 1px solid rgba(148,163,184,0.16);
+    font-size: 13px;
+    font-weight: 700;
+    color: #f8fafc;
+  }
+  .ds-pop-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12.5px;
+    line-height: 1.95;
+  }
+  .ds-pop-k {
+    color: #94a3b8;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ds-pop-v {
+    color: #e2e8f0;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
 </style>
 </head>
@@ -4000,10 +4175,65 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button type="button" id="btnStopTaskBottom" onclick="stopActiveVideoTask()" style="display:none;padding:3px 10px;font-size:11.5px;font-weight:800;border-radius:6px;border:1px solid rgba(239,68,68,0.65);background:rgba(239,68,68,0.18);color:#fca5a5;cursor:pointer;">🛑 停止当前任务</button>
     </div>
   </h2>
-  <div id="taskProgressArea" style="margin-bottom:14px;padding:12px 14px;background:#0f172a;border:1px solid var(--border);border-radius:10px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;margin-bottom:6px;height:22px;overflow:hidden;font-variant-numeric:tabular-nums;">
+  <div id="taskProgressArea" style="margin-bottom:14px;padding:12px 14px;background:#0f172a;border:1px solid var(--border);border-radius:10px;overflow:visible;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;margin-bottom:7px;height:24px;overflow:visible;font-variant-numeric:tabular-nums;">
       <span id="taskProgressLabel" style="font-weight:600;color:#93c5fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;font-variant-numeric:tabular-nums;">当前进度：已就绪 (100%)</span>
-      <span id="taskProgressLlamaTotal" style="display:none;align-items:center;justify-content:center;width:132px;padding:1px 0;border-radius:999px;background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.45);color:#e9d5ff;font-family:'SF Mono',Menlo,monospace;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;cursor:help;"></span>
+      <!-- DeepSeek Harness 风格三药丸遥测条（仅在 Qwen / llama-server 活跃时显示，悬停弹出完整统计卡片） -->
+      <div id="dsHudBar" class="ds-hud-bar">
+        <!-- 药丸 1：会话统计 -->
+        <div class="ds-pill-wrap">
+          <div class="ds-pill" id="dsPillSession" style="min-width:154px;">⏱️ -- 步 · -- tok/s</div>
+          <div class="ds-popover">
+            <div class="ds-pop-hdr">
+              <span>⏱️ 会话统计</span>
+              <span id="dsPopSteps" style="font-family:'SF Mono',Menlo,monospace;">-- 步</span>
+            </div>
+            <div class="ds-pop-row"><span class="ds-pop-k">模型用时</span><span class="ds-pop-v" id="dsPopModelTime">--</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k">首 token 平均 (TTFT)</span><span class="ds-pop-v" id="dsPopTtft">--</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k">输出速度 (TPS)</span><span class="ds-pop-v" id="dsPopTps">--</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k">MTP 投机接受率</span><span class="ds-pop-v" id="dsPopMtp" style="color:#6ee7b7;">--</span></div>
+          </div>
+        </div>
+        <!-- 药丸 2：Token 用量 -->
+        <div class="ds-pill-wrap">
+          <div class="ds-pill" id="dsPillTokens" style="min-width:206px;">🛢️ -- tok · 缓存命中 --%</div>
+          <div class="ds-popover">
+            <div class="ds-pop-hdr">
+              <span>🛢️ Token 用量</span>
+              <span id="dsPopTokTotal" style="font-family:'SF Mono',Menlo,monospace;">-- tok</span>
+            </div>
+            <div class="ds-pop-row"><span class="ds-pop-k">缓存命中</span><span class="ds-pop-v" id="dsPopCachePct" style="color:#6ee7b7;">--%</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k">未缓存输入</span><span class="ds-pop-v" id="dsPopTokUncached">-- tok</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k">缓存读取</span><span class="ds-pop-v" id="dsPopTokCache">-- tok</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k">输出</span><span class="ds-pop-v" id="dsPopTokOut">-- tok</span></div>
+          </div>
+        </div>
+        <!-- 药丸 3：上下文已用环形图 -->
+        <div class="ds-pill-wrap">
+          <div class="ds-pill" id="dsPillCtx" style="min-width:72px;">
+            <svg width="14" height="14" viewBox="0 0 20 20" style="transform:rotate(-90deg);flex-shrink:0;">
+              <circle cx="10" cy="10" r="7.5" fill="none" stroke="#334155" stroke-width="2.6"></circle>
+              <circle id="dsCtxRingArc" cx="10" cy="10" r="7.5" fill="none" stroke="#60a5fa" stroke-width="2.6" stroke-dasharray="47.12" stroke-dashoffset="47.12" stroke-linecap="round"></circle>
+            </svg>
+            <span id="dsPillCtxPct">0%</span>
+          </div>
+          <div class="ds-popover">
+            <div class="ds-pop-hdr">
+              <span id="dsPopCtxTitle">上下文已用 0%</span>
+              <span id="dsPopCtxFrac" style="font-family:'SF Mono',Menlo,monospace;color:#cbd5e1;">~0K / 256K</span>
+            </div>
+            <div style="display:flex;height:6px;border-radius:999px;background:#334155;overflow:hidden;gap:1px;margin-bottom:10px;">
+              <div id="dsSegCache" style="width:0%;background:#3b82f6;transition:width 0.3s ease;"></div>
+              <div id="dsSegNew" style="width:0%;background:#a78bfa;transition:width 0.3s ease;"></div>
+              <div id="dsSegGen" style="width:0%;background:#10b981;transition:width 0.3s ease;"></div>
+            </div>
+            <div class="ds-pop-row"><span class="ds-pop-k"><span style="width:8px;height:8px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>KV 缓存复用</span><span class="ds-pop-v" id="dsPopSegCache">~0</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k"><span style="width:8px;height:8px;border-radius:2px;background:#a78bfa;display:inline-block;"></span>本轮新输入</span><span class="ds-pop-v" id="dsPopSegNew">~0</span></div>
+            <div class="ds-pop-row"><span class="ds-pop-k"><span style="width:8px;height:8px;border-radius:2px;background:#10b981;display:inline-block;"></span>本轮已生成</span><span class="ds-pop-v" id="dsPopSegGen">~0</span></div>
+          </div>
+        </div>
+      </div>
+      <span id="taskProgressLlamaTotal" style="display:none;"></span>
       <span id="taskProgressSpeed" style="font-family:'SF Mono',Menlo,monospace;color:var(--green);white-space:nowrap;flex-shrink:0;min-width:205px;text-align:right;font-variant-numeric:tabular-nums;">50.90 / 50.90 GB · 服务运行中</span>
     </div>
     <div class="progress-bar" style="height:10px;">
@@ -5639,67 +5869,123 @@ async function pollLogs() {
       if (!d.running && (dramaPollTimer || videoPollTimer || upscalePollTimer || fusionBatchRunning)) {
         return;
       }
-      const pTotalBadge = document.getElementById('taskProgressLlamaTotal');
-      if (pTotalBadge) {
-        if (!d.running && d.llama_live && Number(d.llama_live.total_tokens || 0) > 0) {
-          const tAll = Number(d.llama_live.total_tokens || 0);
-          const tIn = Number(d.llama_live.total_prompt_tokens || 0);
-          const tOut = Number(d.llama_live.total_gen_tokens || 0);
-          const tTurns = Number(d.llama_live.completed_turns || 0);
-          const fmtCompact = (v) => v >= 1000000 ? `${(v / 1000000).toFixed(2)}M` : (v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v));
-          pTotalBadge.innerText = `📊 累计 ${fmtCompact(tAll)} tok`;
-          const turnDesc = tTurns > 0
-            ? `已完成 ${tTurns} 轮${d.llama_live.is_processing ? ' + 当前进行中' : ''}`
-            : (d.llama_live.is_processing ? '当前首轮进行中' : '本次启动累计');
-          pTotalBadge.title = `本次启动累计消耗（${turnDesc}）\n• 新处理输入 (Prompt): ${tIn.toLocaleString()} tokens\n• 累计生成输出 (Output): ${tOut.toLocaleString()} tokens\n• 合计总消耗: ${tAll.toLocaleString()} tokens`;
-          pTotalBadge.style.display = 'inline-flex';
-        } else {
-          pTotalBadge.style.display = 'none';
-        }
-      }
+      const dsHudBar = document.getElementById('dsHudBar');
       if (!d.running && d.llama_live) {
         const ll = d.llama_live;
-        const nCtx = Number(ll.n_ctx || 0);
+        const nCtx = Number(ll.n_ctx || 262144);
         const nPrompt = Number(ll.n_prompt_tokens || 0);
         const nCache = Number(ll.n_prompt_tokens_cache || 0);
         const nProc = Number(ll.n_prompt_tokens_processed || 0);
         const nGen = Number(ll.n_gen || 0);
         const tgAvg = (typeof ll.tg_avg === 'number') ? ll.tg_avg.toFixed(1) : '';
         const tg3s = (typeof ll.tg_3s === 'number') ? ll.tg_3s.toFixed(1) : '';
+        const globalTps = (typeof ll.global_tps === 'number') ? ll.global_tps.toFixed(1) : (tgAvg || '--');
         const ctxK = nCtx > 0 ? `${Math.round(nCtx / 1024)}K` : '256K';
+        const fmtTok = (v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : (v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v));
+        const fmtDur = (sec) => {
+          const s = Math.max(0, Math.round(Number(sec || 0)));
+          const h = Math.floor(s / 3600);
+          const m = Math.floor((s % 3600) / 60);
+          const r = s % 60;
+          if (h > 0) return `${h}小时${m}分${r}秒`;
+          if (m > 0) return `${m}分${r}秒`;
+          return `${r}秒`;
+        };
+
+        // 填充 DeepSeek 风格 3 枚药丸 + 3 张悬浮统计卡片
+        if (dsHudBar) dsHudBar.style.display = 'inline-flex';
+        if (pSpeed) pSpeed.style.display = 'none';
+
+        const stepsCnt = Number(ll.completed_turns || 0) + (ll.is_processing ? 1 : 0);
+        const showTpsNum = ll.is_processing ? (tg3s || tgAvg || globalTps) : globalTps;
+        const elPillSess = document.getElementById('dsPillSession');
+        if (elPillSess) elPillSess.innerText = `⏱️ ${stepsCnt} 步 · ${Math.round(Number(showTpsNum) || 0) || '--'} tok/s`;
+        const elPopSteps = document.getElementById('dsPopSteps');
+        if (elPopSteps) elPopSteps.innerText = `${stepsCnt} 步`;
+        const elPopTime = document.getElementById('dsPopModelTime');
+        if (elPopTime) elPopTime.innerText = fmtDur(ll.model_time_sec || 0);
+        const elPopTtft = document.getElementById('dsPopTtft');
+        if (elPopTtft) elPopTtft.innerText = (typeof ll.avg_ttft_sec === 'number') ? `${ll.avg_ttft_sec.toFixed(1)} 秒` : '--';
+        const elPopTps = document.getElementById('dsPopTps');
+        if (elPopTps) elPopTps.innerText = (globalTps && globalTps !== '--') ? `${globalTps} tok/s` : '--';
+        const elPopMtp = document.getElementById('dsPopMtp');
+        if (elPopMtp) elPopMtp.innerText = (typeof ll.mtp_accept_pct === 'number') ? `${ll.mtp_accept_pct.toFixed(1)}%` : (ll.speculative ? '已开启' : '未开启');
+
+        const totAll = Number(ll.total_tokens || 0);
+        const totUncached = Number(ll.total_prompt_tokens || 0);
+        const totCache = Number(ll.total_cache_tokens || 0);
+        const totOut = Number(ll.total_gen_tokens || 0);
+        const cachePct = Number(ll.cache_hit_pct || 0);
+        const elPillTok = document.getElementById('dsPillTokens');
+        if (elPillTok) elPillTok.innerText = `🛢️ ${fmtTok(totAll)} tok · 缓存命中 ${cachePct}%`;
+        const elPopTokTot = document.getElementById('dsPopTokTotal');
+        if (elPopTokTot) elPopTokTot.innerText = `${totAll.toLocaleString()} tok`;
+        const elPopCachePct = document.getElementById('dsPopCachePct');
+        if (elPopCachePct) elPopCachePct.innerText = `${cachePct}%`;
+        const elPopUnc = document.getElementById('dsPopTokUncached');
+        if (elPopUnc) elPopUnc.innerText = `${totUncached.toLocaleString()} tok`;
+        const elPopCch = document.getElementById('dsPopTokCache');
+        if (elPopCch) elPopCch.innerText = `${totCache.toLocaleString()} tok`;
+        const elPopOut = document.getElementById('dsPopTokOut');
+        if (elPopOut) elPopOut.innerText = `${totOut.toLocaleString()} tok`;
+
+        const activeCtxTok = ll.is_processing ? (nPrompt + nGen) : nCache;
+        const ctxPctReal = nCtx > 0 ? Math.min(100, Math.round((activeCtxTok / nCtx) * 100)) : 0;
+        const arc = document.getElementById('dsCtxRingArc');
+        if (arc) {
+          const circum = 47.12;
+          arc.setAttribute('stroke-dashoffset', (circum * (1 - ctxPctReal / 100)).toFixed(2));
+          arc.setAttribute('stroke', ctxPctReal >= 80 ? '#f59e0b' : '#60a5fa');
+        }
+        const elCtxPct = document.getElementById('dsPillCtxPct');
+        if (elCtxPct) elCtxPct.innerText = `${ctxPctReal}%`;
+        const elPopCtxTitle = document.getElementById('dsPopCtxTitle');
+        if (elPopCtxTitle) elPopCtxTitle.innerText = `上下文已用 ${ctxPctReal}%`;
+        const elPopCtxFrac = document.getElementById('dsPopCtxFrac');
+        if (elPopCtxFrac) elPopCtxFrac.innerText = `~${fmtTok(activeCtxTok)} / ${ctxK}`;
+
+        const curNewPrompt = Math.max(0, nPrompt - nCache);
+        const segCachePct = nCtx > 0 ? Math.min(100, (nCache / nCtx) * 100) : 0;
+        const segNewPct = nCtx > 0 ? Math.min(100 - segCachePct, (curNewPrompt / nCtx) * 100) : 0;
+        const segGenPct = nCtx > 0 ? Math.min(100 - segCachePct - segNewPct, (nGen / nCtx) * 100) : 0;
+        const elSC = document.getElementById('dsSegCache');
+        const elSN = document.getElementById('dsSegNew');
+        const elSG = document.getElementById('dsSegGen');
+        if (elSC) elSC.style.width = `${segCachePct.toFixed(1)}%`;
+        if (elSN) elSN.style.width = `${segNewPct.toFixed(1)}%`;
+        if (elSG) elSG.style.width = `${segGenPct.toFixed(1)}%`;
+        const elPSC = document.getElementById('dsPopSegCache');
+        const elPSN = document.getElementById('dsPopSegNew');
+        const elPSG = document.getElementById('dsPopSegGen');
+        if (elPSC) elPSC.innerText = `~${fmtTok(nCache)}`;
+        if (elPSN) elPSN.innerText = `~${fmtTok(curNewPrompt)}`;
+        if (elPSG) elPSG.innerText = `~${fmtTok(nGen)}`;
+
         if (ll.is_processing) {
           window._llamaIdleStreak = 0;
           const prefillDone = nCache + nProc;
-          const isPrefill = (nPrompt > 0 && prefillDone < nPrompt);
+          const isPrefill = (nGen === 0 && nPrompt > 0 && prefillDone < nPrompt);
           if (isPrefill) {
             const pPct = Math.max(5, Math.min(99, Math.round((prefillDone / nPrompt) * 100)));
-            pLabel.innerText = `⚡ ${ll.model_short} · 预填充  ${prefillDone.toLocaleString()} / ${nPrompt.toLocaleString()}  (KV命中 ${nCache.toLocaleString()})`;
-            pSpeed.innerText = `预填充 ${String(pPct).padStart(2, ' ')}% · 窗口 ${ctxK}`;
+            pLabel.innerText = `⚡ ${ll.model_short} · 预填充  ${prefillDone.toLocaleString()} / ${nPrompt.toLocaleString()} (${pPct}%)`;
             pBar.style.background = '';
             pBar.className = 'progress-fill';
             pBar.style.width = `${pPct}%`;
             st.innerText = `⚡ 推理预填充中 (${pPct}%)`;
             st.style.color = '#f59e0b';
           } else {
-            const totUsed = nPrompt + nGen;
-            const ctxPct = nCtx > 0 ? Math.max(12, Math.min(98, Math.round((totUsed / nCtx) * 100))) : 65;
-            const genStr = nGen > 0 ? `  (已吐 ${nGen.toLocaleString()})` : '';
-            pLabel.innerText = `🚀 ${ll.model_short} · 生成中  上下文 ${totUsed.toLocaleString()} / ${ctxK}${genStr}`;
-            pSpeed.innerText = tg3s
-              ? `瞬时 ${tg3s} · 均速 ${tgAvg} t/s`
-              : (tgAvg ? `均速 ${tgAvg} t/s · 流式输出` : `流式生成中 · 窗口 ${ctxK}`);
+            const genStr = nGen > 0 ? `  已吐 ${nGen.toLocaleString()} tok` : '';
+            pLabel.innerText = `🚀 ${ll.model_short} · 生成中${genStr}${tg3s ? ' · 瞬时 ' + tg3s + ' t/s' : ''}`;
             pBar.style.background = '';
             pBar.className = 'progress-fill';
-            pBar.style.width = `${ctxPct}%`;
+            pBar.style.width = `${Math.max(12, Math.min(98, ctxPctReal))}%`;
             st.innerText = tg3s ? `🚀 实时生成中 · ${tg3s} t/s` : '🚀 实时生成中...';
             st.style.color = '#38bdf8';
           }
         } else {
-          // 连续 2 次空闲才切回绿色就绪态，防止客户端连续多轮请求之间高频闪烁
           window._llamaIdleStreak = (window._llamaIdleStreak || 0) + 1;
           if (window._llamaIdleStreak >= 2 || !window._llamaHasShownBusy) {
-            pLabel.innerText = `✅ ${ll.model_short} · 已就绪  KV 缓存 ${nCache.toLocaleString()} / ${ctxK}`;
-            pSpeed.innerText = tgAvg ? `空闲 · 上轮均速 ${tgAvg} t/s` : `等待对话请求 · 窗口 ${ctxK}`;
+            pLabel.innerText = `✅ ${ll.model_short} · 已就绪  (KV 缓存 ${fmtTok(nCache)} / ${ctxK})`;
             pBar.style.background = '';
             pBar.className = 'progress-fill green';
             pBar.style.width = '100%';
@@ -5710,6 +5996,8 @@ async function pollLogs() {
         if (ll.is_processing) window._llamaHasShownBusy = true;
         return;
       }
+      if (dsHudBar) dsHudBar.style.display = 'none';
+      if (pSpeed) pSpeed.style.display = '';
       if (!d.running && latestUpscaleErr) {
         pLabel.innerText = `❌ ${latestUpscaleErr}`;
         pSpeed.innerText = '超分中断，请重试';
