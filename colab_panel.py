@@ -296,7 +296,8 @@ _UPSCALE_TIMING: Dict[str, Any] = {
 PANEL_LOGS_FILE = BASE_DIR / ".colab_panel_logs.json"
 DEPLOY_LIVE_LOG_FILE = BASE_DIR / ".deploy_live.log"
 DEPLOY_PID_FILE = BASE_DIR / ".deploy_live.pid"
-_REMOTE_LOG_FALLBACK_CACHE: Dict[str, Any] = {"ts": 0.0, "lines": []}
+_REMOTE_LOG_FALLBACK_CACHE: Dict[str, Any] = {"ts": 0.0, "lines": [], "file": ""}
+_LLAMA_LIVE_CACHE: Dict[str, Any] = {"ts": 0.0, "data": None}
 
 
 def _compact_progress_log_lines(raw_lines: List[str]) -> List[str]:
@@ -1798,12 +1799,42 @@ def _reattach_running_deploy_if_any():
     _start_deploy_log_tailer(pid, proc=None, start_offset=file_offset)
 
 
-def _fetch_remote_server_log_fallback(max_lines: int = 25) -> List[str]:
-    """当本机日志稀疏且云端实例在线时，非阻塞拉取远端服务日志尾部作为兜底显示"""
+def _is_active_llama_llm_cfg(cfg: Dict[str, Any]) -> bool:
+    """判断当前云端活跃模型是否为 llama-server 文本/多模态 LLM（非 MiniMax 视频/生图 / LongCat / ReCaVSR）"""
+    mf = str(cfg.get("model_folder") or "").lower()
+    mid = str(cfg.get("model_id") or "").lower()
+    combo = f"{mf} {mid}".strip()
+    if not combo:
+        return False
+    if any(k in combo for k in ("minimax-h3", "longcat", "recavsr")):
+        return False
+    return True
+
+
+def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = "", ttl_sec: float = 6.0) -> List[str]:
+    """根据当前活跃模型精准拉取对应远端服务日志尾部（自动去 ANSI 颜色码并过滤 /slots /health 轮询噪音）"""
     now_ts = time.time()
-    if now_ts - float(_REMOTE_LOG_FALLBACK_CACHE.get("ts") or 0.0) < 8.0:
+    hint_low = str(active_hint or "").lower()
+    if "minimax-h3-image" in hint_low:
+        order = ("minimax_image_server.log", "minimax_server.log", "llama_server.log", "longcat_avatar_server.log")
+    elif "longcat" in hint_low:
+        order = ("longcat_avatar_server.log", "minimax_server.log", "llama_server.log", "minimax_image_server.log")
+    elif "minimax" in hint_low:
+        order = ("minimax_server.log", "minimax_image_server.log", "llama_server.log", "longcat_avatar_server.log")
+    elif hint_low:
+        order = ("llama_server.log", "minimax_server.log", "minimax_image_server.log", "longcat_avatar_server.log")
+    else:
+        order = ("llama_server.log", "minimax_server.log", "minimax_image_server.log", "longcat_avatar_server.log")
+
+    want_primary = order[0]
+    if (
+        _REMOTE_LOG_FALLBACK_CACHE.get("file") == want_primary
+        and now_ts - float(_REMOTE_LOG_FALLBACK_CACHE.get("ts") or 0.0) < ttl_sec
+    ):
         return list(_REMOTE_LOG_FALLBACK_CACHE.get("lines") or [])
+
     _REMOTE_LOG_FALLBACK_CACHE["ts"] = now_ts
+    _REMOTE_LOG_FALLBACK_CACHE["file"] = want_primary
     out_lines: List[str] = []
     try:
         sessions = _list_active_sessions(force=False)
@@ -1815,7 +1846,8 @@ def _fetch_remote_server_log_fallback(max_lines: int = 25) -> List[str]:
         if not so or not getattr(so, "url", None) or not getattr(so, "token", None):
             return []
         base_u = so.url.rstrip("/")
-        for rname in ("minimax_server.log", "llama_server.log", "minimax_image_server.log", "longcat_avatar_server.log"):
+        ansi_re = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+        for rname in order:
             try:
                 u = f"{base_u}/api/contents/content/{rname}?colab-runtime-proxy-token={urllib.parse.quote(so.token)}"
                 req = urllib.request.Request(u, headers={"X-Colab-Runtime-Proxy-Token": so.token})
@@ -1823,15 +1855,95 @@ def _fetch_remote_server_log_fallback(max_lines: int = 25) -> List[str]:
                     obj = json.loads(resp.read().decode("utf-8", errors="ignore"))
                     txt = str(obj.get("content") or "")
                     if txt.strip():
-                        tail = [ln.rstrip() for ln in txt.splitlines() if ln.strip()][-max_lines:]
-                        out_lines = [f"[云端实时日志 · /content/{rname}]"] + tail
-                        break
+                        cleaned = []
+                        for raw_ln in txt.splitlines():
+                            s = ansi_re.sub("", raw_ln).rstrip()
+                            if not s.strip():
+                                continue
+                            if rname == "llama_server.log" and ("GET /slots" in s or "GET /health" in s):
+                                continue
+                            cleaned.append(s)
+                        if cleaned:
+                            tail = cleaned[-max_lines:]
+                            out_lines = [f"[云端实时日志 · /content/{rname}]"] + tail
+                            break
             except Exception:
                 continue
     except Exception:
         pass
     _REMOTE_LOG_FALLBACK_CACHE["lines"] = out_lines
     return out_lines
+
+
+def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str]) -> Optional[Dict[str, Any]]:
+    """直连远端 tunnel_url/slots 查询 llama-server 实时推理状态（不经过本机 30000 代理，绝不误刷新闲置关机计时器）"""
+    now_ts = time.time()
+    if now_ts - float(_LLAMA_LIVE_CACHE.get("ts") or 0.0) < 1.8:
+        cached = _LLAMA_LIVE_CACHE.get("data")
+        return dict(cached) if isinstance(cached, dict) else None
+    _LLAMA_LIVE_CACHE["ts"] = now_ts
+
+    t_url = str(cfg.get("tunnel_url") or "").strip().rstrip("/")
+    if not t_url:
+        _LLAMA_LIVE_CACHE["data"] = None
+        return None
+    if t_url.endswith("/v1"):
+        t_url = t_url[:-3]
+    api_key = str(cfg.get("api_key") or "").strip()
+    headers = {"User-Agent": "ColabPanel/1.0"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    slot_obj = None
+    try:
+        req = urllib.request.Request(f"{t_url}/slots", headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=2.2) as resp:
+            slots = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            if isinstance(slots, list) and slots:
+                slot_obj = slots[0]
+    except Exception:
+        _LLAMA_LIVE_CACHE["data"] = None
+        return None
+
+    if not isinstance(slot_obj, dict):
+        _LLAMA_LIVE_CACHE["data"] = None
+        return None
+
+    n_gen = 0
+    tg_avg = None
+    tg_3s = None
+    for ln in reversed(remote_lines or []):
+        m_t = re.search(r"n_gen\s*=\s*(\d+),\s*tg\s*=\s*([\d.]+)\s*t/s(?:,\s*tg_3s\s*=\s*([\d.]+)\s*t/s)?", ln)
+        if m_t:
+            n_gen = int(m_t.group(1))
+            tg_avg = float(m_t.group(2))
+            tg_3s = float(m_t.group(3)) if m_t.group(3) else None
+            break
+        m_e = re.search(r"eval time\s*=.*?(\d+)\s*runs.*?\(\s*([\d.]+)\s*tokens per second\)", ln)
+        if m_e:
+            n_gen = int(m_e.group(1))
+            tg_avg = float(m_e.group(2))
+            break
+
+    model_short = str(cfg.get("model_folder") or cfg.get("model_id") or "Qwen3.8-27B").split("/")[-1]
+    if "qwen3.8" in model_short.lower():
+        model_short = "Qwen3.8-27B (BF16)"
+
+    res = {
+        "model_short": model_short,
+        "is_processing": bool(slot_obj.get("is_processing")),
+        "speculative": bool(slot_obj.get("speculative")),
+        "n_ctx": int(slot_obj.get("n_ctx") or 0),
+        "n_prompt_tokens": int(slot_obj.get("n_prompt_tokens") or 0),
+        "n_prompt_tokens_processed": int(slot_obj.get("n_prompt_tokens_processed") or 0),
+        "n_prompt_tokens_cache": int(slot_obj.get("n_prompt_tokens_cache") or 0),
+        "id_task": int(slot_obj.get("id_task") or 0),
+        "n_gen": n_gen,
+        "tg_avg": tg_avg,
+        "tg_3s": tg_3s,
+    }
+    _LLAMA_LIVE_CACHE["data"] = res
+    return dict(res)
 
 
 def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu: str, download_only: bool = False, retry_until_ready: bool = False):
@@ -5387,6 +5499,56 @@ async function pollLogs() {
       const st = document.getElementById('deployStateText');
 
       if (!d.running && (dramaPollTimer || videoPollTimer || upscalePollTimer || fusionBatchRunning)) {
+        return;
+      }
+      if (!d.running && d.llama_live) {
+        const ll = d.llama_live;
+        const nCtx = Number(ll.n_ctx || 0);
+        const nPrompt = Number(ll.n_prompt_tokens || 0);
+        const nCache = Number(ll.n_prompt_tokens_cache || 0);
+        const nProc = Number(ll.n_prompt_tokens_processed || 0);
+        const nGen = Number(ll.n_gen || 0);
+        const tgAvg = (typeof ll.tg_avg === 'number') ? ll.tg_avg.toFixed(1) : '';
+        const tg3s = (typeof ll.tg_3s === 'number') ? ll.tg_3s.toFixed(1) : '';
+        const mtpTag = ll.speculative ? ' · ⚡MTP' : '';
+        const ctxK = nCtx > 0 ? `${Math.round(nCtx / 1024)}K` : '';
+        if (ll.is_processing) {
+          const prefillDone = nCache + nProc;
+          const isPrefill = (nPrompt > 0 && prefillDone < nPrompt);
+          if (isPrefill) {
+            const pPct = Math.max(5, Math.min(99, Math.round((prefillDone / nPrompt) * 100)));
+            pLabel.innerText = `⚡ [${ll.model_short} 预填充上下文] ${prefillDone.toLocaleString()} / ${nPrompt.toLocaleString()} tokens (KV命中 ${nCache.toLocaleString()})`;
+            pSpeed.innerText = `${pPct}% · 窗口 ${ctxK}${mtpTag}`;
+            pBar.style.background = '';
+            pBar.className = 'progress-fill';
+            pBar.style.width = `${pPct}%`;
+            st.innerText = `⚡ 推理预填充中 (${pPct}%)`;
+            st.style.color = '#f59e0b';
+          } else {
+            const totUsed = nPrompt + nGen;
+            const ctxPct = nCtx > 0 ? Math.max(12, Math.min(98, Math.round((totUsed / nCtx) * 100))) : 65;
+            const genStr = nGen > 0 ? `已吐 ${nGen.toLocaleString()} tokens · ` : '';
+            pLabel.innerText = `🚀 [${ll.model_short} 实时生成中] ${genStr}上下文 ${totUsed.toLocaleString()} / ${nCtx.toLocaleString()}${mtpTag}`;
+            pSpeed.innerText = tg3s
+              ? `瞬时 ${tg3s} t/s · 均速 ${tgAvg} t/s`
+              : (tgAvg ? `均速 ${tgAvg} t/s · 流式输出中` : `流式生成中 · 窗口 ${ctxK}`);
+            pBar.style.background = '';
+            pBar.className = 'progress-fill';
+            pBar.style.width = `${ctxPct}%`;
+            st.innerText = tg3s ? `🚀 实时生成中 · ${tg3s} t/s` : '🚀 实时生成中...';
+            st.style.color = '#38bdf8';
+          }
+        } else {
+          pLabel.innerText = `✅ ${ll.model_short} 已就绪 (KV 缓存 ${nCache.toLocaleString()} / ${nCtx.toLocaleString()} tokens${mtpTag})`;
+          pSpeed.innerText = tgAvg
+            ? `上轮 ${nGen.toLocaleString()} tokens · 均速 ${tgAvg} t/s`
+            : `等待客户端请求 · 窗口 ${ctxK}`;
+          pBar.style.background = '';
+          pBar.className = 'progress-fill green';
+          pBar.style.width = '100%';
+          st.innerText = '🟢 推理引擎就绪';
+          st.style.color = '#10b981';
+        }
         return;
       }
       if (!d.running && latestUpscaleErr) {
@@ -12712,14 +12874,30 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 is_run = bool(_DEPLOY_STATE["running"])
                 cur_logs = list(_DEPLOY_STATE["logs"])
                 ex_code = _DEPLOY_STATE["exit_code"]
-            if not is_run and len(cur_logs) <= 3:
-                remote_tail = _fetch_remote_server_log_fallback(max_lines=25)
-                if remote_tail:
-                    cur_logs = cur_logs + [""] + remote_tail
+            llama_live = None
+            if not is_run:
+                sessions_now = _list_active_sessions(force=False)
+                cfg_now = _load_endpoint_cfg()
+                active_hint = f"{cfg_now.get('model_folder') or ''} {cfg_now.get('model_id') or ''}".strip()
+                if sessions_now and _is_active_llama_llm_cfg(cfg_now) and cfg_now.get("tunnel_url"):
+                    remote_tail = _fetch_remote_server_log_fallback(max_lines=35, active_hint=active_hint, ttl_sec=2.5)
+                    llama_live = _query_live_llama_status(cfg_now, remote_tail)
+                    if remote_tail:
+                        if len(cur_logs) <= 3:
+                            cur_logs = remote_tail
+                        else:
+                            # 保留最近几行本地操作提示，并在底部实时滚动 llama_server.log
+                            base_local = [ln for ln in cur_logs if not ln.startswith("[云端实时日志")]
+                            cur_logs = base_local[-6:] + [""] + remote_tail
+                elif sessions_now and len(cur_logs) <= 3:
+                    remote_tail = _fetch_remote_server_log_fallback(max_lines=25, active_hint=active_hint, ttl_sec=6.0)
+                    if remote_tail:
+                        cur_logs = cur_logs + [""] + remote_tail
             self._send_json({
                 "running": is_run,
                 "logs": cur_logs,
                 "exit_code": ex_code,
+                "llama_live": llama_live,
             })
             return
 
