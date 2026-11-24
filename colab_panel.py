@@ -290,6 +290,8 @@ _UPSCALE_TIMING: Dict[str, Any] = {
     "start_ts": 0.0,
     "compute_start_ts": 0.0,
     "preset": "2k",
+    "needs_completion_log": False,
+    "needs_redownload": False,
 }
 
 
@@ -6006,6 +6008,11 @@ async function pollLogs() {
         return;
       }
       if (!d.running && latestUpscaleActive) {
+        const uSig = `${d.logs.length}:${latestUpscaleActive.stage}:${latestUpscaleActive.msg}`;
+        window._lastUpscaleLogSig = uSig;
+        if (window._upscaleAckedTailSig && window._upscaleAckedTailSig === uSig) {
+          return;
+        }
         const uMsg = latestUpscaleActive.msg;
         const pctM = uMsg.match(/(\d+)%/);
         const uPct = pctM ? Math.max(8, Math.min(99, parseInt(pctM[1], 10))) : 10;
@@ -10713,6 +10720,7 @@ async function upscaleCurrentVideo() {
 
 async function upscaleVideoByName(fname, presetOverride) {
   if (!fname) return;
+  window._upscaleAckedTailSig = '';
   const presetVal = presetOverride || (document.getElementById('upscalePresetSelect') || {}).value || '2k';
   const st = document.getElementById('videoGenStatus');
   const pWrap = document.getElementById('videoProgressWrap');
@@ -10833,6 +10841,7 @@ async function pollUpscaleStatus() {
       tBar.style.width = `${clamped}%`;
     }
     if (d.running) {
+      window._upscaleAckedTailSig = '';
       if (pWrap) pWrap.style.display = 'block';
       setUpscaleBtnRunningState(true);
       if (typeof d.elapsed_sec === 'number' && d.elapsed_sec > 0) {
@@ -10853,6 +10862,7 @@ async function pollUpscaleStatus() {
         dState.style.color = '#a78bfa';
       }
     } else {
+      window._upscaleAckedTailSig = window._lastUpscaleLogSig || '__done__';
       if (upscalePollTimer) {
         clearInterval(upscalePollTimer);
         upscalePollTimer = null;
@@ -13839,7 +13849,15 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                         el_s = float(d.get("elapsed_s") or 0.0)
                         if fn:
                             lp = LOCAL_MOVIES_DIR / fn
-                            if not (lp.exists() and lp.stat().st_size > 1024):
+                            need_dl = not (lp.exists() and lp.stat().st_size > 1024)
+                            if not need_dl and _UPSCALE_TIMING.get("needs_redownload") and _UPSCALE_TIMING.get("start_ts", 0.0) > 0:
+                                try:
+                                    if lp.stat().st_mtime < float(_UPSCALE_TIMING["start_ts"]):
+                                        need_dl = True
+                                except Exception:
+                                    pass
+                            if need_dl:
+                                _UPSCALE_TIMING["needs_redownload"] = False
                                 if not _VIDEO_DL_STATE.get("active"):
                                     threading.Thread(
                                         target=_download_remote_video_to_local,
@@ -13862,11 +13880,14 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                                     d["elapsed_sec"] = max(1, int(round(el_s + dl_el)))
                                 d["eta_sec"] = max(1, int(round(max(0.0, tot_m - done_m) / max(0.15, spd_mbs))))
                             else:
+                                force_log = bool(_UPSCALE_TIMING.get("needs_completion_log"))
                                 _UPSCALE_TIMING["start_ts"] = 0.0
                                 _UPSCALE_TIMING["compute_start_ts"] = 0.0
+                                _UPSCALE_TIMING["needs_completion_log"] = False
+                                _UPSCALE_TIMING["needs_redownload"] = False
                                 d["latest_video"] = fn
                                 d["pct"] = 100
-                                if d.get("message") and not str(d.get("message")).startswith("就绪") and fn not in _LOGGED_COMPLETED_VIDEOS:
+                                if d.get("message") and not str(d.get("message")).startswith("就绪") and (force_log or fn not in _LOGGED_COMPLETED_VIDEOS):
                                     _LOGGED_COMPLETED_VIDEOS.add(fn)
                                     _append_panel_log(f"[视频超分完成] {d.get('message')}")
                     self._send_json(d)
@@ -15091,6 +15112,11 @@ p.wait()
             _UPSCALE_TIMING["start_ts"] = time.time()
             _UPSCALE_TIMING["compute_start_ts"] = 0.0
             _UPSCALE_TIMING["preset"] = preset
+            _UPSCALE_TIMING["needs_completion_log"] = True
+            _UPSCALE_TIMING["needs_redownload"] = True
+            stem_prefix = os.path.splitext(fname)[0]
+            for old_fn in [x for x in list(_LOGGED_COMPLETED_VIDEOS) if x.startswith(stem_prefix + "_ReCaVSR_")]:
+                _LOGGED_COMPLETED_VIDEOS.discard(old_fn)
             _append_panel_log(
                 f"✨ [提交 ReCaVSR 超分任务] 原视频 {fname} → 目标规格 {preset.upper()} (Wan2.2-5B 单步流式重绘 + 原生立体声无损合成)"
             )
