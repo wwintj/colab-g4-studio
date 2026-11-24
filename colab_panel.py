@@ -14478,12 +14478,23 @@ p.wait()
 
         if self.path == "/api/stop":
             sessions = _list_active_sessions()
+            if sessions:
+                shield_blk = _check_active_llama_shield(payload, "关闭并释放 Colab GPU 实例")
+                if shield_blk:
+                    self._send_json(shield_blk)
+                    return
+            killed_deploy = _stop_detached_deploy_process()
+            if killed_deploy:
+                with _DEPLOY_LOCK:
+                    _append_deploy_log_line_locked("🛑 用户点击「关机」：已中止后台开机 / 持续抢卡任务。")
+                    _save_panel_logs_snapshot()
             if not sessions:
-                self._send_json({"ok": True, "message": "✅ 当前没有运行中的 Colab 实例（已处于关机零扣费状态）。"})
-                return
-            shield_blk = _check_active_llama_shield(payload, "关闭并释放 Colab GPU 实例")
-            if shield_blk:
-                self._send_json(shield_blk)
+                msg = (
+                    "✅ 已中止后台开机 / 持续抢卡任务（当前无运行中的 Colab 实例，零扣费）。"
+                    if killed_deploy
+                    else "✅ 当前没有运行中的 Colab 实例（已处于关机零扣费状态）。"
+                )
+                self._send_json({"ok": True, "message": msg})
                 return
             stopped = []
             for s in sessions:
@@ -14497,13 +14508,15 @@ p.wait()
             cfg = _load_endpoint_cfg()
             cfg["tunnel_url"] = ""
             cfg["recavsr_tunnel_url"] = ""
+            cfg["deploying"] = False
             ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             _LAST_METRICS_CACHE["data"] = None
             _LAST_METRICS_CACHE["timestamp"] = 0.0
             _LAST_SESSIONS_CACHE["data"] = []
             _LAST_SESSIONS_CACHE["timestamp"] = 0.0
             _LAST_CU_CACHE["timestamp"] = 0.0
-            self._send_json({"ok": True, "message": f"✅ 已彻底释放并关闭实例: {', '.join(stopped)}（扣费速率已归零 0.00 CU/h）"})
+            extra = "，并已中止后台开机/抢卡任务" if killed_deploy else ""
+            self._send_json({"ok": True, "message": f"✅ 已彻底释放并关闭实例: {', '.join(stopped)}{extra}（扣费速率已归零 0.00 CU/h）"})
             return
 
         if self.path == "/api/chat_test":
