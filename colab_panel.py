@@ -9964,6 +9964,10 @@ async function stopActiveVideoTask(targetMode = 'auto') {
   fpdBatchCancelled = true;
   fpdBatchRunning = false;
   fusionBatchCancelled = true;
+  autoUpscaleQueue = [];
+  autoUpscaleBatchTotal = 0;
+  autoUpscaleBatchDone = 0;
+  currentUpscaleTargetName = '';
   const isUpscaling = (targetMode === 'upscale') || (targetMode === 'auto' && upscalePollTimer && !videoPollTimer);
   const st = document.getElementById('videoGenStatus');
   const tLabel = document.getElementById('taskProgressLabel');
@@ -10684,18 +10688,88 @@ async function pollVideoStatus() {
       }
       await loadLocalVideoHistory(true);
       const autoSrChk = document.getElementById('autoUpscale2kChk');
-      const isMp4Video = d.latest_video && /\.mp4$/i.test(d.latest_video);
-      if (autoSrChk && autoSrChk.checked && isMp4Video && !d.latest_video.includes('_ReCaVSR_') && lastAutoUpscaledVideo !== d.latest_video) {
-        lastAutoUpscaledVideo = d.latest_video;
-        const presetVal = (document.getElementById('upscalePresetSelect') || {}).value || '2k';
-        upscaleVideoByName(d.latest_video, presetVal);
+      if (autoSrChk && autoSrChk.checked) {
+        const rawBatch = (Array.isArray(d.completed_videos) && d.completed_videos.length)
+          ? d.completed_videos
+          : (d.latest_video ? [d.latest_video] : []);
+        const seenInBatch = new Set();
+        const todoList = [];
+        for (const vName of rawBatch) {
+          if (!vName || !/\.mp4$/i.test(vName) || vName.includes('_ReCaVSR_')) continue;
+          if (seenInBatch.has(vName) || autoUpscaledBatchKeys.has(vName)) continue;
+          seenInBatch.add(vName);
+          todoList.push(vName);
+        }
+        if (todoList.length > 0) {
+          const presetVal = (document.getElementById('upscalePresetSelect') || {}).value || '2k';
+          todoList.forEach(v => autoUpscaledBatchKeys.add(v));
+          enqueueUpscaleVideos(todoList, presetVal);
+        }
       }
     }
   } catch (e) {}
 }
 
 let upscalePollTimer = null;
+let upscalePollInFlight = false;
 let lastAutoUpscaledVideo = '';
+let autoUpscaleQueue = [];
+let autoUpscalePreset = '2k';
+let autoUpscaleBatchTotal = 0;
+let autoUpscaleBatchDone = 0;
+let currentUpscaleTargetName = '';
+let currentUpscaleStartTs = 0;
+const autoUpscaledBatchKeys = new Set();
+
+function enqueueUpscaleVideos(fnames, presetVal) {
+  const preset = presetVal || (document.getElementById('upscalePresetSelect') || {}).value || '2k';
+  const clean = (fnames || []).filter(fn => fn && /\.mp4$/i.test(fn) && !fn.includes('_ReCaVSR_'));
+  if (!clean.length) return;
+  if (upscalePollTimer || currentUpscaleTargetName) {
+    let added = 0;
+    for (const fn of clean) {
+      if (fn === currentUpscaleTargetName || autoUpscaleQueue.includes(fn)) continue;
+      autoUpscaleQueue.push(fn);
+      added += 1;
+    }
+    if (added > 0) {
+      if (autoUpscaleBatchTotal <= 0) autoUpscaleBatchTotal = 1;
+      autoUpscaleBatchTotal += added;
+      const st = document.getElementById('videoGenStatus');
+      if (st) {
+        st.innerText = `📋 已追加 ${added} 条进入 ${preset.toUpperCase()} 超分队列（当前队列共 ${autoUpscaleBatchTotal} 条，剩余待超分 ${autoUpscaleQueue.length} 条）`;
+        st.style.color = '#c4b5fd';
+      }
+    }
+    return;
+  }
+  autoUpscalePreset = preset;
+  autoUpscaleQueue = clean.slice();
+  autoUpscaleBatchTotal = autoUpscaleQueue.length;
+  autoUpscaleBatchDone = 0;
+  runNextQueuedUpscale();
+}
+
+function runNextQueuedUpscale() {
+  if (!autoUpscaleQueue.length) {
+    autoUpscaleBatchTotal = 0;
+    autoUpscaleBatchDone = 0;
+    currentUpscaleTargetName = '';
+    return false;
+  }
+  const nextFn = autoUpscaleQueue.shift();
+  lastAutoUpscaledVideo = nextFn;
+  upscaleVideoByName(nextFn, autoUpscalePreset, true);
+  return true;
+}
+
+function _upscaleBatchPrefix() {
+  if (autoUpscaleBatchTotal > 1) {
+    const idx = Math.min(autoUpscaleBatchTotal, autoUpscaleBatchDone + 1);
+    return `[批量超分 ${idx}/${autoUpscaleBatchTotal}] `;
+  }
+  return '';
+}
 
 function onUpscalePresetChange(val) {
   const btn = document.getElementById('btnUpscaleVideo');
@@ -10715,13 +10789,25 @@ async function upscaleCurrentVideo() {
     return;
   }
   const presetVal = (document.getElementById('upscalePresetSelect') || {}).value || '2k';
-  upscaleVideoByName(currentSelectedVideoName, presetVal);
+  upscaleVideoByName(currentSelectedVideoName, presetVal, false);
 }
 
-async function upscaleVideoByName(fname, presetOverride) {
+async function upscaleVideoByName(fname, presetOverride, fromQueue = false) {
   if (!fname) return;
-  window._upscaleAckedTailSig = '';
   const presetVal = presetOverride || (document.getElementById('upscalePresetSelect') || {}).value || '2k';
+  if (!fromQueue && (upscalePollTimer || currentUpscaleTargetName)) {
+    enqueueUpscaleVideos([fname], presetVal);
+    return;
+  }
+  if (!fromQueue) {
+    autoUpscalePreset = presetVal;
+    autoUpscaleQueue = [];
+    autoUpscaleBatchTotal = 1;
+    autoUpscaleBatchDone = 0;
+  }
+  currentUpscaleTargetName = fname;
+  currentUpscaleStartTs = Date.now();
+  window._upscaleAckedTailSig = '';
   const st = document.getElementById('videoGenStatus');
   const pWrap = document.getElementById('videoProgressWrap');
   const pBar = document.getElementById('videoProgressBar');
@@ -10736,10 +10822,11 @@ async function upscaleVideoByName(fname, presetOverride) {
     tBar.className = 'progress-fill';
     tBar.style.width = '10%';
   }
-  const startMsg = `正在启动 ReCaVSR (${presetVal.toUpperCase()}) 单步流式超分: ${fname}`;
+  const qPref = _upscaleBatchPrefix();
+  const startMsg = `${qPref}正在启动 ReCaVSR (${presetVal.toUpperCase()}) 单步流式超分: ${fname}`;
   if (tLabel) tLabel.innerText = `⏳ ${startMsg}`;
   if (dState) {
-    dState.innerText = '✨ ReCaVSR 正在超分重绘中...';
+    dState.innerText = autoUpscaleBatchTotal > 1 ? `✨ ReCaVSR ${qPref.trim()}重绘中...` : '✨ ReCaVSR 正在超分重绘中...';
     dState.style.color = '#a78bfa';
   }
   const curFrames = parseInt((document.getElementById('videoFrames') || {}).value || '362', 10) || 362;
@@ -10763,6 +10850,10 @@ async function upscaleVideoByName(fname, presetOverride) {
       liveVideoEtaSec = null;
       liveVideoPct = null;
       liveVideoBaseMsg = '';
+      currentUpscaleTargetName = '';
+      autoUpscaleQueue = [];
+      autoUpscaleBatchTotal = 0;
+      autoUpscaleBatchDone = 0;
       if (st) {
         st.innerText = '❌ ' + errTxt;
         st.style.color = '#ef4444';
@@ -10777,13 +10868,17 @@ async function upscaleVideoByName(fname, presetOverride) {
       return;
     }
     if (upscalePollTimer) clearInterval(upscalePollTimer);
-    pollUpscaleStatus();
     upscalePollTimer = setInterval(pollUpscaleStatus, 1500);
+    setTimeout(pollUpscaleStatus, 650);
   } catch (e) {
     liveVideoElapsedSec = null;
     liveVideoEtaSec = null;
     liveVideoPct = null;
     liveVideoBaseMsg = '';
+    currentUpscaleTargetName = '';
+    autoUpscaleQueue = [];
+    autoUpscaleBatchTotal = 0;
+    autoUpscaleBatchDone = 0;
     if (st) {
       st.innerText = '❌ 超分请求异常: ' + e;
       st.style.color = '#ef4444';
@@ -10798,6 +10893,8 @@ async function upscaleVideoByName(fname, presetOverride) {
 }
 
 async function pollUpscaleStatus() {
+  if (upscalePollInFlight) return;
+  upscalePollInFlight = true;
   const st = document.getElementById('videoGenStatus');
   const pWrap = document.getElementById('videoProgressWrap');
   const pBar = document.getElementById('videoProgressBar');
@@ -10818,6 +10915,10 @@ async function pollUpscaleStatus() {
       liveVideoEtaSec = null;
       liveVideoPct = null;
       liveVideoBaseMsg = '';
+      currentUpscaleTargetName = '';
+      autoUpscaleQueue = [];
+      autoUpscaleBatchTotal = 0;
+      autoUpscaleBatchDone = 0;
       const isCancel = String(d.error).includes('已手动停止');
       if (st) {
         st.innerText = isCancel ? d.error : ('❌ ' + d.error);
@@ -10832,6 +10933,11 @@ async function pollUpscaleStatus() {
       setUpscaleBtnRunningState(false);
       return;
     }
+    // 防止队列切换到下一条视频后，云端后台线程尚未把 running 置为 true 时误读到上一条的已完成状态
+    if (!d.running && currentUpscaleTargetName && d.source_video && d.source_video !== currentUpscaleTargetName && (Date.now() - currentUpscaleStartTs) < 15000) {
+      return;
+    }
+    const qPref = _upscaleBatchPrefix();
     const prog = typeof d.pct === 'number' ? d.pct : 10;
     const clamped = Math.max(5, Math.min(100, prog));
     liveVideoPct = clamped;
@@ -10853,12 +10959,12 @@ async function pollUpscaleStatus() {
         liveVideoEtaSec = d.eta_sec;
       }
       if (d.message) {
-        liveVideoBaseMsg = d.message;
-        if (tLabel) tLabel.innerText = `⏳ ${d.message}`;
+        liveVideoBaseMsg = `${qPref}${d.message}`;
+        if (tLabel) tLabel.innerText = `⏳ ${qPref}${d.message}`;
         renderLiveVideoTimingText();
       }
       if (dState) {
-        dState.innerText = '✨ ReCaVSR 正在超分重绘中...';
+        dState.innerText = autoUpscaleBatchTotal > 1 ? `✨ ReCaVSR ${qPref.trim()}重绘中...` : '✨ ReCaVSR 正在超分重绘中...';
         dState.style.color = '#a78bfa';
       }
     } else {
@@ -10867,6 +10973,16 @@ async function pollUpscaleStatus() {
         clearInterval(upscalePollTimer);
         upscalePollTimer = null;
       }
+      currentUpscaleTargetName = '';
+      if (autoUpscaleBatchTotal > 0) autoUpscaleBatchDone += 1;
+      await loadLocalVideoHistory(true);
+      if (autoUpscaleQueue.length > 0) {
+        runNextQueuedUpscale();
+        return;
+      }
+      const finishedBatchTotal = autoUpscaleBatchTotal;
+      autoUpscaleBatchTotal = 0;
+      autoUpscaleBatchDone = 0;
       liveVideoElapsedSec = null;
       liveVideoEtaSec = null;
       liveVideoPct = null;
@@ -10879,18 +10995,22 @@ async function pollUpscaleStatus() {
       }
       if (d.message) {
         const doneDur = (typeof d.elapsed_s === 'number' && d.elapsed_s > 0) ? ` (超分耗时 ${formatCnDur(d.elapsed_s)})` : '';
+        const finalMsg = finishedBatchTotal > 1
+          ? `✨ 批量 ${autoUpscalePreset.toUpperCase()} 超分全部完成！（共 ${finishedBatchTotal} 条均已保存至 ~/Movies/EasyColab）`
+          : d.message;
         if (st) {
-          st.innerText = d.message;
+          st.innerText = finalMsg;
           st.style.color = '#10b981';
         }
-        if (tLabel) tLabel.innerText = `✅ ${d.message}`;
-        if (tSpeed) tSpeed.innerText = `已超分完成并保存至 ~/Movies/EasyColab${doneDur}`;
+        if (tLabel) tLabel.innerText = `✅ ${finalMsg}`;
+        if (tSpeed) tSpeed.innerText = finishedBatchTotal > 1
+          ? `共 ${finishedBatchTotal} 条 ${autoUpscalePreset.toUpperCase()} 超清已全部落盘`
+          : `已超分完成并保存至 ~/Movies/EasyColab${doneDur}`;
       }
       if (dState) {
-        dState.innerText = '✅ ReCaVSR 超分已完成';
+        dState.innerText = finishedBatchTotal > 1 ? `✅ 批量超分已完成 (${finishedBatchTotal}条)` : '✅ ReCaVSR 超分已完成';
         dState.style.color = '#10b981';
       }
-      await loadLocalVideoHistory(true);
       try {
         const rv = await fetch('/api/video_status');
         const dv = await rv.json();
@@ -10900,7 +11020,10 @@ async function pollUpscaleStatus() {
         }
       } catch (e) {}
     }
-  } catch (e) {}
+  } catch (e) {
+  } finally {
+    upscalePollInFlight = false;
+  }
 }
 
 let dramaPollTimer = null;
