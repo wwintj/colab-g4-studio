@@ -282,6 +282,7 @@ _PENDING_VIDEO_JOB: Dict[str, Any] = {
 _LAST_VIDEO_LOG_MSG: List[str] = [""]
 _LOGGED_COMPLETED_VIDEOS: set = set()
 _LAST_LOGGED_UPSCALE_ERR: List[str] = [""]
+_LAST_LOGGED_VIDEO_ERR: List[str] = [""]
 _VIDEO_STEP_TIMING: Dict[str, float] = {
     "first_step_ts": 0.0,
     "first_step_num": 0.0,
@@ -5821,6 +5822,7 @@ async function pollLogs() {
       let latestVideoActive = null;
       let latestUpscaleActive = null;
       let latestVideoDone = null;
+      let latestVideoErr = null;
       let latestUpscaleDone = null;
       let latestUpscaleErr = null;
       for (let i = d.logs.length - 1; i >= 0; i--) {
@@ -5828,6 +5830,11 @@ async function pollLogs() {
         const mvSrErr = line.match(/\[视频超分失败\]\s+(.+)$/);
         if (mvSrErr) {
           latestUpscaleErr = mvSrErr[1];
+          break;
+        }
+        const mvVidErr = line.match(/\[(?:视频失败|图片失败)\]\s+(.+)$/);
+        if (mvVidErr) {
+          latestVideoErr = mvVidErr[1];
           break;
         }
         const mvSrDone = line.match(/\[视频超分完成\]\s+(.+)$/);
@@ -6036,7 +6043,22 @@ async function pollLogs() {
         st.style.color = '#10b981';
         return;
       }
+      if (!d.running && latestVideoErr && !videoPollTimer) {
+        pLabel.innerText = `❌ ${latestVideoErr}`;
+        pSpeed.innerText = '生成中断，请重试';
+        pBar.className = 'progress-fill';
+        pBar.style.background = '#ef4444';
+        pBar.style.width = '100%';
+        st.innerText = '❌ 视频生成中断';
+        st.style.color = '#ef4444';
+        return;
+      }
       if (!d.running && latestVideoActive) {
+        const vSig = `${d.logs.length}:${latestVideoActive.stage}:${latestVideoActive.msg}`;
+        window._lastVideoLogSig = vSig;
+        if (window._videoAckedTailSig && window._videoAckedTailSig === vSig) {
+          return;
+        }
         const vMsg = latestVideoActive.msg;
         const pctM = vMsg.match(/(\d+)%/);
         const segM = vMsg.match(/第\s*(\d+)\/(\d+)\s*段/);
@@ -6052,6 +6074,7 @@ async function pollLogs() {
         if (liveVideoElapsedSec === null && pSpeed) {
           pSpeed.innerText = `总进度 ${vPct}% · 正在生成中...`;
         }
+        pBar.style.background = '';
         pBar.className = 'progress-fill';
         pBar.style.width = `${vPct}%`;
         st.innerText = '⏳ 视频正在生成中...';
@@ -6065,6 +6088,7 @@ async function pollLogs() {
       if (!d.running && latestVideoDone && !videoPollTimer) {
         pLabel.innerText = `✅ ${latestVideoDone}`;
         pSpeed.innerText = '已完成并保存至 ~/Movies/EasyColab';
+        pBar.style.background = '';
         pBar.className = 'progress-fill green';
         pBar.style.width = '100%';
         st.innerText = '✅ 视频生成已完成';
@@ -10579,6 +10603,7 @@ async function pollVideoStatus() {
     const d = await r.json();
     await pollLogs();
     if (d.error && !d.running) {
+      window._videoAckedTailSig = window._lastVideoLogSig || '__done__';
       if (videoPollTimer) {
         clearInterval(videoPollTimer);
         videoPollTimer = null;
@@ -10601,6 +10626,7 @@ async function pollVideoStatus() {
       return;
     }
     if (d.running) {
+      window._videoAckedTailSig = '';
       const isImgMode = currentMiniMaxMode === 'image';
       const isAvMode = currentMiniMaxMode === 'avatar';
       const runLbl = isImgMode ? '🛑 正在生成 4K 写真大图... (点击停止)' : (isAvMode ? '🛑 正在生成数字人视频... (点击停止)' : '🛑 正在合成有声视频... (点击停止)');
@@ -10676,6 +10702,7 @@ async function pollVideoStatus() {
       }
     }
     if (!d.running) {
+      window._videoAckedTailSig = window._lastVideoLogSig || '__done__';
       if (videoPollTimer) {
         clearInterval(videoPollTimer);
         videoPollTimer = null;
@@ -13853,6 +13880,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     gen_tag = "图片生成" if is_img_eng else "视频生成"
                     done_log_tag = "图片完成" if is_img_eng else "视频完成"
                     if d.get("running"):
+                        _LAST_LOGGED_VIDEO_ERR[0] = ""
                         try:
                             cfg["last_activity_ts"] = time.time()
                             ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -13863,6 +13891,12 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                         timing_info = _compute_video_timing_from_logs(int(d.get("pct") or 8))
                         d["elapsed_sec"] = timing_info["elapsed_sec"]
                         d["eta_sec"] = timing_info["eta_sec"]
+                    elif d.get("error"):
+                        err_msg = str(d.get("error") or "").strip()
+                        err_tag = "图片失败" if is_img_eng else "视频失败"
+                        if err_msg and _LAST_LOGGED_VIDEO_ERR[0] != err_msg:
+                            _LAST_LOGGED_VIDEO_ERR[0] = err_msg
+                            _append_panel_log(f"❌ [{err_tag}] {err_msg}")
                     else:
                         vids = d.get("completed_videos") or ([d["latest_video"]] if d.get("latest_video") else []) or (d.get("history") or [])[:1]
                         el_s = float(d.get("elapsed_s") or 0.0)
