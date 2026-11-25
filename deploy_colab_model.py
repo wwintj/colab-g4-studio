@@ -563,8 +563,8 @@ def _enable_g4_vram_optimizations(pipe, total_vram_gb: float):
                 unit.onload_model_names = ()
                 unit._embed_cache = {}
 
-                def _cached_prompt_process(self_unit, pipe_obj, prompt, keyframes=None, ref_blocks=None, height=None, width=None, text_embedding=None):
-                    if ref_blocks is None and text_embedding is None and prompt is not None and not keyframes:
+                def _cached_prompt_process(self_unit, pipe_obj, prompt, keyframes=None, ref_blocks=None, height=None, width=None, text_embedding=None, **extra_kwargs):
+                    if not extra_kwargs and ref_blocks is None and text_embedding is None and prompt is not None and not keyframes:
                         cache_key = (prompt, height, width)
                         cached = self_unit._embed_cache.get(cache_key)
                         if cached is not None:
@@ -581,7 +581,7 @@ def _enable_g4_vram_optimizations(pipe, total_vram_gb: float):
                         }
                         return res
                     pipe_obj.load_models_to_device(self_unit._orig_onload_names)
-                    return self_unit._orig_process(pipe_obj, prompt, keyframes=keyframes, ref_blocks=ref_blocks, height=height, width=width, text_embedding=text_embedding)
+                    return self_unit._orig_process(pipe_obj, prompt, keyframes=keyframes, ref_blocks=ref_blocks, height=height, width=width, text_embedding=text_embedding, **extra_kwargs)
 
                 unit.process = types.MethodType(_cached_prompt_process, unit)
     except Exception:
@@ -695,17 +695,30 @@ def _enable_g4_vram_optimizations(pipe, total_vram_gb: float):
                 update_audio_mask=None,
                 skip_mask_out_condition=False,
                 control_hints=None,
+                video_feature_positions=None,
+                **extra_kwargs,
             ):
-                if not getattr(self_dit, "_tc_enabled", True) or control_hints is not None or use_gradient_checkpointing:
-                    return self_dit._orig_forward(
-                        x, audio_x, img_position_ids, unique_timesteps, inverse_indices, update_mask,
-                        token_tags, prompt_embeds, img_pos_info, audio_pos_info, text_pos_info,
-                        img_pos_for_infer_output_info, packed_seq_params, refiner_packed_seq_params,
+                if (
+                    not getattr(self_dit, "_tc_enabled", True)
+                    or control_hints is not None
+                    or use_gradient_checkpointing
+                    or extra_kwargs
+                ):
+                    orig_kw = dict(
                         use_gradient_checkpointing=use_gradient_checkpointing,
                         use_gradient_checkpointing_offload=use_gradient_checkpointing_offload,
                         update_audio_mask=update_audio_mask,
                         skip_mask_out_condition=skip_mask_out_condition,
                         control_hints=control_hints,
+                    )
+                    if video_feature_positions is not None:
+                        orig_kw["video_feature_positions"] = video_feature_positions
+                    orig_kw.update(extra_kwargs)
+                    return self_dit._orig_forward(
+                        x, audio_x, img_position_ids, unique_timesteps, inverse_indices, update_mask,
+                        token_tags, prompt_embeds, img_pos_info, audio_pos_info, text_pos_info,
+                        img_pos_for_infer_output_info, packed_seq_params, refiner_packed_seq_params,
+                        **orig_kw,
                     )
 
                 inverse_indices = inverse_indices.view(-1).to(torch.long)
@@ -799,6 +812,11 @@ def _enable_g4_vram_optimizations(pipe, total_vram_gb: float):
                     video_logits = video_logits * update_mask.unsqueeze(-1)
                     if update_audio_mask is not None:
                         audio_logits = audio_logits * update_audio_mask.view(-1).unsqueeze(-1)
+                if video_feature_positions is not None:
+                    vfp = video_feature_positions.to(device) if hasattr(video_feature_positions, "to") else video_feature_positions
+                    time_indices = inverse_indices.index_select(0, vfp)
+                    features = hidden.index_select(0, vfp)
+                    return video_logits, audio_logits, (features, t_emb.index_select(0, time_indices))
                 return video_logits, audio_logits
 
             pipe.dit.forward = types.MethodType(_teacache_dit_forward, pipe.dit)
