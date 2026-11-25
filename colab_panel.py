@@ -6146,12 +6146,16 @@ async function pollLogs() {
     }
     const st = document.getElementById('deployStateText');
     isDeployTaskRunning = Boolean(d.running);
+    if (d.running) {
+      window._ackedGpuFailSig = '';
+    }
     if (!d.running && d.exit_code === 2) {
       const joinedLogs = (d.logs || []).join('\n');
       const mFail = joinedLogs.match(/\[GPU_ALLOC_FAILED:([A-Z0-9]+)\]/);
       const failedGpu = mFail ? mFail[1] : 'G4';
-      if (!window._lastGpuFailShownTs || (Date.now() - window._lastGpuFailShownTs > 4000)) {
-        window._lastGpuFailShownTs = Date.now();
+      const failSig = `${(d.logs || []).length}:${failedGpu}:${joinedLogs.slice(-120)}`;
+      if (window._ackedGpuFailSig !== failSig) {
+        window._ackedGpuFailSig = failSig;
         openGpuChoiceModal(`Google Colab 服务端拒绝了 ${failedGpu} 实例分配（返回 Service Unavailable：当前账户无 ${failedGpu} 权限或算力池繁忙）。系统未自动降级，请由您自主选择要加载的 GPU 或切换账户：`, failedGpu);
       }
     }
