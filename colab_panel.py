@@ -1436,6 +1436,7 @@ import json, os, re, shutil, subprocess
 
 res = {
     "gpu": None,
+    "cpu": None,
     "ram": None,
     "shm": None,
     "disk_content": None,
@@ -1467,6 +1468,40 @@ if gpu_raw and "," in gpu_raw:
             "temp": p[4],
             "power": f"{p[5]}W / {p[6]}W",
         }
+
+try:
+    import time as _t_cpu
+    def _read_cpu_stat():
+        with open("/proc/stat", "r") as _f:
+            parts = _f.readline().split()[1:]
+        vals = [int(x) for x in parts[:8]]
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
+        return sum(vals), idle
+    tot1, idle1 = _read_cpu_stat()
+    _t_cpu.sleep(0.25)
+    tot2, idle2 = _read_cpu_stat()
+    dtot = max(1, tot2 - tot1)
+    didle = max(0, idle2 - idle1)
+    cpu_pct = round(max(0.0, min(100.0, (dtot - didle) * 100.0 / dtot)), 1)
+    cpu_model = ""
+    try:
+        for _ln in open("/proc/cpuinfo", "r"):
+            if _ln.lower().startswith("model name"):
+                cpu_model = _ln.split(":", 1)[1].strip()
+                cpu_model = re.sub(r"\\(R\\)|\\(TM\\)|CPU\\s*", "", cpu_model)
+                cpu_model = re.sub(r"\\s+", " ", cpu_model).strip()[:36]
+                break
+    except Exception:
+        pass
+    load_1m = round(os.getloadavg()[0], 2) if hasattr(os, "getloadavg") else 0.0
+    res["cpu"] = {
+        "cores": int(os.cpu_count() or 2),
+        "pct": cpu_pct,
+        "load_1m": load_1m,
+        "model": cpu_model or "Colab VM CPU",
+    }
+except Exception:
+    pass
 
 mem_raw = subprocess.getoutput("free -b 2>/dev/null").splitlines()
 for line in mem_raw:
@@ -2331,14 +2366,23 @@ HTML_PAGE = r"""<!DOCTYPE html>
     gap: 16px;
     margin-bottom: 20px;
   }
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
   .grid-2 {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
     gap: 16px;
     margin-bottom: 20px;
   }
+  @media (max-width: 1120px) {
+    .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
   @media (max-width: 900px) {
-    .grid-top, .grid-3 { grid-template-columns: 1fr; }
+    .grid-top, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   }
   .card {
     background: var(--card);
@@ -3013,8 +3057,8 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<div class="grid-3">
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;">
+<div class="grid-4">
+  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
     <div>
       <h2><span>🎮 GPU 显存 (VRAM)</span><span id="gpuTemp" style="font-size:12px;color:var(--muted)">--</span></h2>
       <div class="metric-val" id="gpuVal">-- / -- GB</div>
@@ -3023,7 +3067,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div class="progress-bar"><div class="progress-fill green" id="gpuBar" style="width:0%"></div></div>
   </div>
 
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;">
+  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
+    <div>
+      <h2><span>🖥️ CPU 状态</span><span id="cpuCores" style="font-size:12px;color:var(--muted)">-- 核</span></h2>
+      <div class="metric-val" id="cpuVal">--%</div>
+      <div class="metric-sub" id="cpuSub" style="white-space:pre-line;line-height:1.45;">等待连接实例...</div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div>
+  </div>
+
+  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
     <div>
       <h2><span>🧠 内存盘 (/dev/shm)</span><span id="ramInfo" style="font-size:12px;color:var(--muted)">RAM: --</span></h2>
       <div class="metric-val" id="shmVal">-- / -- GB</div>
@@ -3032,7 +3085,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div class="progress-bar"><div class="progress-fill" id="shmBar" style="width:0%"></div></div>
   </div>
 
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;">
+  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
     <div>
       <h2><span>💾 本地 NVMe 盘 (/content)</span></h2>
       <div class="metric-val" id="diskVal">-- / -- GB</div>
@@ -5691,6 +5744,22 @@ async function refreshStatus(force = false) {
         document.getElementById('gpuSub').innerText = `${m.gpu.name}\n负载 ${m.gpu.util}% · ${m.gpu.power}`;
         document.getElementById('gpuTemp').innerText = `${m.gpu.temp}°C`;
         document.getElementById('gpuBar').style.width = `${Math.min(100, m.gpu.pct)}%`;
+      } else if (isInstanceOnline) {
+        document.getElementById('gpuVal').innerText = '纯 CPU 实例';
+        document.getElementById('gpuSub').innerText = '未分配 GPU（低功耗 CPU 运行中）';
+        document.getElementById('gpuTemp').innerText = '无 GPU';
+        document.getElementById('gpuBar').style.width = '0%';
+      }
+      if (m.cpu) {
+        const cPct = Number(m.cpu.pct || 0);
+        const cBar = document.getElementById('cpuBar');
+        document.getElementById('cpuVal').innerText = `${cPct.toFixed(1)}%`;
+        document.getElementById('cpuCores').innerText = `${m.cpu.cores || '--'} 核`;
+        document.getElementById('cpuSub').innerText = `${m.cpu.model || 'Colab VM CPU'}\n1分钟负载 ${m.cpu.load_1m ?? '--'}`;
+        if (cBar) {
+          cBar.style.width = `${Math.min(100, cPct)}%`;
+          cBar.style.background = cPct >= 85 ? '#f59e0b' : '';
+        }
       }
       if (m.ram) {
         document.getElementById('ramInfo').innerText = `系统内存: ${m.ram.used_gb}/${m.ram.total_gb} GB`;
@@ -5736,6 +5805,14 @@ async function refreshStatus(force = false) {
       document.getElementById('gpuSub').innerText = '实例已释放 · 0.00W';
       document.getElementById('gpuTemp').innerText = '--°C';
       document.getElementById('gpuBar').style.width = '0%';
+      const cpuV = document.getElementById('cpuVal');
+      const cpuS = document.getElementById('cpuSub');
+      const cpuC = document.getElementById('cpuCores');
+      const cpuB = document.getElementById('cpuBar');
+      if (cpuV) cpuV.innerText = '已关机';
+      if (cpuS) cpuS.innerText = '实例未启动';
+      if (cpuC) cpuC.innerText = '-- 核';
+      if (cpuB) { cpuB.style.width = '0%'; cpuB.style.background = ''; }
       document.getElementById('shmVal').innerText = '已关机';
       document.getElementById('shmSub').innerText = '实例未启动';
       document.getElementById('shmBar').style.width = '0%';
@@ -13633,11 +13710,13 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
                 now = time.time()
-                if _DEPLOY_STATE["running"] or (not force and _LAST_METRICS_CACHE["data"] and (now - _LAST_METRICS_CACHE["timestamp"] < 12)):
+                primary_sess = next((x for x in sessions if x.get("name") != "dataset-sync"), sessions[0])
+                can_probe_now = (not _DEPLOY_STATE["running"]) or (primary_sess.get("name") == "dataset-sync")
+                if (not can_probe_now) or (not force and _LAST_METRICS_CACHE["data"] and (now - _LAST_METRICS_CACHE["timestamp"] < 12)):
                     metrics = _LAST_METRICS_CACHE["data"]
                 else:
                     try:
-                        metrics = _query_remote_metrics(sessions[0]["name"])
+                        metrics = _query_remote_metrics(primary_sess["name"])
                         _LAST_METRICS_CACHE["data"] = metrics
                         _LAST_METRICS_CACHE["timestamp"] = now
                         cfg = _load_endpoint_cfg()
