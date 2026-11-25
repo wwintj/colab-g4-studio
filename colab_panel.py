@@ -3060,16 +3060,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <div class="grid-4">
   <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
     <div>
-      <h2><span>🎮 GPU 显存 (VRAM)</span><span id="gpuTemp" style="font-size:12px;color:var(--muted)">--</span></h2>
-      <div class="metric-val" id="gpuVal">-- / -- GB</div>
-      <div class="metric-sub" id="gpuSub" style="white-space:pre-line;line-height:1.45;">等待连接 RTX PRO 6000 实例...</div>
-    </div>
-    <div class="progress-bar"><div class="progress-fill green" id="gpuBar" style="width:0%"></div></div>
-  </div>
-
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
-    <div>
-      <h2><span>🖥️ CPU 状态</span><span id="cpuCores" style="font-size:12px;color:var(--muted)">-- 核</span></h2>
+      <h2 style="gap:6px;white-space:nowrap;"><span>🖥️ CPU 状态</span><span id="cpuCores" style="font-size:12px;color:var(--muted)">-- 核</span></h2>
       <div class="metric-val" id="cpuVal">--%</div>
       <div class="metric-sub" id="cpuSub" style="white-space:pre-line;line-height:1.45;">等待连接实例...</div>
     </div>
@@ -3078,7 +3069,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
   <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
     <div>
-      <h2><span>🧠 内存盘 (/dev/shm)</span><span id="ramInfo" style="font-size:12px;color:var(--muted)">RAM: --</span></h2>
+      <h2 style="gap:6px;white-space:nowrap;"><span>🎮 GPU 显存</span><span id="gpuTemp" style="font-size:12px;color:var(--muted)">--</span></h2>
+      <div class="metric-val" id="gpuVal">-- / -- GB</div>
+      <div class="metric-sub" id="gpuSub" style="white-space:pre-line;line-height:1.45;">等待连接 RTX PRO 6000 实例...</div>
+    </div>
+    <div class="progress-bar"><div class="progress-fill green" id="gpuBar" style="width:0%"></div></div>
+  </div>
+
+  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
+    <div>
+      <h2 style="gap:6px;white-space:nowrap;"><span>🧠 内存盘</span><span id="ramInfo" style="font-size:11.5px;color:var(--muted)">RAM: --</span></h2>
       <div class="metric-val" id="shmVal">-- / -- GB</div>
       <div class="metric-sub" id="shmSub" style="white-space:pre-line;line-height:1.45;">高速内存盘（存放当前运行权重）</div>
     </div>
@@ -3087,7 +3087,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
   <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
     <div>
-      <h2><span>💾 本地 NVMe 盘 (/content)</span></h2>
+      <h2 style="gap:6px;white-space:nowrap;"><span>💾 本地 NVMe 盘</span><span style="font-size:11.5px;color:var(--muted)">/content</span></h2>
       <div class="metric-val" id="diskVal">-- / -- GB</div>
       <div class="metric-sub" id="diskSub" style="white-space:pre-line;line-height:1.45;">剩余可用: -- GB</div>
     </div>
@@ -5762,7 +5762,7 @@ async function refreshStatus(force = false) {
         }
       }
       if (m.ram) {
-        document.getElementById('ramInfo').innerText = `系统内存: ${m.ram.used_gb}/${m.ram.total_gb} GB`;
+        document.getElementById('ramInfo').innerText = `RAM ${m.ram.used_gb}/${m.ram.total_gb}G`;
       }
       if (m.shm) {
         document.getElementById('shmVal').innerText = `${m.shm.used_gb} / ${m.shm.total_gb} GB (${m.shm.pct}%)`;
