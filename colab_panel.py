@@ -2766,6 +2766,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <span style="font-size:12px;font-weight:700;color:#94a3b8;white-space:nowrap;">📦 开机加载模型</span>
       <select id="bootModelSelect" onchange="onBootModelSelectChange(this.value)" style="flex:1;height:28px;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#f8fafc;font-size:12.5px;font-weight:700;cursor:pointer;">
         <option value="MiniMax-H3">🎬 MiniMax-H3 (33B · 有声视频主力 · 134 GB)</option>
+        <option value="MiniMax-H3-Ref2VA">🕺 MiniMax-H3-Ref2VA (33B · 白模/动作迁移 · 无审查)</option>
         <option value="MiniMax-H3-Image">📸 MiniMax-H3-Image (4K生图/换装 · 45.2 GB)</option>
         <option value="LongCat-Video-Avatar-1.6">🎭 LongCat-Video-Avatar-1.6 (数字人配音 · 58.8 GB)</option>
         <option value="Huihui-Qwen3.8-27B-abliterated-GGUF">🧠 Qwen3.8-27B (无审查对话/扩写 · 53.1 GB)</option>
@@ -3165,6 +3166,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </div>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
+
+      <div class="folder-tag preset-card" id="preset_minimax_ref2va" onclick="selectPresetModel('preset_minimax_ref2va', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3-Ref2VA', 'Ref2VA/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;grid-column:1 / -1;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#e9d5ff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🕺 MiniMax-H3-Ref2VA (33B · 白模/动作迁移 · 无审查)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">BF16 原生 Ref2VA + 共享 72.4 GB 破限编码器/VAE · 仅增量 61.7 GB</div>
+        </div>
+        <span class="preset-check" style="color:#a855f7;font-weight:700;display:none;flex-shrink:0;">✔</span>
+      </div>
     </div>
 
     <!-- T4 16GB 模型区 -->
@@ -3283,56 +3292,66 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- 5 大功能按创作流水线序列一字排开 (5列等宽醒目导航卡：01 4K生图与换装 -> 02 文生视频 -> 03 首尾帧视频 -> 04 数字人说话 -> 05 全自动短剧导演) -->
-    <div style="display:grid;grid-template-columns:repeat(5, minmax(0, 1fr));gap:8px;width:100%;">
+    <!-- 6 大功能按创作流水线序列一字排开 (6列等宽醒目导航卡：01 4K生图与换装 -> 02 文生视频 -> 03 首尾帧视频 -> 04 数字人说话 -> 05 全自动短剧导演 -> 06 白模/动作迁移) -->
+    <div style="display:grid;grid-template-columns:repeat(6, minmax(0, 1fr));gap:8px;width:100%;">
       <!-- 01: 4K写真生图 & 换脸换装融景 (二合一) -->
-      <button type="button" id="tabBtnImage" onclick="switchMiniMaxMode('image')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+      <button type="button" id="tabBtnImage" onclick="switchMiniMaxMode('image')" style="text-align:left;padding:9px 10px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
           <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:linear-gradient(135deg,rgba(244,114,182,0.25),rgba(192,132,252,0.25));color:#f472b6;">01 · 图像与换装</span>
           <span style="font-size:14px;">📸🪄</span>
         </div>
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">4K生图 · 换脸换装</div>
-        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">纯文生4K + 人脸/服装/姿势/融景</div>
+        <div style="font-size:12.5px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">4K生图 · 换脸换装</div>
+        <div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">纯文生4K + 人脸/服装/姿势/白模</div>
       </button>
 
       <!-- 02: 文生音视频 (T2VA) -->
-      <button type="button" id="tabBtnT2va" onclick="switchMiniMaxMode('t2va')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #3b82f6;background:linear-gradient(135deg,rgba(37,99,235,0.35),rgba(15,23,42,0.95));box-shadow:0 6px 16px -4px rgba(59,130,246,0.45);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+      <button type="button" id="tabBtnT2va" onclick="switchMiniMaxMode('t2va')" style="text-align:left;padding:9px 10px;border-radius:10px;border:1.5px solid #3b82f6;background:linear-gradient(135deg,rgba(37,99,235,0.35),rgba(15,23,42,0.95));box-shadow:0 6px 16px -4px rgba(59,130,246,0.45);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
           <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(59,130,246,0.28);color:#93c5fd;">02 · 纯文生视频</span>
           <span style="font-size:14px;">✨</span>
         </div>
-        <div style="font-size:13px;font-weight:800;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">文生有声视频</div>
-        <div style="font-size:10.5px;color:#bfdbfe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">T2VA · 提示词直出音视频</div>
+        <div style="font-size:12.5px;font-weight:800;color:#ffffff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">文生有声视频</div>
+        <div style="font-size:10px;color:#bfdbfe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">T2VA · 提示词直出音视频</div>
       </button>
 
       <!-- 03: 首尾帧生音视频 (FL2VA) -->
-      <button type="button" id="tabBtnFl2va" onclick="switchMiniMaxMode('fl2va')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+      <button type="button" id="tabBtnFl2va" onclick="switchMiniMaxMode('fl2va')" style="text-align:left;padding:9px 10px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
           <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(56,189,248,0.22);color:#38bdf8;">03 · 图生视频</span>
           <span style="font-size:14px;">🖼️</span>
         </div>
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">首尾帧有声视频</div>
-        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FL2VA · 首尾图精准运镜</div>
+        <div style="font-size:12.5px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">首尾帧有声视频</div>
+        <div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FL2VA · 首尾图精准运镜</div>
       </button>
 
       <!-- 04: 数字人音频驱动 (LongCat-Avatar) -->
-      <button type="button" id="tabBtnAvatar" onclick="switchMiniMaxMode('avatar')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+      <button type="button" id="tabBtnAvatar" onclick="switchMiniMaxMode('avatar')" style="text-align:left;padding:9px 10px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
           <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.22);color:#34d399;">04 · 口型配音</span>
           <span style="font-size:14px;">🎭</span>
         </div>
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">数字人配音说话</div>
-        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">LongCat + Ming3.0 驱动</div>
+        <div style="font-size:12.5px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">数字人配音说话</div>
+        <div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">LongCat + Ming3.0 驱动</div>
       </button>
 
       <!-- 05: 短剧分镜全自动导演台 -->
-      <button type="button" id="tabBtnAutoDrama" onclick="switchMiniMaxMode('drama')" style="text-align:left;padding:9px 11px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+      <button type="button" id="tabBtnAutoDrama" onclick="switchMiniMaxMode('drama')" style="text-align:left;padding:9px 10px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
           <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(245,158,11,0.24);color:#fbbf24;">05 · 全剧集总控</span>
           <span style="font-size:14px;">🎬</span>
         </div>
-        <div style="font-size:13px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">短剧全自动导演</div>
-        <div style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">多角色锁脸+全剧自动合片</div>
+        <div style="font-size:12.5px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">短剧全自动导演</div>
+        <div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">多角色锁脸+全剧自动合片</div>
+      </button>
+
+      <!-- 06: 白模/深度动作迁移 (MiniMax-H3-Ref2VA) -->
+      <button type="button" id="tabBtnRef2va" onclick="switchMiniMaxMode('ref2va')" style="text-align:left;padding:9px 10px;border-radius:10px;border:1.5px solid #475569;background:rgba(15,23,42,0.85);cursor:pointer;display:flex;flex-direction:column;gap:3px;transition:all 0.18s;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+          <span style="font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:rgba(168,85,247,0.26);color:#d8b4fe;">06 · 白模动作</span>
+          <span style="font-size:14px;">🕺</span>
+        </div>
+        <div style="font-size:12.5px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">白模/动作迁移</div>
+        <div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Ref2VA · 白模/深度换人换景</div>
       </button>
     </div>
   </div>
@@ -3413,21 +3432,29 @@ HTML_PAGE = r"""<!DOCTYPE html>
         </label>
       </div>
 
-      <!-- 槽位 ③：💃 姿势动作 (选填) -->
+      <!-- 槽位 ③：💃 姿势动作 (选填 · 支持一键把真人照片转为 3D素白模/主体深度/骨骼姿势图) -->
       <div id="fusionPoseCard" style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #38bdf8;display:flex;flex-direction:column;gap:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
-          <span style="font-size:12.5px;font-weight:900;color:#bae6fd;white-space:nowrap;">💃 ③ 姿势动作 <span style="font-size:10.5px;color:#38bdf8;font-weight:600;">(选填)</span></span>
+          <span style="font-size:12px;font-weight:900;color:#bae6fd;white-space:nowrap;">💃 ③ 姿势动作</span>
           <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
-            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_POSE', 'pose')" style="padding:2px 6px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #38bdf8;background:linear-gradient(135deg,rgba(56,189,248,0.26),rgba(99,102,241,0.22));color:#bae6fd;cursor:pointer;" title="从衣姿库点选 288组×5机位=1,440式 姿势动作图">💃 姿势库(1440)</button>
-            <button type="button" onclick="clearFusionPoseSlot()" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;" title="清空姿势槽">✕</button>
+            <select id="fusionPoseGuideMode" title="选择将姿势槽照片转为哪种纯动作引导图" style="height:20px;padding:0 3px;font-size:10px;font-weight:700;border-radius:4px;border:1px solid rgba(168,85,247,0.55);background:#0f172a;color:#e9d5ff;cursor:pointer;">
+              <option value="clay">🗿白模</option>
+              <option value="subject_depth">🖤深度</option>
+              <option value="pose">🦴骨骼</option>
+            </select>
+            <button type="button" id="btnConvertPoseToClay" onclick="convertFusionPoseSlotToGuide()" style="padding:2px 6px;font-size:10.5px;font-weight:800;border-radius:4px;border:1px solid #a855f7;background:rgba(168,85,247,0.24);color:#f3e8ff;cursor:pointer;white-space:nowrap;" title="一键把当前③号姿势槽中的真人照片转为纯 3D 素白模 / 主体深度 / 骨骼姿势图（彻底剥离原图人脸与衣服干扰）">⚡转</button>
+            <button type="button" onclick="openCc0PortraitGalleryModal('FUSION_POSE', 'pose')" style="padding:2px 5px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid #38bdf8;background:linear-gradient(135deg,rgba(56,189,248,0.26),rgba(99,102,241,0.22));color:#bae6fd;cursor:pointer;" title="从衣姿库点选 288组×5机位=1,440式 姿势动作图">💃库</button>
+            <button type="button" onclick="clearFusionPoseSlot()" style="padding:2px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;" title="清空姿势槽">✕</button>
           </div>
         </div>
         <label style="position:relative;height:172px;border-radius:8px;border:1.5px dashed #0284c7;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <span id="fusionPoseGuideBadge" style="display:none;position:absolute;top:6px;left:6px;z-index:3;font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(88,28,135,0.88);color:#f3e8ff;border:1px solid #c084fc;font-weight:700;white-space:nowrap;pointer-events:none;backdrop-filter:blur(4px);">🗿已转3D白模</span>
+          <button type="button" id="btnToggleFusionPoseOrig" onclick="event.preventDefault();event.stopPropagation();toggleFusionPoseOrigMode();" style="display:none;position:absolute;bottom:6px;right:6px;z-index:3;padding:2px 7px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(2,6,23,0.88);color:#7dd3fc;cursor:pointer;white-space:nowrap;backdrop-filter:blur(4px);" title="在『白模/深度姿势图』与『未转换原图』之间一键切换">↺ 切回原图</button>
           <img id="fusionPoseImg" style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;">
           <div id="fusionPoseEmpty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:8px;">
             <div style="font-size:26px;margin-bottom:4px;">💃</div>
             <div style="color:#bae6fd;font-weight:800;">点击上传【姿势参考图】</div>
-            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">不传则默认保持②号图原有动作姿势</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:3px;">传真人照可点右上角「🗿白模 ⚡转」剥离原人脸衣服</div>
           </div>
           <input type="file" id="inpFusionPose" accept="image/*" style="display:none;" onchange="onFusionDedicatedSlotFileChange(1, this)">
         </label>
@@ -3887,6 +3914,264 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- 06 · 白模/深度动作迁移工作台 (MiniMax-H3-Ref2VA · 默认隐藏，切换至 ref2va 显示) -->
+  <div id="ref2vaStudioRow" style="display:none;padding:13px 15px;margin-bottom:14px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(59,7,100,0.78) 100%);border:1.5px solid rgba(168,85,247,0.68);border-radius:12px;">
+    <!-- 顶栏：标题 + 一键从 𝕏 灵感库导入 + 清空 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid rgba(168,85,247,0.28);">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+        <span style="font-size:14.5px;font-weight:900;color:#f3e8ff;white-space:nowrap;">🕺 1. 白模/动作引导视频 &lt;Video 1&gt; 与多参考图 &lt;Picture 1~4&gt;</span>
+        <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(168,85,247,0.2);border:1px solid rgba(192,132,252,0.45);color:#e9d5ff;font-weight:700;white-space:nowrap;">支持真人视频一键转 3D素白模 / 主体深度 / 全场景深度 / 骨骼</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;">
+        <button type="button" onclick="openWhiteModelLibraryModal()" style="height:28px;padding:0 10px;font-size:11.5px;font-weight:800;border-radius:7px;border:1px solid rgba(192,132,252,0.75);background:linear-gradient(135deg,rgba(147,51,234,0.34),rgba(56,189,248,0.22));color:#f3e8ff;cursor:pointer;white-space:nowrap;" title="打开本地 + 20TB 云盘同步的永久白模动作库，一键点选复用">🗿 从白模库选</button>
+        <button type="button" onclick="openXGalleryImportModal()" style="height:28px;padding:0 11px;font-size:11.5px;font-weight:800;border-radius:7px;border:1px solid rgba(251,146,60,0.75);background:linear-gradient(135deg,rgba(234,88,12,0.34),rgba(168,85,247,0.28));color:#ffedd5;cursor:pointer;white-space:nowrap;" title="直接从本地 H3 𝕏 灵感库 (127.0.0.1:8765) 一键导入视频、参考图和提示词">𝕏 从灵感库一键导入</button>
+        <button type="button" onclick="clearRef2vaAll()" style="height:28px;padding:0 9px;font-size:11px;font-weight:700;border-radius:7px;border:1px solid rgba(239,68,68,0.48);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer;white-space:nowrap;">🗑️ 清空全部</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.12fr 1fr;gap:12px;align-items:stretch;">
+      <!-- 左侧：<Video 1> 动作源视频 + 剪辑截取 + 4模式一键转白模/深度/骨骼预览器 -->
+      <div style="padding:11px 12px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid rgba(168,85,247,0.55);display:flex;flex-direction:column;gap:9px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
+          <span style="font-size:12.5px;font-weight:900;color:#e9d5ff;white-space:nowrap;">🎞️ &lt;Video 1&gt; 动作/白模参考视频 (必填)</span>
+          <div style="display:flex;align-items:center;gap:5px;min-width:0;">
+            <span id="ref2vaVideoMetaBadge" style="font-size:10.5px;color:#c4b5fd;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">未选择视频</span>
+            <button type="button" onclick="clearRef2vaVideo()" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;flex-shrink:0;">✕</button>
+          </div>
+        </div>
+
+        <!-- 双视图预览盒：原始视频 / 转换后的白模深度视频 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:10.5px;font-weight:700;color:#94a3b8;display:flex;justify-content:space-between;align-items:center;">
+              <span>① 源视频 / 现成白模</span>
+              <label for="inpRef2vaVideo" style="color:#c084fc;cursor:pointer;font-weight:800;">📤 选本地视频</label>
+            </div>
+            <div onclick="if(!ref2vaSrcVideoB64)document.getElementById('inpRef2vaVideo').click();" ondragover="event.preventDefault();this.style.borderColor='#c084fc';" ondragleave="this.style.borderColor='#7e22ce';" ondrop="event.preventDefault();this.style.borderColor='#7e22ce';if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaVideoFileObj(event.dataTransfer.files[0]);" style="position:relative;height:184px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <video id="ref2vaSrcVideoPreview" controls muted playsinline style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;"></video>
+              <div id="ref2vaSrcVideoEmpty" style="text-align:center;color:#94a3b8;font-size:11px;padding:10px;">
+                <div style="font-size:26px;margin-bottom:4px;">🎥</div>
+                <div style="color:#e9d5ff;font-weight:800;">点击上传 MP4 / MOV</div>
+                <div style="font-size:10px;color:#64748b;margin-top:3px;">真人跳舞视频或现成白模均可<br>也可点右上角从 𝕏 灵感库导入</div>
+              </div>
+              <input type="file" id="inpRef2vaVideo" accept="video/*" style="display:none;" onchange="onRef2vaVideoFileSelect(this)">
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:10.5px;font-weight:700;color:#94a3b8;display:flex;justify-content:space-between;align-items:center;gap:4px;">
+              <span id="ref2vaGuideTitleLbl" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">② 白模/深度引导预览</span>
+              <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+                <button type="button" id="btnRef2vaTryDress01" onclick="sendRef2vaFirstFrameToCard01()" style="padding:1px 6px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid rgba(244,114,182,0.65);background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;white-space:nowrap;" title="可选：截取第1帧白模送去卡片01，6秒先出4K定妆图看穿搭氛围，满意再点「🕺送入06」回来跑视频">🧪 第1帧去01试妆</button>
+                <button type="button" id="btnSaveWhiteModelLib" onclick="saveCurrentGuideToWhiteModelLibrary()" style="display:none;padding:1px 6px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid rgba(16,185,129,0.65);background:rgba(16,185,129,0.2);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把当前白模永久存入「🗿 白模动作库」并自动同步至 20TB Google Drive">💾 存白模库</button>
+                <a id="ref2vaGuideDownloadLink" href="#" download style="display:none;color:#34d399;font-weight:800;text-decoration:none;white-space:nowrap;">⬇️ 下载</a>
+              </div>
+            </div>
+            <div style="position:relative;height:184px;border-radius:8px;border:1.5px solid #334155;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
+              <video id="ref2vaGuideVideoPreview" controls loop playsinline style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;"></video>
+              <div id="ref2vaGuideVideoEmpty" style="text-align:center;color:#64748b;font-size:11px;padding:10px;line-height:1.5;">
+                <div style="font-size:24px;margin-bottom:4px;">🗿</div>
+                <div style="color:#cbd5e1;font-weight:700;">一键转白模/深度预览区</div>
+                <div style="font-size:10px;margin-top:3px;">选好下方模式后点「⚡ 生成预览」<br>若源视频已是白模可直接跳过</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 剪辑片段截取 + 音轨/时长开关 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 8px;border-radius:7px;background:#0f172a;border:1px solid #334155;font-size:11px;">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span style="color:#94a3b8;font-weight:700;">✂️ 片段截取:</span>
+            <input id="inpRef2vaStartSec" type="number" min="0" step="0.5" value="0" style="width:52px;padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:11px;text-align:center;">
+            <span style="color:#64748b;">秒 ~</span>
+            <input id="inpRef2vaEndSec" type="number" min="0" step="0.5" value="0" placeholder="全长" title="填 0 表示自动截取至视频结尾（最长 10 秒 / 243 帧）" style="width:52px;padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:11px;text-align:center;">
+            <span style="color:#64748b;">秒 (0=全长)</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <label title="开启后保留原视频中的 BGM / 节奏音乐输入 Ref2VA (video_audio)；关闭则让 H3 原生重配环境音与配乐" style="display:inline-flex;align-items:center;gap:4px;color:#fde68a;font-weight:700;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="chkRef2vaKeepAudio" style="width:13px;height:13px;accent-color:#f59e0b;margin:0;">
+              <span>🎵 保留原视频BGM</span>
+            </label>
+            <label title="开启后自动按参考视频帧数对齐生成时长（17n+5 帧），保证动作 1:1 严丝合缝" style="display:inline-flex;align-items:center;gap:4px;color:#6ee7b7;font-weight:700;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="chkRef2vaMatchDur" checked style="width:13px;height:13px;accent-color:#10b981;margin:0;">
+              <span>⏱️ 自动匹配原时长</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 4 模式预处理选择 + 生成预览按钮 -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <select id="selRef2vaGuideMode" style="flex:1;min-width:190px;height:32px;padding:0 8px;border-radius:7px;border:1px solid #a855f7;background:#1e1b4b;color:#f3e8ff;font-size:11.5px;font-weight:700;cursor:pointer;">
+            <option value="clay" selected>🗿 转 3D 素白模 (立体白模 · 换人换装最稳推荐)</option>
+            <option value="subject_depth">🖤 转主体深度 (纯黑背景 · 换场景最干净)</option>
+            <option value="full_depth">🌫️ 转全场景深度 (保留原片运镜与空间布局)</option>
+            <option value="pose">🦴 转骨骼姿态 (极速舞蹈/手势骨架)</option>
+            <option value="raw">🎞️ 直接使用原视频 / 现成白模 (免转换)</option>
+          </select>
+          <button type="button" id="btnRef2vaPreprocess" onclick="runRef2vaGuidePreprocess()" style="height:32px;padding:0 12px;border-radius:7px;border:1px solid #c084fc;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">⚡ 生成白模/深度预览</button>
+          <button type="button" id="btnRef2vaUseRawToggle" onclick="clearRef2vaPreprocessedGuide()" style="display:none;height:32px;padding:0 9px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;" title="清除已转换的白模预览，改用源视频直接作为 <Video 1>">↺ 改用源视频</button>
+        </div>
+
+        <!-- 云端白模细节微调：平滑度 / 去水印裁边 / 动作自由度 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+          <select id="selRef2vaSmoothness" title="控制 3D 素白模表面平滑程度：选柔和去衣褶最不容易粘连原视频衣服纹路" style="height:27px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10.5px;font-weight:700;cursor:pointer;">
+            <option value="balanced" selected>🗿 白模平滑: 标准均衡</option>
+            <option value="soft">🫧 柔和去衣褶 (换装最稳)</option>
+            <option value="detail">🔍 精细保留衣褶细节</option>
+          </select>
+          <select id="selRef2vaCropMode" title="转白模前在云端先裁掉平台黑边或边角水印，避免把水印转进白模" style="height:27px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10.5px;font-weight:700;cursor:pointer;">
+            <option value="none" selected>✂️ 裁边去水印: 不裁边</option>
+            <option value="auto_black">⬛ 自动去黑边</option>
+            <option value="trim_6pct">✂️ 四周裁6% (去抖音/X水印)</option>
+            <option value="trim_10pct">✂️ 四周强裁10%</option>
+          </select>
+          <select id="selRef2vaFreedom" title="控制 Ref2VA 跟随白模的严格程度" style="height:27px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10.5px;font-weight:700;cursor:pointer;">
+            <option value="strict" selected>🔒 严格卡拍锁动作</option>
+            <option value="natural">🌊 适度自然发挥</option>
+          </select>
+        </div>
+        <div id="ref2vaGuideStatusText" style="font-size:11px;color:#c4b5fd;line-height:1.4;">💡 提示：上传任意真人跳舞/动作视频后点「⚡ 生成白模/深度预览」（约 3~6 秒），即可去掉原视频人物颜值/服饰/背景干扰；若您直接上传的是现成白模/深度视频，直接点下方开始生成即可！</div>
+      </div>
+
+      <!-- 右侧：<Picture 1> ~ <Picture 4> 多参考图槽 + 一键 Ref2VA 提示词模板 -->
+      <div style="padding:11px 12px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid rgba(56,189,248,0.5);display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
+          <span style="font-size:12.5px;font-weight:900;color:#bae6fd;white-space:nowrap;">🖼️ 多参考图槽 (&lt;Picture 1~4&gt;)</span>
+          <span style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">提示词用 &lt;Picture 1&gt; / &lt;Video 1&gt;</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;">
+          <!-- <Picture 1> 主体角色 -->
+          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(192,132,252,0.5);display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:4px;">
+              <span style="font-size:11px;font-weight:800;color:#e9d5ff;white-space:nowrap;">&lt;Picture 1&gt; 🧑 主角</span>
+              <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+                <button type="button" onclick="openCc0PortraitGalleryModal('REF2VA_PIC_0', 'portrait')" style="padding:1px 5px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;" title="从内置 1,499 张高清演员正脸库点选填入 <Picture 1>">👩脸库</button>
+                <button type="button" onclick="clearRef2vaImgSlot(0)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+              </div>
+            </div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(0,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:100px;border-radius:6px;border:1px dashed #7e22ce;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview0" style="display:none;width:100%;height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty0" style="text-align:center;color:#94a3b8;font-size:10.5px;">🧑 点击或拖入角色照</div>
+              <input type="file" id="inpRef2vaPic0" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(0, this)">
+            </label>
+          </div>
+
+          <!-- <Picture 2> 服装/背面 -->
+          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(244,114,182,0.5);display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:4px;">
+              <span style="font-size:11px;font-weight:800;color:#fbcfe8;white-space:nowrap;">&lt;Picture 2&gt; 👗 服装</span>
+              <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+                <button type="button" onclick="openCc0PortraitGalleryModal('REF2VA_PIC_1', 'costume')" style="padding:1px 5px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid #f472b6;background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;" title="从内置 2,727 套服装库点选填入 <Picture 2>">👗衣库</button>
+                <button type="button" onclick="clearRef2vaImgSlot(1)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+              </div>
+            </div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(1,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:100px;border-radius:6px;border:1px dashed #be185d;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview1" style="display:none;width:100%;height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty1" style="text-align:center;color:#94a3b8;font-size:10.5px;">👗 可选：服装/背面图</div>
+              <input type="file" id="inpRef2vaPic1" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(1, this)">
+            </label>
+          </div>
+
+          <!-- <Picture 3> 场景背景 -->
+          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(16,185,129,0.5);display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span style="font-size:11px;font-weight:800;color:#a7f3d0;">&lt;Picture 3&gt; 🏞️ 场景背景</span>
+              <button type="button" onclick="clearRef2vaImgSlot(2)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+            </div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(2,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:106px;border-radius:6px;border:1px dashed #059669;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview2" style="display:none;width:100%;height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty2" style="text-align:center;color:#94a3b8;font-size:10.5px;">🏞️ 可选：目标实景图</div>
+              <input type="file" id="inpRef2vaPic2" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(2, this)">
+            </label>
+          </div>
+
+          <!-- <Picture 4> 补充参考 -->
+          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(56,189,248,0.5);display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <span style="font-size:11px;font-weight:800;color:#bae6fd;">&lt;Picture 4&gt; ✨ 道具/补充</span>
+              <button type="button" onclick="clearRef2vaImgSlot(3)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+            </div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(3,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:106px;border-radius:6px;border:1px dashed #0284c7;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview3" style="display:none;width:100%;height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty3" style="text-align:center;color:#94a3b8;font-size:10.5px;">✨ 可选：补充参考图</div>
+              <input type="file" id="inpRef2vaPic3" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(3, this)">
+            </label>
+          </div>
+        </div>
+
+        <!-- 一键 Ref2VA 黄金提示词模板填充条 -->
+        <div style="margin-top:auto;padding:7px 9px;border-radius:7px;background:rgba(15,23,42,0.9);border:1px dashed rgba(168,85,247,0.45);display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+          <span style="font-size:10.5px;font-weight:800;color:#d8b4fe;white-space:nowrap;">⚡ 一键填词模板:</span>
+          <button type="button" onclick="applyRef2vaPromptTemplate('clay_swap')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(192,132,252,0.5);background:rgba(168,85,247,0.18);color:#f3e8ff;cursor:pointer;">🗿 白模换真人</button>
+          <button type="button" onclick="applyRef2vaPromptTemplate('depth_scene')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(16,185,129,0.5);background:rgba(16,185,129,0.16);color:#a7f3d0;cursor:pointer;">🖤 深度换人+换景</button>
+          <button type="button" onclick="applyRef2vaPromptTemplate('outfit_dance')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(244,114,182,0.5);background:rgba(236,72,153,0.16);color:#fbcfe8;cursor:pointer;">👗 换装跟跳</button>
+          <button type="button" onclick="applyRef2vaPromptTemplate('cinema_raw')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(56,189,248,0.5);background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;">🎥 电影实拍</button>
+        </div>
+
+        <!-- 成片后期流水线 + 同一白模批量换主角连拍 + 拍完自动关机 -->
+        <div style="padding:7px 9px;border-radius:7px;background:#0f172a;border:1px solid #334155;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;font-size:10.5px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <label title="成片下载后 0.2 秒用 ffmpeg 无损替换回原视频 CD 级原声 BGM（画质零重编码，跳舞卡点最爽）" style="display:inline-flex;align-items:center;gap:4px;color:#fde68a;font-weight:700;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="chkRef2vaMuxOrigBgm" checked style="width:13px;height:13px;accent-color:#f59e0b;margin:0;">
+              <span>🎵 无损回贴原声BGM</span>
+            </label>
+            <label title="成片完成后自动调用内置 PixelAI H3 FaceFix，以 <Picture 1> 人脸精修全身跳舞远景小脸" style="display:inline-flex;align-items:center;gap:4px;color:#6ee7b7;font-weight:700;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="chkRef2vaAutoFaceFix" style="width:13px;height:13px;accent-color:#10b981;margin:0;">
+              <span>🧬 自动远景锁脸</span>
+            </label>
+            <label title="单条或整批全部跑完（含自动2K超分）后自动释放关闭 G4 实例，绝不浪费算力" style="display:inline-flex;align-items:center;gap:4px;color:#fca5a5;font-weight:700;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="chkRef2vaAutoShutdown" style="width:13px;height:13px;accent-color:#ef4444;margin:0;">
+              <span>🛑 拍完自动关机</span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <input type="file" id="inpRef2vaBatchFaces" accept="image/*" multiple style="display:none;" onchange="onRef2vaBatchFacesSelected(this)">
+            <button type="button" onclick="document.getElementById('inpRef2vaBatchFaces').click()" style="padding:3px 8px;font-size:10.5px;font-weight:800;border-radius:5px;border:1px solid rgba(56,189,248,0.6);background:rgba(14,165,233,0.2);color:#bae6fd;cursor:pointer;white-space:nowrap;" title="锁定当前白模 <Video 1>，一次选 2~10 张不同主角/穿搭图自动队列连拍">📦 批量换主角连拍</button>
+          </div>
+        </div>
+        <div id="ref2vaBatchQueueBar" style="display:none;padding:6px 8px;border-radius:7px;background:rgba(14,165,233,0.12);border:1px dashed rgba(56,189,248,0.55);align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🗿 永久白模动作库弹窗 (本地 ~/Movies/EasyColab/white_models/ + 20TB 云盘同步) -->
+  <div id="whiteModelLibraryModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:10032;background:rgba(2,6,23,0.84);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
+    <div style="width:100%;max-width:860px;max-height:84vh;background:#1e293b;border:1.5px solid rgba(192,132,252,0.7);border-radius:16px;padding:18px 20px;box-shadow:0 28px 70px rgba(0,0,0,0.85);display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:15.5px;font-weight:900;color:#f3e8ff;">🗿 我的白模动作库</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(168,85,247,0.2);color:#d8b4fe;font-weight:700;">~/Movies/EasyColab/white_models + 20TB 云盘同步</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button type="button" onclick="loadWhiteModelLibrary()" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">🔄 刷新</button>
+          <button type="button" onclick="document.getElementById('whiteModelLibraryModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 关闭</button>
+        </div>
+      </div>
+      <div id="whiteModelLibStatus" style="font-size:12px;color:#94a3b8;">正在读取已保存的白模视频...</div>
+      <div id="whiteModelLibGrid" style="overflow-y:auto;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:10px;min-height:160px;"></div>
+    </div>
+  </div>
+
+  <!-- 𝕏 灵感库一键导入弹窗 (直连本地 H3 𝕏 灵感库 127.0.0.1:8765) -->
+  <div id="xGalleryImportModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:10030;background:rgba(2,6,23,0.84);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
+    <div style="width:100%;max-width:860px;max-height:84vh;background:#1e293b;border:1.5px solid rgba(251,146,60,0.65);border-radius:16px;padding:18px 20px;box-shadow:0 28px 70px rgba(0,0,0,0.85);display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:15.5px;font-weight:900;color:#ffedd5;">𝕏 从灵感库一键导入到【06 · 白模/动作迁移】</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(251,146,60,0.18);color:#fdba74;font-weight:700;">自动导入视频 + 参考图 + 提示词</span>
+        </div>
+        <button type="button" onclick="document.getElementById('xGalleryImportModal').style.display='none'" style="height:28px;padding:0 10px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">✕ 关闭</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="inpXGallerySearch" type="text" oninput="renderXGalleryImportList()" placeholder="搜索提示词、作者、白模、depth、dance..." style="flex:1;height:34px;padding:0 11px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:12.5px;">
+        <button type="button" onclick="loadXGalleryItems(true)" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;">🔄 刷新</button>
+      </div>
+      <div id="xGalleryImportStatus" style="font-size:12px;color:#94a3b8;">正在读取本地 H3 𝕏 灵感库...</div>
+      <div id="xGalleryImportList" style="overflow-y:auto;display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px;padding-right:4px;min-height:180px;"></div>
+    </div>
+  </div>
+
   <!-- ==================== 第 1 行 (单独一行 100% 宽度)：☰ 镜头与多模态提示词 (内部四个框也全部各自单独一行) ==================== -->
   <div id="promptSectionCard" style="padding:14px 16px;margin-bottom:14px;background:#0f172a;border:1px solid var(--border);border-radius:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:10px;margin-bottom:10px;min-width:0;">
@@ -4151,6 +4436,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;">
           <div id="imageActionBtns" style="display:none;align-items:center;gap:5px;">
             <button type="button" onclick="sendCurrentPreviewToDramaRole()" style="height:28px;padding:0 9px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(192,132,252,0.55);background:rgba(168,85,247,0.18);color:#e9d5ff;cursor:pointer;" title="将当前预览图直接锁定为短剧角色A/B/C/D/E的 16:9 基准定妆照">📌 锁入短剧角色</button>
+            <button type="button" onclick="sendCurrentImageToRef2va()" style="height:28px;padding:0 9px;font-size:11.5px;font-weight:800;border-radius:7px;border:1px solid rgba(168,85,247,0.72);background:linear-gradient(135deg,rgba(147,51,234,0.3),rgba(99,102,241,0.25));color:#f3e8ff;cursor:pointer;" title="将当前 4K 成图直接设为卡片 06【白模/动作迁移】的 <Picture 1> 主角照">🕺 送入06当主角</button>
             <button type="button" onclick="sendCurrentImageToAvatar()" style="height:28px;padding:0 9px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(16,185,129,0.55);background:rgba(16,185,129,0.18);color:#6ee7b7;cursor:pointer;" title="将当前图片直接设为 LongCat-Avatar-1.6 数字人参考图，驱动她开口说话">🎭 送入数字人说话</button>
             <button type="button" onclick="sendCurrentImageToH3Edit()" style="height:28px;padding:0 9px;font-size:11.5px;font-weight:700;border-radius:7px;border:1px solid rgba(236,72,153,0.55);background:rgba(236,72,153,0.18);color:#fbcfe8;cursor:pointer;" title="将当前图片设为 &lt;Picture 1&gt;，免涂 Mask 像素级锁脸换装">👗 设为&lt;Picture 1&gt;换装</button>
           </div>
@@ -5379,7 +5665,9 @@ function selectPresetModel(cardId, repo, folder, pattern, keepCurrentTab = false
       switchMiniMaxMode('avatar');
     } else if (folder === 'MiniMax-H3-Image') {
       switchMiniMaxMode('image');
-    } else if (folder.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image')) {
+    } else if (folder === 'MiniMax-H3-Ref2VA') {
+      switchMiniMaxMode('ref2va');
+    } else if (folder.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image' || currentMiniMaxMode === 'ref2va')) {
       switchMiniMaxMode('t2va');
     }
   }
@@ -5394,6 +5682,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
   const repoMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
     'MiniMax-H3': 'MiniMaxAI/MiniMax-H3',
+    'MiniMax-H3-Ref2VA': 'MiniMaxAI/MiniMax-H3',
     'MiniMaxAI': 'MiniMaxAI/MiniMax-H3',
     'MiniMax-H3-Image': 'Comfy-Org/MiniMax-H3-Image',
     'LongCat-Video-Avatar-1.6': 'meituan-longcat/LongCat-Video-Avatar-1.6',
@@ -5408,6 +5697,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
   const cardMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'preset_qwen_bf16',
     'MiniMax-H3': 'preset_minimax_h3',
+    'MiniMax-H3-Ref2VA': 'preset_minimax_ref2va',
     'MiniMaxAI': 'preset_minimax_h3',
     'MiniMax-H3-Image': 'preset_minimax_image',
     'LongCat-Video-Avatar-1.6': 'preset_longcat_avatar',
@@ -5422,6 +5712,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
   const patternMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf',
     'MiniMax-H3': 'FL2VA/*.safetensors',
+    'MiniMax-H3-Ref2VA': 'Ref2VA/*.safetensors',
     'MiniMax-H3-Image': '*.safetensors',
     'LongCat-Video-Avatar-1.6': 'base_model/*.safetensors',
     'LongCat-Video-Avatar-1.6-INT8': 'base_model_int8/*.safetensors',
@@ -5454,7 +5745,9 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
       switchMiniMaxMode('avatar');
     } else if (folderName === 'MiniMax-H3-Image') {
       switchMiniMaxMode('image');
-    } else if (folderName.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image')) {
+    } else if (folderName === 'MiniMax-H3-Ref2VA') {
+      switchMiniMaxMode('ref2va');
+    } else if (folderName.startsWith('MiniMax-H3') && (currentMiniMaxMode === 'avatar' || currentMiniMaxMode === 'image' || currentMiniMaxMode === 'ref2va')) {
       switchMiniMaxMode('t2va');
     }
   }
@@ -5598,6 +5891,8 @@ async function refreshStatus(force = false) {
           switchMiniMaxMode('avatar');
         } else if (mf === 'MiniMax-H3-Image') {
           switchMiniMaxMode('image');
+        } else if (mf === 'MiniMax-H3-Ref2VA') {
+          switchMiniMaxMode('ref2va');
         }
       }
       selectDriveFolder(mf, '', true);
@@ -5653,7 +5948,7 @@ async function refreshStatus(force = false) {
             hrsEl.innerText = '🟢 今日配额可用 · 单次约 3~5 小时';
           }
           const curF = (document.getElementById('inpFolder') || {}).value || '';
-          const g4OnlySet = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'MiniMax-H3-Image']);
+          const g4OnlySet = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image']);
           if (g4OnlySet.has(curF)) {
             switchPresetTierTab('t4', true);
           }
@@ -5684,7 +5979,9 @@ async function refreshStatus(force = false) {
       'unsloth/MiniMax-H3-GGUF': 'MiniMax-H3(T4)',
       'ReCaVSR': 'ReCaVSR',
       'MiniMax-H3': 'MiniMax-H3(33B)',
+      'MiniMax-H3-Ref2VA': 'MiniMax-H3-Ref2VA(白模)',
       'MiniMaxAI/MiniMax-H3': 'MiniMax-H3(33B)',
+      'MiniMaxAI/MiniMax-H3-Ref2VA': 'MiniMax-H3-Ref2VA(白模)',
       'MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
       'Comfy-Org/MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
       'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
@@ -6272,6 +6569,7 @@ function onBootModelSelectChange(folderVal) {
   if (!folderVal || folderVal === 'CURRENT') return;
   const map = {
     'MiniMax-H3': ['preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors'],
+    'MiniMax-H3-Ref2VA': ['preset_minimax_ref2va', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3-Ref2VA', 'Ref2VA/*.safetensors'],
     'MiniMax-H3-Image': ['preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors'],
     'LongCat-Video-Avatar-1.6': ['preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors'],
     'Huihui-Qwen3.8-27B-abliterated-GGUF': ['preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf'],
@@ -6293,7 +6591,7 @@ function openBootModal() {
   if (rEl) rEl.style.display = 'none';
   if (mSel) {
     const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
-    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
     mSel.value = known.has(curF) ? curF : 'CURRENT';
   }
   selectBootGpuCard(_selectedBootGpu || 'G4');
@@ -6312,7 +6610,7 @@ function openGpuChoiceModal(reasonText, requestedGpu = 'G4') {
   }
   if (mSel) {
     const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
-    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
     mSel.value = known.has(curF) ? curF : 'CURRENT';
   }
   selectBootGpuCard(requestedGpu || _selectedBootGpu || 'G4');
@@ -6763,11 +7061,13 @@ function switchMiniMaxMode(mode) {
   const isAv = mode === 'avatar';
   const isImg = mode === 'image';
   const isDrama = mode === 'drama';
+  const isRef2 = mode === 'ref2va';
   const flRow = document.getElementById('fl2vaImageRow');
   const avRow = document.getElementById('avatarControlRow');
   const imgRow = document.getElementById('h3ImageControlRow');
   const dramaRow = document.getElementById('autoDramaDirectorRow');
   const fusionRow = document.getElementById('fusionStudioRow');
+  const ref2Row = document.getElementById('ref2vaStudioRow');
   const promptCard = document.getElementById('promptSectionCard');
   const specCard = document.getElementById('specSectionCard');
   if (flRow) flRow.style.display = isFl ? 'grid' : 'none';
@@ -6775,14 +7075,16 @@ function switchMiniMaxMode(mode) {
   if (imgRow) imgRow.style.display = 'none';
   if (dramaRow) dramaRow.style.display = isDrama ? 'block' : 'none';
   if (fusionRow) fusionRow.style.display = isImg ? 'block' : 'none';
+  if (ref2Row) ref2Row.style.display = isRef2 ? 'block' : 'none';
   if (promptCard) promptCard.style.display = isDrama ? 'none' : 'block';
   if (specCard) specCard.style.display = isDrama ? 'none' : 'block';
   const tabConfigs = [
     {id: 'tabBtnImage', active: isImg, border: '#ec4899', bg: 'linear-gradient(135deg,rgba(236,72,153,0.34),rgba(168,85,247,0.32),rgba(15,23,42,0.95))', shadow: 'rgba(236,72,153,0.45)'},
-    {id: 'tabBtnT2va', active: (!isFl && !isAv && !isImg && !isDrama), border: '#3b82f6', bg: 'linear-gradient(135deg,rgba(37,99,235,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(59,130,246,0.45)'},
+    {id: 'tabBtnT2va', active: (!isFl && !isAv && !isImg && !isDrama && !isRef2), border: '#3b82f6', bg: 'linear-gradient(135deg,rgba(37,99,235,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(59,130,246,0.45)'},
     {id: 'tabBtnFl2va', active: isFl, border: '#38bdf8', bg: 'linear-gradient(135deg,rgba(14,165,233,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(56,189,248,0.45)'},
     {id: 'tabBtnAvatar', active: isAv, border: '#10b981', bg: 'linear-gradient(135deg,rgba(16,185,129,0.34),rgba(15,23,42,0.95))', shadow: 'rgba(16,185,129,0.45)'},
     {id: 'tabBtnAutoDrama', active: isDrama, border: '#f59e0b', bg: 'linear-gradient(135deg,rgba(245,158,11,0.36),rgba(15,23,42,0.95))', shadow: 'rgba(245,158,11,0.48)'},
+    {id: 'tabBtnRef2va', active: isRef2, border: '#a855f7', bg: 'linear-gradient(135deg,rgba(147,51,234,0.38),rgba(99,102,241,0.28),rgba(15,23,42,0.95))', shadow: 'rgba(168,85,247,0.5)'},
   ];
   tabConfigs.forEach(tc => {
     const el = document.getElementById(tc.id);
@@ -6952,24 +7254,30 @@ function switchMiniMaxMode(mode) {
       autoSplitAvatarPromptAndTts(pEl);
     }
   } else {
-    if (loraBar) loraBar.style.display = 'flex';
+    if (loraBar) loraBar.style.display = isRef2 ? 'none' : 'flex';
+    const lblSixSec = document.getElementById('lblAutoH3SixSection');
+    if (lblSixSec) lblSixSec.style.display = isRef2 ? 'none' : 'inline-flex';
     if (titleEl) {
-      titleEl.innerText = isFl
-        ? '🖼️ MiniMax-H3 (FL2VA) 首尾帧精准运镜有声视频创作工作台'
-        : '🎬 MiniMax-H3 (T2VA) 纯文本直出有声视频创作工作台';
+      titleEl.innerText = isRef2
+        ? '🕺 MiniMax-H3-Ref2VA (33B · 无审查) 白模/深度动作迁移创作工作台'
+        : (isFl
+          ? '🖼️ MiniMax-H3 (FL2VA) 首尾帧精准运镜有声视频创作工作台'
+          : '🎬 MiniMax-H3 (T2VA) 纯文本直出有声视频创作工作台');
     }
     if (badgeEl) {
-      badgeEl.innerText = isFl
-        ? '首尾双帧锁脸运镜 + 32kHz 原生立体声音效 + H3六段式防崩编译'
-        : '32kHz 原生立体声音轨 + 32B 视觉编码器 + Sentinel7/h3 云端LoRA';
+      badgeEl.innerText = isRef2
+        ? '4模式一键转白模/主体深度/全场景深度/骨骼 + 多参考图换人换景 + 32B无审查编码器'
+        : (isFl
+          ? '首尾双帧锁脸运镜 + 32kHz 原生立体声音效 + H3六段式防崩编译'
+          : '32kHz 原生立体声音轨 + 32B 视觉编码器 + Sentinel7/h3 云端LoRA');
     }
-    if (pSecTitle) pSecTitle.innerText = '镜头与多模态提示词';
+    if (pSecTitle) pSecTitle.innerText = isRef2 ? '2. Ref2VA 动作迁移提示词（用 <Video 1> / <Picture 1~4> 指代）' : '镜头与多模态提示词';
     if (pSecSubHint) pSecSubHint.style.display = 'none';
     if (fourBtns) fourBtns.style.display = 'flex';
     if (singleBtns) singleBtns.style.display = 'none';
     if (box1Hdr) box1Hdr.style.display = 'flex';
     if (box1Wrap) box1Wrap.style.marginBottom = '14px';
-    if (box1Lbl) box1Lbl.innerText = '1. 主体、构图、光影与风格描述';
+    if (box1Lbl) box1Lbl.innerText = isRef2 ? '1. 白模/动作迁移指令（已自动注入 <Video 1> 与参考图标签）' : '1. 主体、构图、光影与风格描述';
     if (box2Wrap) box2Wrap.style.display = 'block';
     if (box3Wrap) box3Wrap.style.display = 'block';
     if (box4Wrap) box4Wrap.style.display = 'block';
@@ -6995,7 +7303,7 @@ function switchMiniMaxMode(mode) {
     if (btnGen) {
       btnGen.style.display = 'inline-flex';
       if (btnGen.getAttribute('data-running') !== '1') {
-        btnGen.innerText = isFl ? '🎬 生成首尾帧有声视频' : '🎬 生成有声视频';
+        btnGen.innerText = isRef2 ? '🕺 生成白模/动作迁移视频' : (isFl ? '🎬 生成首尾帧有声视频' : '🎬 生成有声视频');
         btnGen.style.flex = '1';
       }
     }
@@ -7149,11 +7457,85 @@ function renderFusionTargetCards() {
   if (typeof saveUiWorkspaceStateDebounced === 'function') saveUiWorkspaceStateDebounced();
 }
 
+let fusionPoseOrigB64 = '';
+let fusionPoseGuideB64 = '';
+let fusionPoseUseGuide = false;
+
+function _resetFusionPoseGuideUi() {
+  fusionPoseOrigB64 = '';
+  fusionPoseGuideB64 = '';
+  fusionPoseUseGuide = false;
+  const b = document.getElementById('fusionPoseGuideBadge');
+  const t = document.getElementById('btnToggleFusionPoseOrig');
+  if (b) b.style.display = 'none';
+  if (t) t.style.display = 'none';
+}
+
+async function convertFusionPoseSlotToGuide() {
+  const curImg = fusionPoseUseGuide ? fusionPoseOrigB64 : (fusionTargetList[1] || '');
+  if (!curImg) {
+    alert('请先在「③ 姿势动作」槽上传一张真人动作照片，再点击「⚡转」将其转为白模/深度姿势图！');
+    return;
+  }
+  const mode = (document.getElementById('fusionPoseGuideMode') || {}).value || 'clay';
+  const modeNames = {clay: '🗿3D素白模', subject_depth: '🖤主体深度', pose: '🦴骨骼姿态'};
+  const btn = document.getElementById('btnConvertPoseToClay');
+  const origTxt = btn ? btn.innerText : '⚡转';
+  if (btn) { btn.disabled = true; btn.innerText = '⏳...'; }
+  try {
+    const r = await fetch('/api/guide_preprocess', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({image_b64: curImg, mode}),
+    });
+    const d = await r.json();
+    if (!d.ok || !d.image_b64) {
+      alert('❌ 转换白模/深度姿势图失败：' + (d.error || '请确认云端 GPU 引擎已开机就绪'));
+      return;
+    }
+    fusionPoseOrigB64 = curImg;
+    fusionPoseGuideB64 = d.image_b64;
+    fusionPoseUseGuide = true;
+    while (fusionTargetList.length < 2) fusionTargetList.push('');
+    while (fusionTargetSlotKinds.length < 2) fusionTargetSlotKinds.push('');
+    fusionTargetList[1] = fusionPoseGuideB64;
+    fusionTargetSlotKinds[1] = 'pose';
+    renderFusionTargetCards();
+    const b = document.getElementById('fusionPoseGuideBadge');
+    const t = document.getElementById('btnToggleFusionPoseOrig');
+    if (b) { b.style.display = 'inline-block'; b.innerText = `已转${modeNames[mode] || '白模'} (${d.elapsed_s || 0.4}s)`; }
+    if (t) { t.style.display = 'inline-block'; t.innerText = '↺ 切回原图'; }
+    showGlobalCopyToast(`✅ 已将③号姿势槽照片转为「${modeNames[mode] || mode}」，已剥离原人脸与服装干扰！`);
+  } catch (e) {
+    alert('❌ 请求异常: ' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = origTxt; }
+  }
+}
+
+function toggleFusionPoseOrigMode() {
+  if (!fusionPoseOrigB64 || !fusionPoseGuideB64) return;
+  fusionPoseUseGuide = !fusionPoseUseGuide;
+  fusionTargetList[1] = fusionPoseUseGuide ? fusionPoseGuideB64 : fusionPoseOrigB64;
+  renderFusionTargetCards();
+  const b = document.getElementById('fusionPoseGuideBadge');
+  const t = document.getElementById('btnToggleFusionPoseOrig');
+  if (fusionPoseUseGuide) {
+    if (b) { b.style.display = 'inline-block'; b.innerText = '🗿白模姿势图'; }
+    if (t) t.innerText = '↺ 切回原图';
+  } else {
+    if (b) { b.style.display = 'inline-block'; b.innerText = '🖼️使用原图'; }
+    if (t) t.innerText = '🗿 切回白模';
+  }
+}
+
 function onFusionDedicatedSlotFileChange(slotIdx, inputEl) {
   const file = inputEl && inputEl.files && inputEl.files[0];
   if (!file) return;
   if (slotIdx === 0) {
     _clearStaleLibraryOutfitPromptOnUpload();
+  } else if (slotIdx === 1) {
+    _resetFusionPoseGuideUi();
   }
   const reader = new FileReader();
   reader.onload = ev => {
@@ -7178,6 +7560,7 @@ function clearFusionOutfitSlot() {
 }
 
 function clearFusionPoseSlot() {
+  _resetFusionPoseGuideUi();
   window._lastPosewearPoseDesc = '';
   window._lastPosewearPoseZh = '';
   fusionTargetList[1] = '';
@@ -9792,6 +10175,23 @@ async function _fetchCurrentSelectedImageAsDataUrl() {
   });
 }
 
+async function sendCurrentImageToRef2va() {
+  try {
+    const dataUrl = await _fetchCurrentSelectedImageAsDataUrl();
+    if (!dataUrl) {
+      alert('请先在本地历史中选择一张已生成的图片');
+      return;
+    }
+    setRef2vaImgSlot(0, dataUrl);
+    switchMiniMaxMode('ref2va');
+    const rRow = document.getElementById('ref2vaStudioRow');
+    if (rRow) rRow.scrollIntoView({behavior: 'smooth', block: 'center'});
+    showGlobalCopyToast(`🕺 已将「${currentSelectedVideoName}」设为【06 · 白模/动作迁移】的 <Picture 1> 主角！`);
+  } catch (e) {
+    alert('送入卡片 06 失败: ' + e);
+  }
+}
+
 async function sendCurrentImageToAvatar() {
   try {
     const dataUrl = await _fetchCurrentSelectedImageAsDataUrl();
@@ -10494,6 +10894,15 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
   const prompt = document.getElementById('videoPrompt').value.trim();
   const isImgMode = (forceTarget === 'image') || (currentMiniMaxMode === 'image');
   const isAvMode = currentMiniMaxMode === 'avatar';
+  const isRef2Mode = currentMiniMaxMode === 'ref2va';
+  if (isRef2Mode && !window._ref2vaBatchInside && ref2vaBatchFaces.length > 0) {
+    startRef2vaBatchQueue(forceInterruptLlm);
+    return;
+  }
+  if (isRef2Mode && !ref2vaGuideVideoName && !ref2vaSrcVideoB64 && !ref2vaImgSlots.some(Boolean)) {
+    alert('请先上传动作/白模参考视频（或从 𝕏 灵感库一键导入），再点击生成！');
+    return;
+  }
   let autoDirRes = { applied: false, prompt: prompt, label: '' };
   if (isImgMode) {
     autoDirRes = maybeAutoDirectImagePrompt(prompt);
@@ -10527,18 +10936,19 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
   const seedVal = randSeed ? -1 : (parseInt(document.getElementById('videoSeed').value || '42', 10) || 42);
   const soundTxt = document.getElementById('videoSoundPrompt').value.trim();
   const musicTxt = document.getElementById('videoMusicPrompt').value.trim();
-  const loraPath = (!isImgMode && !isAvMode) ? getSelectedH3SentinelLoraPath() : '';
+  const loraPath = (!isImgMode && !isAvMode && !isRef2Mode) ? getSelectedH3SentinelLoraPath() : '';
   const loraStrength = parseFloat(((document.getElementById('h3SentinelLoraStrength') || {}).value) || '0.85') || 0.85;
   const autoGolden = Boolean(((document.getElementById('chkH3SentinelAutoGoldenSpec') || {}).checked));
   const autoSixSec = Boolean(((document.getElementById('chkAutoH3SixSection') || {}).checked));
   const hasRefFrame = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
   const finalVideoPrompt = isImgMode
     ? (autoDirRes.applied ? autoDirRes.prompt : prompt)
-    : ((!isAvMode && autoSixSec)
+    : ((!isAvMode && !isRef2Mode && autoSixSec)
         ? compileVideoPromptToH3SixSection(prompt, soundTxt, musicTxt, hasRefFrame, loraPath)
         : prompt);
 
   const payload = {
+    mode: isImgMode ? 'image' : (isAvMode ? 'avatar' : (isRef2Mode ? 'ref2va' : (currentMiniMaxMode === 'fl2va' ? 'fl2va' : 't2va'))),
     prompt: finalVideoPrompt,
     soundscape: soundTxt,
     music: musicTxt,
@@ -10552,7 +10962,7 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
     seed: seedVal,
     randomize_seed: randSeed,
     batch_count: isImgMode ? 1 : selectedBatchCount,
-    auto_h3_six_section: autoSixSec,
+    auto_h3_six_section: isRef2Mode ? false : autoSixSec,
     force_interrupt_llm: Boolean(forceInterruptLlm),
   };
   if (loraPath) {
@@ -10563,6 +10973,29 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
   if (currentMiniMaxMode === 'fl2va' && firstFrameB64) {
     payload.first_frame_b64 = firstFrameB64;
     if (lastFrameB64) payload.last_frame_b64 = lastFrameB64;
+  } else if (isRef2Mode) {
+    payload.mode = 'ref2va';
+    payload.ref_images_b64 = ref2vaImgSlots.filter(Boolean);
+    if (ref2vaGuideVideoName) {
+      payload.ref_video_name = ref2vaGuideVideoName;
+    } else if (ref2vaSrcVideoB64) {
+      payload.ref_video_b64 = ref2vaSrcVideoB64;
+    }
+    payload.start_sec = parseFloat((document.getElementById('inpRef2vaStartSec') || {}).value || '0') || 0;
+    payload.end_sec = parseFloat((document.getElementById('inpRef2vaEndSec') || {}).value || '0') || 0;
+    payload.keep_ref_audio = Boolean((document.getElementById('chkRef2vaKeepAudio') || {}).checked);
+    payload.match_ref_duration = Boolean((document.getElementById('chkRef2vaMatchDur') || {}).checked);
+    payload.motion_freedom = (document.getElementById('selRef2vaFreedom') || {}).value || 'strict';
+    if (payload.match_ref_duration) payload.num_frames = 0;
+    window._lastRef2vaJobMeta = {
+      mode: 'ref2va',
+      start_sec: payload.start_sec,
+      mux_orig_bgm: Boolean((document.getElementById('chkRef2vaMuxOrigBgm') || {}).checked),
+      auto_facefix: Boolean((document.getElementById('chkRef2vaAutoFaceFix') || {}).checked),
+      auto_shutdown: Boolean((document.getElementById('chkRef2vaAutoShutdown') || {}).checked),
+      face_b64: ref2vaImgSlots[0] || '',
+      src_video_b64: ref2vaSrcVideoB64 || '',
+    };
   } else if (currentMiniMaxMode === 'image') {
     payload.mode = 'image';
     payload.ref_images_b64 = h3ImgRefList.filter(Boolean);
@@ -10589,7 +11022,11 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
   const pBar = document.getElementById('videoProgressBar');
   const runningBtnText = isImgMode
     ? '🛑 生成 4K 图中 (点击停止)'
-    : (isAvMode ? '🛑 生成数字人中 (点击停止)' : (selectedBatchCount > 1 ? `🛑 连抽 ${selectedBatchCount} 条中 (点击停止)` : '🛑 合成视频中 (点击停止)'));
+    : (isAvMode
+      ? '🛑 生成数字人中 (点击停止)'
+      : (isRef2Mode
+        ? '🛑 白模动作迁移中 (点击停止)'
+        : (selectedBatchCount > 1 ? `🛑 连抽 ${selectedBatchCount} 条中 (点击停止)` : '🛑 合成视频中 (点击停止)')));
   setVideoBtnRunningState(true, runningBtnText);
   pWrap.style.display = 'block';
   pBar.style.width = '8%';
@@ -10599,7 +11036,9 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
         : '⏳ 已提交至 MiniMax-H3-Image (33B · Heretic无审查) 引擎，正在进行 6 步极速扩散采样...')
     : (isAvMode
       ? '⏳ 已提交至 LongCat-Video-Avatar-1.6 引擎，正在分离人声并提取 Whisper-v3 唇形特征...'
-      : `⏳ 已提交至 MiniMax-H3 引擎 (连抽 ${selectedBatchCount} 条)，正在调用多模态编码器...`);
+      : (isRef2Mode
+        ? '⏳ 已提交至 MiniMax-H3-Ref2VA (33B · 无审查) 白模/动作迁移引擎，正在编码视频与参考图特征...'
+        : `⏳ 已提交至 MiniMax-H3 引擎 (连抽 ${selectedBatchCount} 条)，正在调用多模态编码器...`));
   st.style.color = '#f59e0b';
   try {
     const r = await fetch('/api/video_generate', {
@@ -10631,18 +11070,20 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
     }
     if (d.auto_switching) {
       if (isImgMode) {
-        selectPresetModel('preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors');
+        selectPresetModel('preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors', true);
       } else if (isAvMode) {
         if (currentPresetTier === 't4') {
-          selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors');
+          selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors', true);
         } else {
-          selectPresetModel('preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors');
+          selectPresetModel('preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors', true);
         }
+      } else if (isRef2Mode) {
+        selectPresetModel('preset_minimax_ref2va', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3-Ref2VA', 'Ref2VA/*.safetensors', true);
       } else {
         if (currentPresetTier === 't4') {
-          selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf');
+          selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf', true);
         } else {
-          selectPresetModel('preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors');
+          selectPresetModel('preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors', true);
         }
       }
       if (d.message) {
@@ -10657,6 +11098,685 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
     st.style.color = '#ef4444';
     setVideoBtnRunningState(false);
   }
+}
+
+// ==================== 06 · 白模/深度动作迁移 (MiniMax-H3-Ref2VA) 前端控制器 ====================
+let ref2vaSrcVideoB64 = '';
+let ref2vaSrcVideoName = '';
+let ref2vaGuideVideoName = '';
+let ref2vaGuideModeUsed = '';
+let ref2vaImgSlots = ['', '', '', ''];
+let _xGalleryCacheItems = [];
+
+function _autoMatchRef2vaVideoRes(vw, vh) {
+  if (!vw || !vh || currentMiniMaxMode !== 'ref2va') return;
+  const resSel = document.getElementById('videoRes');
+  if (!resSel) return;
+  const cur = String(resSel.value || '');
+  const is720 = cur.includes('720') || cur.includes('1280');
+  let target = '';
+  if (vh > vw * 1.12) {
+    target = is720 ? '720x1280' : '480x832';
+  } else if (vw > vh * 1.12) {
+    target = is720 ? '1280x720' : '832x480';
+  } else {
+    target = '640x640';
+  }
+  if (target && cur !== target && Array.from(resSel.options).some(o => o.value === target)) {
+    resSel.value = target;
+    showGlobalCopyToast(`📐 已按源视频画幅 (${vw}×${vh}) 自动匹配输出分辨率为 ${target}`);
+  }
+}
+
+function _setRef2vaVideoBlobPreview(blobOrDataUrl, labelText) {
+  const v = document.getElementById('ref2vaSrcVideoPreview');
+  const emp = document.getElementById('ref2vaSrcVideoEmpty');
+  const meta = document.getElementById('ref2vaVideoMetaBadge');
+  if (v) {
+    v.src = blobOrDataUrl;
+    v.style.display = 'block';
+    v.onloadedmetadata = () => {
+      if (meta) {
+        const dur = isFinite(v.duration) ? v.duration.toFixed(1) + 's' : '';
+        const dim = (v.videoWidth && v.videoHeight) ? `${v.videoWidth}×${v.videoHeight}` : '';
+        meta.innerText = [labelText || ref2vaSrcVideoName || '已加载', dim, dur].filter(Boolean).join(' · ');
+      }
+      _autoMatchRef2vaVideoRes(v.videoWidth, v.videoHeight);
+    };
+  }
+  if (emp) emp.style.display = 'none';
+  if (meta && labelText) meta.innerText = labelText;
+  const svBtn = document.getElementById('btnSaveWhiteModelLib');
+  if (svBtn) svBtn.style.display = 'inline-block';
+}
+
+function handleRef2vaVideoFileObj(file) {
+  if (!file) return;
+  if (file.size > 160 * 1024 * 1024) {
+    alert('视频文件超过 160 MB，建议先剪短或压缩后再上传。');
+    return;
+  }
+  ref2vaSrcVideoName = file.name || 'video.mp4';
+  clearRef2vaPreprocessedGuide(true);
+  const reader = new FileReader();
+  reader.onload = ev => {
+    ref2vaSrcVideoB64 = ev.target.result || '';
+    _setRef2vaVideoBlobPreview(ref2vaSrcVideoB64, ref2vaSrcVideoName);
+    const st = document.getElementById('ref2vaGuideStatusText');
+    if (st) st.innerText = `✅ 已载入源视频「${ref2vaSrcVideoName}」。若是真人视频请点「⚡ 生成白模/深度预览」；若已是白模视频可直接点下方开始生成！`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function onRef2vaVideoFileSelect(inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  handleRef2vaVideoFileObj(file);
+}
+
+function clearRef2vaPreprocessedGuide(silent = false) {
+  ref2vaGuideVideoName = '';
+  ref2vaGuideModeUsed = '';
+  const gv = document.getElementById('ref2vaGuideVideoPreview');
+  const gEmp = document.getElementById('ref2vaGuideVideoEmpty');
+  const dl = document.getElementById('ref2vaGuideDownloadLink');
+  const svBtn = document.getElementById('btnSaveWhiteModelLib');
+  const tBtn = document.getElementById('btnRef2vaUseRawToggle');
+  const lbl = document.getElementById('ref2vaGuideTitleLbl');
+  if (gv) { gv.pause(); gv.src = ''; gv.style.display = 'none'; }
+  if (gEmp) gEmp.style.display = 'block';
+  if (dl) { dl.style.display = 'none'; dl.href = '#'; }
+  if (svBtn) svBtn.style.display = 'none';
+  if (tBtn) tBtn.style.display = 'none';
+  if (lbl) lbl.innerText = '② 白模/深度引导预览';
+  if (!silent) {
+    const st = document.getElementById('ref2vaGuideStatusText');
+    if (st) st.innerText = '↺ 已清除白模预览，生成时将直接使用左侧源视频作为 <Video 1>。';
+  }
+}
+
+function clearRef2vaVideo() {
+  ref2vaSrcVideoB64 = '';
+  ref2vaSrcVideoName = '';
+  clearRef2vaPreprocessedGuide(true);
+  const inp = document.getElementById('inpRef2vaVideo');
+  if (inp) inp.value = '';
+  const v = document.getElementById('ref2vaSrcVideoPreview');
+  const emp = document.getElementById('ref2vaSrcVideoEmpty');
+  const meta = document.getElementById('ref2vaVideoMetaBadge');
+  if (v) { v.pause(); v.src = ''; v.style.display = 'none'; }
+  if (emp) emp.style.display = 'block';
+  if (meta) meta.innerText = '未选择视频';
+}
+
+function handleRef2vaImgFileObj(idx, file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => setRef2vaImgSlot(idx, ev.target.result || '');
+  reader.readAsDataURL(file);
+}
+
+function onRef2vaImgFileChange(idx, inputEl) {
+  const file = inputEl && inputEl.files && inputEl.files[0];
+  handleRef2vaImgFileObj(idx, file);
+}
+
+function setRef2vaImgSlot(idx, dataUrl) {
+  ref2vaImgSlots[idx] = dataUrl || '';
+  const img = document.getElementById('ref2vaPicPreview' + idx);
+  const emp = document.getElementById('ref2vaPicEmpty' + idx);
+  if (dataUrl) {
+    if (img) { img.src = dataUrl; img.style.display = 'block'; }
+    if (emp) emp.style.display = 'none';
+  } else {
+    if (img) { img.src = ''; img.style.display = 'none'; }
+    if (emp) emp.style.display = 'block';
+  }
+}
+
+function clearRef2vaImgSlot(idx) {
+  setRef2vaImgSlot(idx, '');
+  const inp = document.getElementById('inpRef2vaPic' + idx);
+  if (inp) inp.value = '';
+}
+
+function clearRef2vaAll() {
+  clearRef2vaVideo();
+  for (let i = 0; i < 4; i++) clearRef2vaImgSlot(i);
+  const st = document.getElementById('ref2vaGuideStatusText');
+  if (st) st.innerText = '🗑️ 已清空所有视频与参考图槽。';
+}
+
+async function runRef2vaGuidePreprocess() {
+  if (!ref2vaSrcVideoB64) {
+    alert('请先上传或从 𝕏 灵感库导入一段源视频！');
+    return;
+  }
+  const mode = (document.getElementById('selRef2vaGuideMode') || {}).value || 'clay';
+  if (mode === 'raw') {
+    clearRef2vaPreprocessedGuide();
+    showGlobalCopyToast('🎞️ 当前已选「直接使用原视频/现成白模」，免转换，直接点下方生成即可！');
+    return;
+  }
+  const startSec = parseFloat((document.getElementById('inpRef2vaStartSec') || {}).value || '0') || 0;
+  const endSec = parseFloat((document.getElementById('inpRef2vaEndSec') || {}).value || '0') || 0;
+  const smoothness = (document.getElementById('selRef2vaSmoothness') || {}).value || 'balanced';
+  const cropMode = (document.getElementById('selRef2vaCropMode') || {}).value || 'none';
+  const btn = document.getElementById('btnRef2vaPreprocess');
+  const st = document.getElementById('ref2vaGuideStatusText');
+  const modeLabels = {
+    clay: '🗿 3D素白模',
+    subject_depth: '🖤 主体深度',
+    full_depth: '🌫️ 全场景深度',
+    pose: '🦴 骨骼姿态',
+  };
+  if (btn) { btn.disabled = true; btn.innerText = '⏳ 云端 RTX PRO 6000 转换中...'; }
+  if (st) { st.style.color = '#fbbf24'; st.innerText = `⏳ 正在云端 RTX PRO 6000 将源视频转为「${modeLabels[mode] || mode}」(24fps 统一重采样，约 3~6 秒)...`; }
+  try {
+    const r = await fetch('/api/guide_preprocess', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        video_b64: ref2vaSrcVideoB64,
+        mode,
+        start_sec: startSec,
+        end_sec: endSec,
+        smoothness,
+        crop_mode: cropMode,
+        max_short_edge: 512,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok || !d.filename) {
+      if (st) { st.style.color = '#fca5a5'; st.innerText = '❌ 转换失败：' + (d.error || '请确认 Colab G4 已开机且加载了 MiniMax-H3 / Ref2VA / H3-Image'); }
+      return;
+    }
+    ref2vaGuideVideoName = d.filename;
+    ref2vaGuideModeUsed = mode;
+    const url = `/api/remote_video_file?name=${encodeURIComponent(d.filename)}&t=${Date.now()}`;
+    const gv = document.getElementById('ref2vaGuideVideoPreview');
+    const gEmp = document.getElementById('ref2vaGuideVideoEmpty');
+    const dl = document.getElementById('ref2vaGuideDownloadLink');
+    const svBtn = document.getElementById('btnSaveWhiteModelLib');
+    const tBtn = document.getElementById('btnRef2vaUseRawToggle');
+    const lbl = document.getElementById('ref2vaGuideTitleLbl');
+    if (gv) { gv.src = url; gv.style.display = 'block'; gv.play().catch(() => {}); }
+    if (gEmp) gEmp.style.display = 'none';
+    if (dl) { dl.href = url + '&download=1'; dl.download = d.filename; dl.style.display = 'inline'; }
+    if (svBtn) svBtn.style.display = 'inline-block';
+    if (tBtn) tBtn.style.display = 'inline-block';
+    if (lbl) lbl.innerText = `② 已生成：${modeLabels[mode] || mode}`;
+    if (st) {
+      st.style.color = '#6ee7b7';
+      st.innerText = `✅ 已生成「${modeLabels[mode] || mode}」(${d.width}×${d.height} · ${d.num_frames}帧 · ${d.duration_sec}s · 耗时 ${d.elapsed_s}s${d.has_audio ? ' · 含原音轨' : ''})，点「💾 存白模库」可永久复用！`;
+    }
+  } catch (e) {
+    if (st) { st.style.color = '#fca5a5'; st.innerText = '❌ 预处理请求异常: ' + e; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = '⚡ 生成白模/深度预览'; }
+  }
+}
+
+function applyRef2vaPromptTemplate(kind) {
+  const pEl = document.getElementById('videoPrompt');
+  if (!pEl) return;
+  const hasP1 = Boolean(ref2vaImgSlots[0]);
+  const hasP2 = Boolean(ref2vaImgSlots[1]);
+  const hasP3 = Boolean(ref2vaImgSlots[2]);
+  const activePics = ref2vaImgSlots.map((b, i) => b ? i : -1).filter(i => i >= 0);
+  // 实际提交时只发送非空图片并按顺序编号 <Picture 1>..<Picture N>
+  const picTagOf = (slotIdx) => {
+    const pos = activePics.indexOf(slotIdx);
+    return pos >= 0 ? `<Picture ${pos + 1}>` : `<Picture ${slotIdx + 1}>`;
+  };
+  const p1 = picTagOf(0);
+  const p2 = picTagOf(1);
+  const p3 = picTagOf(2);
+  let txt = '';
+  if (kind === 'clay_swap') {
+    txt = `以 <Video 1> 中的 3D 白模动作轨迹、肢体幅度、头部转动与镜头运镜为严格动作参考，将白模人物替换为 ${p1} 中的真实人物（100% 保持 ${p1} 的五官、发型、肤色与身材比例）`;
+    if (hasP2) txt += `，身穿 ${p2} 中的完整服装与配饰`;
+    if (hasP3) txt += `，自然置身于 ${p3} 的真实实景环境中，匹配环境光影与地面接触阴影`;
+    txt += '。严格同步 <Video 1> 的每一拍动作节奏与手部细节，呈现写实电影级肌肤纹理、自然飘逸的发丝与衣料物理摆动，绝不出现白模灰白材质或网格线条。';
+  } else if (kind === 'depth_scene') {
+    txt = `严格按照 <Video 1> 的主体 3D 深度剪影与连续动作轨迹进行视频重绘：将动作主体替换为 ${p1} 中的角色（完整保留面部特征与服装细节）`;
+    if (hasP2) txt += `，服装参考 ${p2}`;
+    if (hasP3) txt += `，并将纯黑背景完整替换为 ${p3} 的写实场景环境，光影方向、景深虚化与地面投影与 ${p3} 完美融合`;
+    else txt += '，置于极具电影质感的自然光实景街道/室内环境中，85mm 浅景深柔美散景';
+    txt += '。动作流畅连贯，1.0x 实拍帧率，高快门清晰度，零残影零畸变。';
+  } else if (kind === 'outfit_dance') {
+    txt = `让 ${p1} 中的人物${hasP2 ? `换上 ${p2} 中的整套服装穿搭` : ''}，严格复刻 <Video 1> 中的全套舞蹈动作、步伐、表情神态与镜头推拉节奏${hasP3 ? `，舞台背景为 ${p3}` : ''}。衣裙与长发随舞动呈现真实物理惯性摆动，面部五官在快速转身与大幅动作中始终与 ${p1} 保持高度一致，写实单反实拍画质。`;
+  } else {
+    txt = `电影摄影机实拍原片：严格跟随 <Video 1> 的主体动作、姿态变化与运镜调度，主角为 ${p1} 中的人物${hasP2 ? `（身穿 ${p2}）` : ''}${hasP3 ? `，身处 ${p3} 场景中` : ''}。自然电影级主光与发丝轮廓光，真实皮肤质感与衣料褶皱，画面干净无字幕无水印。`;
+  }
+  pEl.value = txt;
+  showGlobalCopyToast('✨ 已按当前上传的参考图槽位自动编排 <Video 1> / <Picture N> 提示词！');
+}
+
+function openXGalleryImportModal() {
+  const m = document.getElementById('xGalleryImportModal');
+  if (m) m.style.display = 'flex';
+  loadXGalleryItems(false);
+}
+
+async function loadXGalleryItems(force = false) {
+  const st = document.getElementById('xGalleryImportStatus');
+  if (!force && _xGalleryCacheItems.length > 0) {
+    renderXGalleryImportList();
+    return;
+  }
+  if (st) { st.style.color = '#94a3b8'; st.innerText = '⏳ 正在连接本地 H3 𝕏 灵感库 (http://127.0.0.1:8765)...'; }
+  try {
+    const r = await fetch('/api/x_gallery/items');
+    const d = await r.json();
+    if (!d.ok) {
+      if (st) { st.style.color = '#fca5a5'; st.innerText = '❌ ' + (d.error || '无法连接 H3 𝕏 灵感库 (请确认 8765 服务已启动)'); }
+      return;
+    }
+    _xGalleryCacheItems = Array.isArray(d.items) ? d.items : [];
+    if (st) { st.style.color = '#6ee7b7'; st.innerText = `✅ 已读取 ${_xGalleryCacheItems.length} 条 𝕏 灵感收藏（优先展示含视频条目，点击「一键导入」直接填入卡片 06）`; }
+    renderXGalleryImportList();
+  } catch (e) {
+    if (st) { st.style.color = '#fca5a5'; st.innerText = '❌ 请求灵感库异常: ' + e; }
+  }
+}
+
+function renderXGalleryImportList() {
+  const listEl = document.getElementById('xGalleryImportList');
+  if (!listEl) return;
+  const q = ((document.getElementById('inpXGallerySearch') || {}).value || '').trim().toLowerCase();
+  const filtered = _xGalleryCacheItems.filter(it => {
+    if (!q) return true;
+    const hay = `${it.prompt || ''} ${it.author || ''} ${it.title || ''} ${it.source_url || ''}`.toLowerCase();
+    return hay.includes(q);
+  }).sort((a, b) => {
+    const av = (a.media || []).some(m => m.kind === 'video') ? 1 : 0;
+    const bv = (b.media || []).some(m => m.kind === 'video') ? 1 : 0;
+    return bv - av;
+  });
+  if (!filtered.length) {
+    listEl.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:30px;color:#64748b;font-size:12.5px;">暂无匹配的 𝕏 灵感条目</div>';
+    return;
+  }
+  listEl.innerHTML = filtered.slice(0, 60).map(it => {
+    const media = Array.isArray(it.media) ? it.media : [];
+    const vids = media.filter(m => m.kind === 'video');
+    const imgs = media.filter(m => m.kind === 'image');
+    const thumbs = media.slice(0, 4).map(m => {
+      const mUrl = `/api/x_gallery/media/${encodeURIComponent(m.id)}`;
+      if (m.kind === 'video') {
+        return `<div style="position:relative;width:54px;height:68px;border-radius:6px;overflow:hidden;background:#020617;border:1px solid #a855f7;flex-shrink:0;"><video src="${mUrl}#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video><span style="position:absolute;bottom:2px;right:2px;font-size:9px;padding:1px 4px;border-radius:3px;background:rgba(147,51,234,0.9);color:#fff;font-weight:800;">▶</span></div>`;
+      }
+      return `<img src="${mUrl}" loading="lazy" style="width:54px;height:68px;border-radius:6px;object-fit:cover;background:#020617;border:1px solid #334155;flex-shrink:0;">`;
+    }).join('');
+    const promptPrev = String(it.prompt || it.title || '(无文字)').replace(/</g, '&lt;').slice(0, 110);
+    const author = String(it.author || '').replace(/</g, '&lt;');
+    const safeId = String(it.id || '').replace(/'/g, '');
+    return `<div style="padding:10px 11px;border-radius:10px;background:#0f172a;border:1px solid #334155;display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;gap:6px;overflow-x:auto;">${thumbs || '<div style="font-size:11px;color:#64748b;padding:8px 0;">纯文字灵感</div>'}</div>
+      <div style="font-size:11.5px;color:#e2e8f0;line-height:1.4;min-height:32px;overflow:hidden;">${promptPrev}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:auto;">
+        <span style="font-size:10.5px;color:#94a3b8;">${author ? '@' + author + ' · ' : ''}${vids.length}视频 / ${imgs.length}图</span>
+        <div style="display:flex;gap:5px;">
+          ${vids.length > 1 ? vids.map((vm, vi) => `<button type="button" onclick="importXGalleryItemToRef2va('${safeId}', ${vi})" style="padding:3px 7px;font-size:10.5px;font-weight:800;border-radius:6px;border:1px solid #a855f7;background:rgba(168,85,247,0.22);color:#e9d5ff;cursor:pointer;">导入视频${vi+1}</button>`).join('') : ''}
+          <button type="button" onclick="importXGalleryItemToRef2va('${safeId}', 0)" style="padding:4px 10px;font-size:11px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#ea580c,#9333ea);color:#fff;cursor:pointer;">⬇ 一键导入</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function _fetchUrlAsDataUrl(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const blob = await r.blob();
+  return await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result || '');
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+async function importXGalleryItemToRef2va(itemId, videoIndex = 0) {
+  const item = _xGalleryCacheItems.find(x => String(x.id) === String(itemId));
+  if (!item) return;
+  const st = document.getElementById('xGalleryImportStatus');
+  if (st) { st.style.color = '#fbbf24'; st.innerText = '⏳ 正在将视频与参考图导入卡片 06，请稍候...'; }
+  try {
+    const media = Array.isArray(item.media) ? item.media : [];
+    const vids = media.filter(m => m.kind === 'video');
+    const imgs = media.filter(m => m.kind === 'image');
+    clearRef2vaAll();
+    if (vids.length > 0) {
+      const chosenV = vids[Math.min(videoIndex, vids.length - 1)];
+      const vDataUrl = await _fetchUrlAsDataUrl(`/api/x_gallery/media/${encodeURIComponent(chosenV.id)}`);
+      ref2vaSrcVideoB64 = vDataUrl;
+      ref2vaSrcVideoName = chosenV.filename || `x_video_${chosenV.id}.mp4`;
+      _setRef2vaVideoBlobPreview(vDataUrl, `𝕏 ${ref2vaSrcVideoName}`);
+    }
+    for (let i = 0; i < Math.min(4, imgs.length); i++) {
+      const iDataUrl = await _fetchUrlAsDataUrl(`/api/x_gallery/media/${encodeURIComponent(imgs[i].id)}`);
+      setRef2vaImgSlot(i, iDataUrl);
+    }
+    if (item.prompt) {
+      const pEl = document.getElementById('videoPrompt');
+      if (pEl) pEl.value = item.prompt;
+    }
+    const m = document.getElementById('xGalleryImportModal');
+    if (m) m.style.display = 'none';
+    const gSt = document.getElementById('ref2vaGuideStatusText');
+    if (gSt) {
+      gSt.style.color = '#6ee7b7';
+      gSt.innerText = `✅ 已从 𝕏 灵感库一键导入 ${vids.length ? '1段视频' : '0段视频'} + ${Math.min(4, imgs.length)}张参考图${item.prompt ? ' + 提示词' : ''}！若源视频已是白模/深度可直接生成，若是真人视频可点「⚡ 生成白模/深度预览」。`;
+    }
+    showGlobalCopyToast('✅ 已从 𝕏 灵感库一键导入到【06 · 白模/动作迁移】！');
+  } catch (e) {
+    if (st) { st.style.color = '#fca5a5'; st.innerText = '❌ 导入失败: ' + e; }
+  }
+}
+
+// ==================== 白模动作库 + 第1帧试妆 + 批量换主角连拍 + 原声BGM/锁脸/自动关机 ====================
+let ref2vaBatchFaces = [];
+let _ref2vaBatchRunning = false;
+let _ref2vaBatchCursor = 0;
+let _ref2vaBatchForceInt = false;
+window._lastRef2vaJobMeta = null;
+window._pendingAutoShutdownAfterUpscale = false;
+
+async function saveCurrentGuideToWhiteModelLibrary() {
+  if (!ref2vaGuideVideoName && !ref2vaSrcVideoB64) {
+    alert('当前没有可存入白模库的视频！');
+    return;
+  }
+  const defLabel = (ref2vaSrcVideoName || '白模动作').replace(/\.[^.]+$/, '');
+  const label = prompt('给这段白模动作起个好记的名字（如：口哨舞_竖屏 / 古风回眸走秀）：', defLabel);
+  if (label === null) return;
+  const btn = document.getElementById('btnSaveWhiteModelLib');
+  const origTxt = btn ? btn.innerText : '💾 存白模库';
+  if (btn) { btn.disabled = true; btn.innerText = '⏳存库...'; }
+  try {
+    const payload = ref2vaGuideVideoName
+      ? {remote_name: ref2vaGuideVideoName, mode: ref2vaGuideModeUsed || 'clay', label}
+      : {video_b64: ref2vaSrcVideoB64, mode: 'guide', label};
+    const r = await fetch('/api/white_models/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      alert('❌ 存入白模库失败: ' + (d.error || '未知错误'));
+      return;
+    }
+    showGlobalCopyToast(`💾 已永久存入「🗿 白模动作库」(${d.name} · ${d.size_mb} MB) 并同步至 20TB 云盘！`);
+  } catch (e) {
+    alert('❌ 存库异常: ' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = origTxt; }
+  }
+}
+
+function openWhiteModelLibraryModal() {
+  const m = document.getElementById('whiteModelLibraryModal');
+  if (m) m.style.display = 'flex';
+  loadWhiteModelLibrary();
+}
+
+async function loadWhiteModelLibrary() {
+  const st = document.getElementById('whiteModelLibStatus');
+  const grid = document.getElementById('whiteModelLibGrid');
+  if (st) { st.style.color = '#94a3b8'; st.innerText = '⏳ 正在读取本地白模动作库...'; }
+  try {
+    const r = await fetch('/api/white_models/list');
+    const d = await r.json();
+    const items = (d && Array.isArray(d.items)) ? d.items : [];
+    if (!items.length) {
+      if (st) st.innerText = '暂无已存白模视频。在卡片 06 转换好白模后点「💾 存白模库」即可永久保存复用！';
+      if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:36px;color:#64748b;font-size:12.5px;">🗿 白模动作库还是空的</div>';
+      return;
+    }
+    if (st) { st.style.color = '#6ee7b7'; st.innerText = `✅ 已收录 ${items.length} 段白模动作（本地：${d.dir} · 云盘：pro6000-output/white_models/）`; }
+    const modeTagMap = {clay: '🗿3D白模', subject_depth: '🖤主体深度', full_depth: '🌫️全场景深度', pose: '🦴骨骼', guide: '🎞️白模'};
+    if (grid) {
+      grid.innerHTML = items.map(it => {
+        const u = `/api/white_models/file?name=${encodeURIComponent(it.name)}`;
+        const safeName = it.name.replace(/'/g, '');
+        const safeLbl = String(it.label || it.name).replace(/</g, '&lt;');
+        return `<div style="padding:9px;border-radius:10px;background:#0f172a;border:1px solid #334155;display:flex;flex-direction:column;gap:6px;">
+          <video src="${u}#t=0.1" controls muted playsinline preload="metadata" style="width:100%;height:150px;border-radius:7px;background:#020617;object-fit:contain;"></video>
+          <div style="font-size:12px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${safeLbl}">${safeLbl}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;color:#94a3b8;">
+            <span>${modeTagMap[it.mode] || '🗿白模'} · ${it.size_mb}MB</span>
+            <span>${it.created_at || ''}</span>
+          </div>
+          <div style="display:flex;gap:5px;">
+            <button type="button" onclick="loadWhiteModelFromLibrary('${safeName}', '${safeLbl.replace(/'/g, '')}')" style="flex:1;padding:4px 8px;font-size:11px;font-weight:800;border-radius:6px;border:none;background:linear-gradient(135deg,#9333ea,#6366f1);color:#fff;cursor:pointer;">▶ 载入为 &lt;Video 1&gt;</button>
+            <button type="button" onclick="deleteWhiteModelFromLibrary('${safeName}')" style="padding:4px 8px;font-size:11px;border-radius:6px;border:1px solid rgba(239,68,68,0.45);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer;" title="删除本地副本">🗑️</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  } catch (e) {
+    if (st) { st.style.color = '#fca5a5'; st.innerText = '❌ 读取白模库异常: ' + e; }
+  }
+}
+
+async function loadWhiteModelFromLibrary(fname, label) {
+  const st = document.getElementById('whiteModelLibStatus');
+  if (st) { st.style.color = '#fbbf24'; st.innerText = `⏳ 正在载入「${label || fname}」...`; }
+  try {
+    const dataUrl = await _fetchUrlAsDataUrl(`/api/white_models/file?name=${encodeURIComponent(fname)}`);
+    clearRef2vaPreprocessedGuide(true);
+    ref2vaSrcVideoB64 = dataUrl;
+    ref2vaSrcVideoName = label || fname;
+    _setRef2vaVideoBlobPreview(dataUrl, `🗿 ${label || fname}`);
+    const selMode = document.getElementById('selRef2vaGuideMode');
+    if (selMode) selMode.value = 'raw';
+    const m = document.getElementById('whiteModelLibraryModal');
+    if (m) m.style.display = 'none';
+    const gSt = document.getElementById('ref2vaGuideStatusText');
+    if (gSt) {
+      gSt.style.color = '#6ee7b7';
+      gSt.innerText = `✅ 已从「🗿 白模动作库」载入「${label || fname}」作为 <Video 1>（已是白模，无需再转换，传好主角图直接点生成即可）！`;
+    }
+    showGlobalCopyToast(`🗿 已从白模库载入「${label || fname}」！`);
+  } catch (e) {
+    if (st) { st.style.color = '#fca5a5'; st.innerText = '❌ 载入失败: ' + e; }
+  }
+}
+
+async function deleteWhiteModelFromLibrary(fname) {
+  if (!confirm(`确认从本地白模动作库删除「${fname}」？`)) return;
+  await fetch('/api/white_models/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: fname}),
+  });
+  loadWhiteModelLibrary();
+}
+
+async function sendRef2vaFirstFrameToCard01() {
+  if (!ref2vaGuideVideoName && !ref2vaSrcVideoB64) {
+    alert('请先上传视频（或先生成白模预览），再截取第 1 帧去卡片 01 试妆！');
+    return;
+  }
+  const btn = document.getElementById('btnRef2vaTryDress01');
+  const origTxt = btn ? btn.innerText : '🧪 第1帧去01试妆';
+  if (btn) { btn.disabled = true; btn.innerText = '⏳抽帧...'; }
+  try {
+    const startSec = parseFloat((document.getElementById('inpRef2vaStartSec') || {}).value || '0') || 0;
+    const payload = ref2vaGuideVideoName
+      ? {remote_name: ref2vaGuideVideoName, at_sec: 0}
+      : {video_b64: ref2vaSrcVideoB64, at_sec: startSec};
+    const r = await fetch('/api/ref2va_extract_frame', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!d.ok || !d.image_b64) {
+      alert('❌ 抽取第 1 帧失败: ' + (d.error || '未知错误'));
+      return;
+    }
+    while (fusionTargetList.length < 2) fusionTargetList.push('');
+    while (fusionTargetSlotKinds.length < 2) fusionTargetSlotKinds.push('');
+    fusionTargetList[1] = d.image_b64;
+    fusionTargetSlotKinds[1] = 'pose';
+    if (ref2vaImgSlots[0]) await autoDetectAndFocusFaceSlot0(ref2vaImgSlots[0]);
+    if (ref2vaImgSlots[1]) {
+      fusionTargetList[0] = ref2vaImgSlots[1];
+      fusionTargetSlotKinds[0] = 'costume';
+    }
+    if (ref2vaImgSlots[2]) setFusionSlotB64(2, ref2vaImgSlots[2]);
+    renderFusionTargetCards();
+    switchMiniMaxMode('image');
+    const fRow = document.getElementById('fusionStudioRow');
+    if (fRow) fRow.scrollIntoView({behavior: 'smooth', block: 'center'});
+    showGlobalCopyToast('🧪 已把白模第 1 帧送入卡片 01 ③姿势槽！6 秒出 4K 定妆图满意后，点成图旁「🕺 送入06当主角」即可回来跑全片！');
+  } catch (e) {
+    alert('❌ 抽帧异常: ' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = origTxt; }
+  }
+}
+
+function onRef2vaBatchFacesSelected(inputEl) {
+  const files = Array.from((inputEl && inputEl.files) || []);
+  if (!files.length) return;
+  Promise.all(files.slice(0, 10).map(f => new Promise(resolve => {
+    const fr = new FileReader();
+    fr.onload = () => resolve({name: f.name, b64: fr.result || ''});
+    fr.onerror = () => resolve(null);
+    fr.readAsDataURL(f);
+  }))).then(list => {
+    const valid = list.filter(x => x && x.b64);
+    ref2vaBatchFaces = ref2vaBatchFaces.concat(valid).slice(0, 10);
+    if (inputEl) inputEl.value = '';
+    renderRef2vaBatchQueueBar();
+  });
+}
+
+function removeRef2vaBatchFace(idx) {
+  ref2vaBatchFaces.splice(idx, 1);
+  renderRef2vaBatchQueueBar();
+}
+
+function clearRef2vaBatchFaces() {
+  ref2vaBatchFaces = [];
+  _ref2vaBatchRunning = false;
+  _ref2vaBatchCursor = 0;
+  renderRef2vaBatchQueueBar();
+}
+
+function renderRef2vaBatchQueueBar() {
+  const bar = document.getElementById('ref2vaBatchQueueBar');
+  if (!bar) return;
+  if (!ref2vaBatchFaces.length) {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+  bar.style.display = 'flex';
+  const thumbs = ref2vaBatchFaces.map((f, i) => `
+    <div style="position:relative;width:36px;height:44px;border-radius:5px;overflow:hidden;border:1px solid ${_ref2vaBatchRunning && i === _ref2vaBatchCursor ? '#34d399' : '#38bdf8'};background:#020617;flex-shrink:0;" title="${f.name.replace(/"/g, '')}">
+      <img src="${f.b64}" style="width:100%;height:100%;object-fit:cover;">
+      <button type="button" onclick="removeRef2vaBatchFace(${i})" style="position:absolute;top:0;right:0;width:14px;height:14px;border:none;background:rgba(2,6,23,0.82);color:#fca5a5;font-size:9px;cursor:pointer;line-height:1;">✕</button>
+    </div>`).join('');
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;">
+      <span style="font-size:11px;font-weight:800;color:#7dd3fc;white-space:nowrap;">📦 批量换主角队列 (${ref2vaBatchFaces.length}人):</span>
+      ${thumbs}
+    </div>
+    <button type="button" onclick="clearRef2vaBatchFaces()" style="padding:2px 7px;font-size:10.5px;border-radius:5px;border:1px solid rgba(239,68,68,0.45);background:transparent;color:#fca5a5;cursor:pointer;white-space:nowrap;">清空队列</button>`;
+}
+
+async function startRef2vaBatchQueue(forceInterruptLlm = false) {
+  if (!ref2vaBatchFaces.length) return;
+  _ref2vaBatchRunning = true;
+  _ref2vaBatchCursor = 0;
+  _ref2vaBatchForceInt = Boolean(forceInterruptLlm);
+  await _runCurrentRef2vaBatchItem();
+}
+
+async function _runCurrentRef2vaBatchItem() {
+  if (!_ref2vaBatchRunning || _ref2vaBatchCursor >= ref2vaBatchFaces.length) {
+    _ref2vaBatchRunning = false;
+    renderRef2vaBatchQueueBar();
+    return;
+  }
+  const cur = ref2vaBatchFaces[_ref2vaBatchCursor];
+  setRef2vaImgSlot(0, cur.b64);
+  renderRef2vaBatchQueueBar();
+  const st = document.getElementById('videoGenStatus');
+  if (st) {
+    st.innerText = `📦 [批量换主角 ${_ref2vaBatchCursor + 1}/${ref2vaBatchFaces.length} · ${cur.name}] 正在提交白模动作迁移...`;
+    st.style.color = '#38bdf8';
+  }
+  window._ref2vaBatchInside = true;
+  try {
+    await startVideoGenerate(null, _ref2vaBatchForceInt);
+  } finally {
+    window._ref2vaBatchInside = false;
+  }
+}
+
+async function _triggerRef2vaAutoShutdownNow() {
+  window._pendingAutoShutdownAfterUpscale = false;
+  const st = document.getElementById('videoGenStatus');
+  try {
+    const rs = await fetch('/api/stop', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const ds = await rs.json();
+    if (ds && ds.ok) {
+      if (st) {
+        st.innerText = (st.innerText || '✅ 全部完成') + ' · 🛑 已自动关机释放 G4 (0.00 CU/h)！';
+        st.style.color = '#10b981';
+      }
+      showGlobalCopyToast('🛑 已按设定自动关机释放 Colab G4（0.00 CU/h）！');
+      await refreshStatus(true);
+    }
+  } catch (e) {}
+}
+
+async function _runRef2vaPostPipeline(rawFiles) {
+  const meta = window._lastRef2vaJobMeta;
+  if (!meta || meta.mode !== 'ref2va') return {files: rawFiles, shouldShutdown: false};
+  window._lastRef2vaJobMeta = null;
+  const st = document.getElementById('videoGenStatus');
+  const outFiles = [];
+  for (const fn of (rawFiles || [])) {
+    if (!fn || !/\.mp4$/i.test(fn)) continue;
+    let curName = fn;
+    // 1. 0.2s 无损回贴原视频原声 BGM
+    if (meta.mux_orig_bgm && meta.src_video_b64) {
+      if (st) { st.innerText = `🎵 正在无损贴回原视频原声 BGM (${curName})...`; st.style.color = '#fbbf24'; }
+      try {
+        await fetch('/api/ref2va_mux_audio', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({target_name: curName, source_video_b64: meta.src_video_b64, start_sec: meta.start_sec || 0}),
+        });
+      } catch (e) {}
+    }
+    // 2. 自动远景锁脸精修 (PixelAI H3 Video FaceFix)
+    if (meta.auto_facefix && meta.face_b64) {
+      if (st) { st.innerText = `🧬 正在以 <Picture 1> 执行自动远景锁脸精修 (${curName})...`; st.style.color = '#34d399'; }
+      try {
+        const rf = await fetch('/api/video_h3_facefix', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: curName, face_b64: meta.face_b64, full_fix_below_px: 110, no_fix_above_px: 180}),
+        });
+        const df = await rf.json();
+        if (df && df.ok && df.filename) curName = df.filename;
+      } catch (e) {}
+    }
+    outFiles.push(curName);
+  }
+  if (outFiles.length) {
+    await loadLocalVideoHistory(false);
+    playHistoryVideo(outFiles[outFiles.length - 1]);
+  }
+  return {files: outFiles.length ? outFiles : rawFiles, shouldShutdown: Boolean(meta.auto_shutdown)};
 }
 
 async function pollVideoStatus() {
@@ -10684,6 +11804,8 @@ async function pollVideoStatus() {
     const d = await r.json();
     await pollLogs();
     if (d.error && !d.running) {
+      _ref2vaBatchRunning = false;
+      window._pendingAutoShutdownAfterUpscale = false;
       window._videoAckedTailSig = window._lastVideoLogSig || '__done__';
       if (videoPollTimer) {
         clearInterval(videoPollTimer);
@@ -10795,14 +11917,17 @@ async function pollVideoStatus() {
         tBar.style.width = '100%';
       }
       await loadLocalVideoHistory(true);
+      const rawBatchAll = (Array.isArray(d.completed_videos) && d.completed_videos.length)
+        ? d.completed_videos
+        : (d.latest_video ? [d.latest_video] : []);
+      const postRes = await _runRef2vaPostPipeline(rawBatchAll);
+      const finalBatch = (postRes && postRes.files) ? postRes.files : rawBatchAll;
       const autoSrChk = document.getElementById('autoUpscale2kChk');
+      let queuedAnyUpscale = false;
       if (autoSrChk && autoSrChk.checked) {
-        const rawBatch = (Array.isArray(d.completed_videos) && d.completed_videos.length)
-          ? d.completed_videos
-          : (d.latest_video ? [d.latest_video] : []);
         const seenInBatch = new Set();
         const todoList = [];
-        for (const vName of rawBatch) {
+        for (const vName of finalBatch) {
           if (!vName || !/\.mp4$/i.test(vName) || vName.includes('_ReCaVSR_')) continue;
           if (seenInBatch.has(vName) || autoUpscaledBatchKeys.has(vName)) continue;
           seenInBatch.add(vName);
@@ -10812,6 +11937,25 @@ async function pollVideoStatus() {
           const presetVal = (document.getElementById('upscalePresetSelect') || {}).value || '2k';
           todoList.forEach(v => autoUpscaledBatchKeys.add(v));
           enqueueUpscaleVideos(todoList, presetVal);
+          queuedAnyUpscale = true;
+        }
+      }
+      // 若处于「批量换主角连拍」队列中，自动推进下一位主角；全部跑完后若勾选自动关机则收尾断电
+      if (_ref2vaBatchRunning) {
+        _ref2vaBatchCursor += 1;
+        if (_ref2vaBatchCursor < ref2vaBatchFaces.length) {
+          setTimeout(() => _runCurrentRef2vaBatchItem(), 1500);
+          return;
+        }
+        _ref2vaBatchRunning = false;
+        renderRef2vaBatchQueueBar();
+        showGlobalCopyToast(`🎉 批量换主角连拍全部完成（共 ${ref2vaBatchFaces.length} 位主角）！`);
+      }
+      if (postRes && postRes.shouldShutdown) {
+        if (queuedAnyUpscale || upscalePollTimer || autoUpscaleQueue.length > 0) {
+          window._pendingAutoShutdownAfterUpscale = true;
+        } else {
+          await _triggerRef2vaAutoShutdownNow();
         }
       }
     }
@@ -11125,6 +12269,8 @@ async function pollUpscaleStatus() {
         if (dv && dv.running && !videoPollTimer) {
           pollVideoStatus();
           videoPollTimer = setInterval(pollVideoStatus, 2000);
+        } else if (window._pendingAutoShutdownAfterUpscale && !_ref2vaBatchRunning) {
+          await _triggerRef2vaAutoShutdownNow();
         }
       } catch (e) {}
     }
@@ -11728,6 +12874,8 @@ function renderCc0PortraitGalleryModal() {
     `<option value="FUSION_SLOT_0" ${_cc0ModalState.target === 'FUSION_SLOT_0' ? 'selected' : ''}>🧑 送入【02 · 角色合成】① 人脸照片槽</option>`,
     `<option value="FUSION_OUTFIT" ${(_cc0ModalState.target === 'FUSION_OUTFIT' || _cc0ModalState.target === 'FUSION_TARGET') ? 'selected' : ''}>👗 送入【02 · 角色合成】② 服饰穿搭槽</option>`,
     `<option value="FUSION_POSE" ${_cc0ModalState.target === 'FUSION_POSE' ? 'selected' : ''}>💃 送入【02 · 角色合成】③ 姿势动作槽</option>`,
+    `<option value="REF2VA_PIC_0" ${_cc0ModalState.target === 'REF2VA_PIC_0' ? 'selected' : ''}>🕺 送入【06 · 白模动作】&lt;Picture 1&gt; 主角槽</option>`,
+    `<option value="REF2VA_PIC_1" ${_cc0ModalState.target === 'REF2VA_PIC_1' ? 'selected' : ''}>👗 送入【06 · 白模动作】&lt;Picture 2&gt; 服装槽</option>`,
   ].join('');
 
   const topMainTabs = [
@@ -11928,6 +13076,16 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
     const d = await r.json();
     if (!d || !d.ok) {
       alert('选用素材失败: ' + ((d && d.error) || '未知错误'));
+      return;
+    }
+    if (target.startsWith('REF2VA_PIC_')) {
+      const slotI = parseInt(target.split('_').pop(), 10) || 0;
+      if (d.image_b64) {
+        setRef2vaImgSlot(slotI, d.image_b64);
+      }
+      document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
+      if (currentMiniMaxMode !== 'ref2va') switchMiniMaxMode('ref2va');
+      showGlobalCopyToast(`✅ 已将所选高清素材载入【06 · 白模/动作迁移】<Picture ${slotI + 1}>！`);
       return;
     }
     if (target === 'FUSION_SLOT_0' || (_cc0ModalState.tab === 'portrait' && (target === 'FUSION_OUTFIT' || target === 'FUSION_POSE' || target === 'FUSION_TARGET'))) {
@@ -13918,6 +15076,174 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
+        if self.path.startswith("/api/x_gallery/items"):
+            try:
+                req_x = urllib.request.Request("http://127.0.0.1:8765/api/x/items", headers={"User-Agent": "ColabPanel/1.0"})
+                with urllib.request.urlopen(req_x, timeout=6) as rx:
+                    data_x = json.loads(rx.read().decode("utf-8"))
+                raw_items = data_x.get("items") if isinstance(data_x, dict) else (data_x if isinstance(data_x, list) else [])
+                norm_items = []
+                for it in raw_items:
+                    if not isinstance(it, dict):
+                        continue
+                    src_u = str(it.get("source_url") or "")
+                    m_au = re.search(r"https?://(?:x|twitter)\.com/([^/?#]+)", src_u)
+                    author = str(it.get("author") or (m_au.group(1) if m_au else "")).strip()
+                    raw_media = it.get("media") or it.get("images") or []
+                    norm_media = []
+                    for mm in raw_media:
+                        if not isinstance(mm, dict) or not mm.get("id"):
+                            continue
+                        fname_m = str(mm.get("filename") or mm.get("name") or "")
+                        m_type = str(mm.get("kind") or mm.get("type") or "").lower()
+                        is_vid = m_type == "video" or fname_m.lower().endswith((".mp4", ".mov", ".webm", ".m4v"))
+                        norm_media.append({
+                            "id": str(mm["id"]),
+                            "filename": fname_m,
+                            "kind": "video" if is_vid else "image",
+                        })
+                    norm_items.append({
+                        "id": str(it.get("id") or ""),
+                        "prompt": str(it.get("prompt") or ""),
+                        "source_url": src_u,
+                        "author": author,
+                        "media": norm_media,
+                        "created_at": str(it.get("created_at") or ""),
+                    })
+                self._send_json({"ok": True, "items": norm_items})
+            except Exception as ex_x:
+                self._send_json({"ok": False, "error": f"本地 H3 𝕏 灵感库未启动或不可访问 (127.0.0.1:8765): {ex_x}"})
+            return
+
+        if self.path.startswith("/api/x_gallery/media/"):
+            mid = urllib.parse.unquote(self.path.split("/api/x_gallery/media/", 1)[-1].split("?")[0]).strip()
+            if not mid or "/" in mid or ".." in mid:
+                self.send_error(400)
+                return
+            try:
+                hdrs_m = {"User-Agent": "ColabPanel/1.0"}
+                if self.headers.get("Range"):
+                    hdrs_m["Range"] = self.headers.get("Range")
+                req_m = urllib.request.Request(f"http://127.0.0.1:8765/media/{urllib.parse.quote(mid)}", headers=hdrs_m)
+                with urllib.request.urlopen(req_m, timeout=30) as rm:
+                    body_m = rm.read()
+                    self.send_response(rm.status)
+                    for hk in ("Content-Type", "Accept-Ranges", "Content-Range", "Content-Length"):
+                        hv = rm.headers.get(hk)
+                        if hv:
+                            self.send_header(hk, hv)
+                    if not rm.headers.get("Content-Length"):
+                        self.send_header("Content-Length", str(len(body_m)))
+                    self.end_headers()
+                    self.wfile.write(body_m)
+            except Exception:
+                self.send_error(404)
+            return
+
+        if self.path.startswith("/api/white_models/list"):
+            wm_dir = LOCAL_MOVIES_DIR / "white_models"
+            wm_dir.mkdir(parents=True, exist_ok=True)
+            meta_file = wm_dir / ".meta.json"
+            meta_map = {}
+            if meta_file.is_file():
+                try:
+                    meta_map = json.loads(meta_file.read_text(encoding="utf-8"))
+                except Exception:
+                    meta_map = {}
+            items_wm = []
+            for fp in sorted(wm_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True):
+                try:
+                    st_f = fp.stat()
+                    m_info = meta_map.get(fp.name) if isinstance(meta_map, dict) else {}
+                    if not isinstance(m_info, dict):
+                        m_info = {}
+                    items_wm.append({
+                        "name": fp.name,
+                        "label": str(m_info.get("label") or fp.stem),
+                        "mode": str(m_info.get("mode") or ("clay" if "clay" in fp.name else ("subject_depth" if "subject_depth" in fp.name else ("pose" if "pose" in fp.name else "guide")))),
+                        "size_mb": round(st_f.st_size / (1024 * 1024), 2),
+                        "mtime": st_f.st_mtime,
+                        "created_at": str(m_info.get("created_at") or time.strftime("%m-%d %H:%M", time.localtime(st_f.st_mtime))),
+                    })
+                except Exception:
+                    pass
+            self._send_json({"ok": True, "dir": str(wm_dir), "items": items_wm})
+            return
+
+        if self.path.startswith("/api/white_models/file"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            fname = os.path.basename((qs.get("name", [""])[0] or "").strip())
+            fpath = LOCAL_MOVIES_DIR / "white_models" / fname
+            if not fname or not fpath.is_file():
+                self.send_error(404)
+                return
+            fsize = fpath.stat().st_size
+            range_hdr = self.headers.get("Range")
+            if range_hdr and range_hdr.startswith("bytes="):
+                try:
+                    parts = range_hdr.replace("bytes=", "").split("-")
+                    start = int(parts[0]) if parts[0] else 0
+                    end = int(parts[1]) if (len(parts) > 1 and parts[1]) else (fsize - 1)
+                    end = min(end, fsize - 1)
+                    with open(fpath, "rb") as rf:
+                        rf.seek(start)
+                        chunk = rf.read(max(0, end - start + 1))
+                    self.send_response(206)
+                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.send_header("Content-Length", str(len(chunk)))
+                    self.end_headers()
+                    self.wfile.write(chunk)
+                    return
+                except Exception:
+                    pass
+            data = fpath.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if self.path.startswith("/api/remote_video_file"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            fname = os.path.basename((qs.get("name", [""])[0] or "").strip())
+            is_dl = (qs.get("download", ["0"])[0] or "0") == "1"
+            if not fname:
+                self.send_error(400)
+                return
+            try:
+                cfg = _load_endpoint_cfg()
+                hdrs_r = {
+                    "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                    "User-Agent": "ColabPanel/1.0",
+                }
+                if self.headers.get("Range"):
+                    hdrs_r["Range"] = self.headers.get("Range")
+                req_r = urllib.request.Request(
+                    f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(fname)}",
+                    headers=hdrs_r,
+                )
+                with urllib.request.urlopen(req_r, timeout=60) as rr:
+                    body_r = rr.read()
+                    self.send_response(rr.status)
+                    self.send_header("Content-Type", rr.headers.get("Content-Type") or "video/mp4")
+                    self.send_header("Accept-Ranges", "bytes")
+                    if rr.headers.get("Content-Range"):
+                        self.send_header("Content-Range", rr.headers.get("Content-Range"))
+                    if is_dl:
+                        self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+                    self.send_header("Content-Length", str(len(body_r)))
+                    self.end_headers()
+                    self.wfile.write(body_r)
+            except Exception:
+                self.send_error(404)
+            return
+
         if self.path.startswith("/api/video_status"):
             if _PENDING_VIDEO_JOB.get("active"):
                 pct_val = 4
@@ -13925,7 +15251,8 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 c_tmp = _load_endpoint_cfg()
                 is_img_job = (p_job.get("mode") == "image") or str(c_tmp.get("model_folder") or "") == "MiniMax-H3-Image"
                 is_av_job = (p_job.get("mode") == "avatar") or str(c_tmp.get("model_folder") or "").startswith("LongCat-Video-Avatar")
-                target_eng = "MiniMax-H3-Image (4K无审查)" if is_img_job else ("LongCat-Video-Avatar-1.6" if is_av_job else "MiniMax-H3")
+                is_ref2_job = (p_job.get("mode") == "ref2va") or str(c_tmp.get("model_folder") or "") == "MiniMax-H3-Ref2VA"
+                target_eng = "MiniMax-H3-Image (4K无审查)" if is_img_job else ("LongCat-Video-Avatar-1.6" if is_av_job else ("MiniMax-H3-Ref2VA (白模/动作迁移)" if is_ref2_job else "MiniMax-H3"))
                 stage_msg = f"🔄 正在自动从 Google Drive 云盘切换并装载 {target_eng}，加载完成后将立即自动开始生成..."
                 with _DEPLOY_LOCK:
                     logs_snap = list(_DEPLOY_STATE.get("logs") or [])
@@ -14870,9 +16197,235 @@ p.wait()
                 self._send_json({"error": str(e)})
             return
 
+        if self.path == "/api/white_models/save":
+            wm_dir = LOCAL_MOVIES_DIR / "white_models"
+            wm_dir.mkdir(parents=True, exist_ok=True)
+            remote_name = os.path.basename(str(payload.get("remote_name") or "").strip())
+            video_b64 = str(payload.get("video_b64") or "").strip()
+            mode_tag = re.sub(r"[^a-zA-Z0-9_-]", "", str(payload.get("mode") or "clay").strip()) or "clay"
+            label_txt = str(payload.get("label") or "").strip()
+            ts_wm = time.strftime("%Y%m%d_%H%M%S")
+            safe_lbl = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff._-]+", "_", label_txt)[:36].strip("_")
+            out_fn = f"wm_{mode_tag}_{safe_lbl + '_' if safe_lbl else ''}{ts_wm}.mp4"
+            out_fp = wm_dir / out_fn
+            try:
+                if remote_name:
+                    cfg = _load_endpoint_cfg()
+                    req_wm = urllib.request.Request(
+                        f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(remote_name)}",
+                        headers={
+                            "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                            "User-Agent": "ColabPanel/1.0",
+                        },
+                    )
+                    with urllib.request.urlopen(req_wm, timeout=120) as rwm:
+                        raw_bytes = rwm.read()
+                elif video_b64:
+                    raw_bytes = base64.b64decode(video_b64.split(",", 1)[-1])
+                else:
+                    self._send_json({"ok": False, "error": "没有可保存的白模视频"})
+                    return
+                if len(raw_bytes) < 1024:
+                    self._send_json({"ok": False, "error": "白模视频内容为空或损坏"})
+                    return
+                out_fp.write_bytes(raw_bytes)
+                meta_file = wm_dir / ".meta.json"
+                meta_map = {}
+                if meta_file.is_file():
+                    try:
+                        meta_map = json.loads(meta_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        meta_map = {}
+                meta_map[out_fn] = {
+                    "label": label_txt or f"{mode_tag}_{ts_wm}",
+                    "mode": mode_tag,
+                    "created_at": time.strftime("%m-%d %H:%M"),
+                }
+                meta_file.write_text(json.dumps(meta_map, ensure_ascii=False, indent=2), encoding="utf-8")
+                # 异步备份至 20TB Google Drive (gdrive:pro6000-output/white_models/)
+                rc_bin = BASE_DIR / ".venv" / "bin" / "rclone"
+                rc_cfg = BASE_DIR / ".gdrive_rclone.conf"
+                if rc_bin.is_file() and rc_cfg.is_file():
+                    subprocess.Popen(
+                        [str(rc_bin), "copy", str(out_fp), "gdrive:pro6000-output/white_models", "--config", str(rc_cfg)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                _append_panel_log(f"💾 [白模动作库] 已存入 {out_fn} ({len(raw_bytes)/(1024*1024):.1f} MB) 并异步备份至 Google Drive")
+                self._send_json({"ok": True, "name": out_fn, "label": meta_map[out_fn]["label"], "size_mb": round(len(raw_bytes) / (1024 * 1024), 2)})
+            except Exception as ex_wm:
+                self._send_json({"ok": False, "error": f"保存白模库失败: {ex_wm}"})
+            return
+
+        if self.path == "/api/white_models/delete":
+            fname = os.path.basename(str(payload.get("name") or "").strip())
+            fp = LOCAL_MOVIES_DIR / "white_models" / fname
+            if fname and fp.is_file():
+                try:
+                    fp.unlink()
+                    self._send_json({"ok": True})
+                    return
+                except Exception as ex_del:
+                    self._send_json({"ok": False, "error": str(ex_del)})
+                    return
+            self._send_json({"ok": False, "error": "文件不存在"})
+            return
+
+        if self.path == "/api/ref2va_mux_audio":
+            target_name = os.path.basename(str(payload.get("target_name") or "").strip())
+            source_b64 = str(payload.get("source_video_b64") or "").strip()
+            start_sec = max(0.0, float(payload.get("start_sec") or 0.0))
+            target_fp = LOCAL_MOVIES_DIR / target_name
+            if not target_name or not target_fp.is_file():
+                self._send_json({"ok": False, "error": f"本地未找到生成视频: {target_name}"})
+                return
+            if not source_b64:
+                self._send_json({"ok": False, "error": "未提供原视频音频源"})
+                return
+            import tempfile as _tf
+            tmp_src = None
+            tmp_out = None
+            try:
+                raw_sb = base64.b64decode(source_b64.split(",", 1)[-1])
+                fd_s, tmp_src = _tf.mkstemp(prefix="bgm_src_", suffix=".mp4")
+                os.close(fd_s)
+                with open(tmp_src, "wb") as wf:
+                    wf.write(raw_sb)
+                # 检查源视频是否包含音轨
+                probe_a = subprocess.check_output(
+                    ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", tmp_src],
+                    text=True,
+                    timeout=10,
+                ).strip()
+                if not probe_a:
+                    self._send_json({"ok": True, "skipped": True, "message": "原视频无音轨，保留 H3 原生音轨"})
+                    return
+                tmp_out = str(target_fp.with_suffix(".bgm_tmp.mp4"))
+                cmd_mux = ["ffmpeg", "-y", "-v", "error", "-i", str(target_fp)]
+                if start_sec > 0.0:
+                    cmd_mux.extend(["-ss", f"{start_sec:.3f}"])
+                cmd_mux.extend([
+                    "-i", tmp_src,
+                    "-map", "0:v:0", "-map", "1:a:0",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
+                    "-shortest", "-movflags", "+faststart",
+                    tmp_out,
+                ])
+                subprocess.run(cmd_mux, check=True, timeout=60)
+                os.replace(tmp_out, str(target_fp))
+                tmp_out = None
+                # 异步更新云盘副本
+                rc_bin = BASE_DIR / ".venv" / "bin" / "rclone"
+                rc_cfg = BASE_DIR / ".gdrive_rclone.conf"
+                if rc_bin.is_file() and rc_cfg.is_file():
+                    from datetime import datetime as _dt_b, timezone as _tz_b, timedelta as _td_b
+                    _ym_b = _dt_b.now(_tz_b(_td_b(hours=8))).strftime("%Y.%m")
+                    subprocess.Popen(
+                        [str(rc_bin), "copy", str(target_fp), f"gdrive:pro6000-output/{_ym_b}/videos", "--config", str(rc_cfg)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                _append_panel_log(f"🎵 [无损回贴原声 BGM] 已将原视频 CD 级音轨无损合成至 {target_name}")
+                self._send_json({"ok": True, "filename": target_name, "message": f"🎵 已无损贴回原视频原声 BGM ({target_name})"})
+            except Exception as ex_mux:
+                self._send_json({"ok": False, "error": f"回贴原声 BGM 失败: {ex_mux}"})
+            finally:
+                for tp in (tmp_src, tmp_out):
+                    if tp and os.path.exists(tp):
+                        try:
+                            os.remove(tp)
+                        except Exception:
+                            pass
+            return
+
+        if self.path == "/api/ref2va_extract_frame":
+            remote_name = os.path.basename(str(payload.get("remote_name") or "").strip())
+            video_b64 = str(payload.get("video_b64") or "").strip()
+            at_sec = max(0.0, float(payload.get("at_sec") or 0.0))
+            import tempfile as _tf2
+            tmp_v = None
+            try:
+                if remote_name:
+                    cfg = _load_endpoint_cfg()
+                    req_f = urllib.request.Request(
+                        f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(remote_name)}",
+                        headers={
+                            "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                            "User-Agent": "ColabPanel/1.0",
+                        },
+                    )
+                    raw_vb = urllib.request.urlopen(req_f, timeout=60).read()
+                elif video_b64:
+                    raw_vb = base64.b64decode(video_b64.split(",", 1)[-1])
+                else:
+                    self._send_json({"ok": False, "error": "请先提供白模或源视频"})
+                    return
+                fd_v, tmp_v = _tf2.mkstemp(prefix="ref2va_f0_", suffix=".mp4")
+                os.close(fd_v)
+                with open(tmp_v, "wb") as wf:
+                    wf.write(raw_vb)
+                ff_f0 = ["ffmpeg", "-v", "error"]
+                if at_sec > 0.0:
+                    ff_f0.extend(["-ss", f"{at_sec:.3f}"])
+                ff_f0.extend(["-i", tmp_v, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"])
+                png_b = subprocess.check_output(ff_f0, timeout=20)
+                if not png_b:
+                    self._send_json({"ok": False, "error": "未能提取首帧"})
+                    return
+                self._send_json({"ok": True, "image_b64": "data:image/png;base64," + base64.b64encode(png_b).decode("ascii")})
+            except Exception as ex_f0:
+                self._send_json({"ok": False, "error": f"提取首帧失败: {ex_f0}"})
+            finally:
+                if tmp_v and os.path.exists(tmp_v):
+                    try:
+                        os.remove(tmp_v)
+                    except Exception:
+                        pass
+            return
+
+        if self.path == "/api/guide_preprocess":
+            cfg = _load_endpoint_cfg()
+            mode_g = str(payload.get("mode") or "clay").strip()
+            kind_g = "图片" if payload.get("image_b64") else "视频"
+            _append_panel_log(f"🗿 [白模/深度预处理] 正在云端 GPU 将{kind_g}转换为 {mode_g} 引导素材...")
+            try:
+                req_g = urllib.request.Request(
+                    "http://127.0.0.1:30000/v1/guide/preprocess",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                        "User-Agent": "ColabPanel/1.0",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req_g, timeout=240) as rg:
+                    res_g = json.loads(rg.read().decode("utf-8"))
+                if res_g.get("ok"):
+                    _append_panel_log(
+                        f"✅ [白模/深度预处理完成] {kind_g} -> {mode_g} ({res_g.get('width', '?')}×{res_g.get('height', '?')} · 耗时 {res_g.get('elapsed_s', '?')}s)"
+                    )
+                self._send_json(res_g)
+            except urllib.error.HTTPError as he_g:
+                try:
+                    err_g = json.loads(he_g.read().decode("utf-8"))
+                    err_val = err_g.get("error") if isinstance(err_g, dict) else str(err_g)
+                    if isinstance(err_val, dict):
+                        err_val = err_val.get("message") or str(err_val)
+                    self._send_json({"ok": False, "error": str(err_val or f"HTTP {he_g.code}")})
+                except Exception:
+                    self._send_json({"ok": False, "error": f"云端预处理接口返回 HTTP {he_g.code}（请确认已开机并运行 MiniMax-H3-Ref2VA / MiniMax-H3 / MiniMax-H3-Image）"})
+            except Exception as ex_g:
+                self._send_json({"ok": False, "error": f"无法连接云端白模预处理服务（请先开机并加载 MiniMax-H3-Ref2VA / MiniMax-H3 / MiniMax-H3-Image）：{ex_g}"})
+            return
+
         if self.path == "/api/video_generate":
             req_mode_chk = str(payload.get("mode") or "t2va").strip()
-            mode_cn = {"image": "01·4K生图/换装", "avatar": "04·数字人说话"}.get(req_mode_chk, "视频生成")
+            mode_cn = {
+                "image": "01·4K生图/换装",
+                "avatar": "04·数字人说话",
+                "ref2va": "06·白模/动作迁移(Ref2VA)",
+            }.get(req_mode_chk, "视频生成")
             shield_blk = _check_active_llama_shield(payload, f"切换至 {mode_cn} 引擎并开始生成")
             if shield_blk:
                 self._send_json(shield_blk)
@@ -14917,8 +16470,9 @@ p.wait()
                                 return False
                             arr = im.astype(np.float32)
                             color_diff = float(np.mean(np.abs(arr[:, :, 0] - arr[:, :, 1]) + np.abs(arr[:, :, 1] - arr[:, :, 2])))
-                            white_ratio = float(np.mean((arr[:, :, 0] > 235) & (arr[:, :, 1] > 235) & (arr[:, :, 2] > 235)))
-                            return color_diff < 4.5 and white_ratio > 0.68
+                            white_ratio = float(np.mean((arr[:, :, 0] > 230) & (arr[:, :, 1] > 230) & (arr[:, :, 2] > 230)))
+                            black_ratio = float(np.mean((arr[:, :, 0] < 18) & (arr[:, :, 1] < 18) & (arr[:, :, 2] < 18)))
+                            return (color_diff < 5.0 and (white_ratio > 0.55 or black_ratio > 0.45)) or (black_ratio > 0.72)
 
                         def _is_half_body_pose_im(im_pose, prompt_txt: str) -> bool:
                             p_low = (prompt_txt or "").lower()
@@ -15083,7 +16637,7 @@ p.wait()
                     f"📸 [提交 4K 写真/换装任务{sheet_tag}] 分辨率 {payload.get('resolution', '3552x4736')} · 6步蒸馏直出 · 参考图 {len(payload.get('ref_images_b64') or [])}张"
                 )
             else:
-                if req_mode != "avatar":
+                if req_mode not in ("avatar", "ref2va"):
                     v_prompt = str(payload.get("prompt") or "").strip()
                     v_sound = str(payload.get("soundscape") or "").strip() or "Natural synchronized physical Foley, realistic clothing rustle, and clear ambient room tone."
                     v_music = str(payload.get("music") or "").strip() or "N/A"
@@ -15132,13 +16686,19 @@ p.wait()
                         v_prompt = trig + v_prompt
                     payload["prompt"] = v_prompt
                 lora_log_s = f" · 🔌LoRA:{os.path.basename(str(payload.get('lora_path')))}" if payload.get("lora_path") else ""
-                _append_panel_log(
-                    f"🎬 [提交视频生成任务] 分辨率 {payload.get('resolution', '832x480')} · {payload.get('num_frames', 124)}帧 · {payload.get('steps', 30)}步 · 连抽 {payload.get('batch_count', 1)}条{lora_log_s}"
-                )
+                if req_mode == "ref2va":
+                    _append_panel_log(
+                        f"🕺 [提交白模/动作迁移任务 (Ref2VA)] 分辨率 {payload.get('resolution', '832x480')} · 参考图 {len(payload.get('ref_images_b64') or [])}张 · {'保留原BGM' if payload.get('keep_ref_audio') else 'H3原生配音'} · {payload.get('steps', 30)}步"
+                    )
+                else:
+                    _append_panel_log(
+                        f"🎬 [提交视频生成任务] 分辨率 {payload.get('resolution', '832x480')} · {payload.get('num_frames', 124)}帧 · {payload.get('steps', 30)}步 · 连抽 {payload.get('batch_count', 1)}条{lora_log_s}"
+                    )
             engine_mismatch = (
                 (req_mode == "image" and active_folder != "MiniMax-H3-Image")
                 or (req_mode == "avatar" and not active_folder.startswith("LongCat-Video-Avatar"))
-                or (req_mode not in ("image", "avatar") and (active_folder == "MiniMax-H3-Image" or not active_folder.startswith("MiniMax-H3")))
+                or (req_mode == "ref2va" and active_folder != "MiniMax-H3-Ref2VA")
+                or (req_mode not in ("image", "avatar", "ref2va") and (active_folder in ("MiniMax-H3-Image", "MiniMax-H3-Ref2VA") or not active_folder.startswith("MiniMax-H3")))
             )
             req_data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
@@ -15211,8 +16771,9 @@ p.wait()
 
             if need_auto_switch:
                 want_image = (req_mode == "image")
-                want_avatar = (req_mode == "avatar") or (not want_image and active_folder.startswith("LongCat-Video-Avatar") and req_mode not in ("t2va", "fl2va"))
-                want_eng = "minimax-h3-image" if want_image else ("longcat-avatar" if want_avatar else "minimax-h3")
+                want_ref2va = (req_mode == "ref2va")
+                want_avatar = (req_mode == "avatar") or (not want_image and not want_ref2va and active_folder.startswith("LongCat-Video-Avatar") and req_mode not in ("t2va", "fl2va"))
+                want_eng = "minimax-h3-image" if want_image else ("longcat-avatar" if want_avatar else ("minimax-h3-ref2va" if want_ref2va else "minimax-h3"))
                 if not remote_already_loading and not engine_mismatch:
                     try:
                         with urllib.request.urlopen("http://127.0.0.1:30000/health", timeout=6) as hr:
@@ -15237,6 +16798,8 @@ p.wait()
                     target_label = "MiniMax-H3-Image (4K无审查黄金铁三角)"
                 elif want_avatar:
                     target_label = "LongCat-Avatar-1.6 (INT8版)" if is_t4_account else "LongCat-Video-Avatar-1.6"
+                elif want_ref2va:
+                    target_label = "MiniMax-H3-Ref2VA (33B · 白模/动作迁移 · 无审查)"
                 else:
                     target_label = "MiniMax-H3 (T4 量化版)" if is_t4_account else "MiniMax-H3"
                 with _DEPLOY_LOCK:
@@ -15270,6 +16833,15 @@ p.wait()
                             pattern="base_model_int8/*.safetensors" if is_t4_account else "base_model/*.safetensors",
                             ctx=262144,
                             gpu="T4" if is_t4_account else "G4",
+                            download_only=False,
+                        )
+                    elif want_ref2va:
+                        _start_deploy_background(
+                            repo="MiniMaxAI/MiniMax-H3",
+                            folder="MiniMax-H3-Ref2VA",
+                            pattern="Ref2VA/*.safetensors",
+                            ctx=262144,
+                            gpu="G4",
                             download_only=False,
                         )
                     elif is_t4_account:
@@ -15901,14 +17473,18 @@ p.wait()
                 req_im = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
                 raw_bytes = urllib.request.urlopen(req_im, timeout=25).read()
 
-                if target in ("FUSION_SLOT_0", "FUSION_TARGET", "FUSION_OUTFIT", "FUSION_POSE"):
+                if target in ("FUSION_SLOT_0", "FUSION_TARGET", "FUSION_OUTFIT", "FUSION_POSE", "REF2VA_PIC_0", "REF2VA_PIC_1", "REF2VA_PIC_2", "REF2VA_PIC_3"):
                     from PIL import Image
                     im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
                     buf = io.BytesIO()
                     im.save(buf, format="JPEG", quality=95)
                     b64_str = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-                    slot_lbl = "① 人脸槽" if target == "FUSION_SLOT_0" else ("③ 姿势动作槽" if target == "FUSION_POSE" else "② 服饰穿搭槽")
-                    _append_panel_log(f"👗 [衣姿PoseWear库] 已加载高清参考图 #{item_id} 至【02 · 角色合成】{slot_lbl}")
+                    if target.startswith("REF2VA_PIC_"):
+                        p_idx = int(target.rsplit("_", 1)[-1]) + 1
+                        _append_panel_log(f"🕺 [衣姿PoseWear库] 已加载高清参考图 #{item_id} 至【06 · 白模/动作迁移】<Picture {p_idx}>")
+                    else:
+                        slot_lbl = "① 人脸槽" if target == "FUSION_SLOT_0" else ("③ 姿势动作槽" if target == "FUSION_POSE" else "② 服饰穿搭槽")
+                        _append_panel_log(f"👗 [衣姿PoseWear库] 已加载高清参考图 #{item_id} 至【02 · 角色合成】{slot_lbl}")
                     self._send_json({"ok": True, "target": target, "id": item_id, "image_b64": b64_str})
                     return
 

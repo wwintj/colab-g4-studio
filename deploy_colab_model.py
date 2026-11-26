@@ -179,6 +179,14 @@ PRESET_SAFETENSORS_FILES: Dict[str, List[str]] = {
             "FL2VA/audio_vae/model.safetensors",
         ]
     ),
+    "MiniMaxAI/MiniMax-H3#Ref2VA": (
+        [f"Ref2VA/transformer/model-{i:05d}-of-00013.safetensors" for i in range(1, 14)]
+        + [f"FL2VA/text_encoder/model-{i:05d}-of-00014.safetensors" for i in range(1, 15)]
+        + [
+            "FL2VA/video_vae/source/model.safetensors",
+            "FL2VA/audio_vae/model.safetensors",
+        ]
+    ),
     "Comfy-Org/MiniMax-H3-Image": [
         "diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors",
         "vae/minimax_h3_image_vae_fp16.safetensors",
@@ -235,12 +243,25 @@ def resolve_hf_safetensors_files(repo_id: str, pattern: str = "", token: str = "
             all_siblings.append((rfn, sz))
 
     preset_key = repo_id
-    if repo_id == "meituan-longcat/LongCat-Video-Avatar-1.6" and "int8" in (pattern or "").lower():
+    if repo_id == "MiniMaxAI/MiniMax-H3" and "ref2va" in (pattern or "").lower():
+        preset_key = "MiniMaxAI/MiniMax-H3#Ref2VA"
+    elif repo_id == "meituan-longcat/LongCat-Video-Avatar-1.6" and "int8" in (pattern or "").lower():
         preset_key = "meituan-longcat/LongCat-Video-Avatar-1.6#int8"
     if preset_key in PRESET_SAFETENSORS_FILES:
         preset_list = PRESET_SAFETENSORS_FILES[preset_key]
         out: List[Tuple[str, int]] = [(fn, size_map.get(fn, 0)) for fn in preset_list]
         # 顺带附带该仓库下的轻量 json/txt/model/py 配置文件，方便离线直接加载
+        if preset_key == "MiniMaxAI/MiniMax-H3#Ref2VA":
+            for rfn, sz in all_siblings:
+                if not (
+                    rfn.startswith("FL2VA/")
+                    or rfn.startswith("Ref2VA/transformer/")
+                    or rfn == "Ref2VA/model_index.json"
+                ):
+                    continue
+                if rfn.endswith((".json", ".txt", ".yaml", ".py", "tokenizer.model", "spiece.model")) and sz < 50 * 1024 * 1024 and rfn not in preset_list:
+                    out.append((rfn, sz))
+            return out
         prefix_filter = "FL2VA/" if repo_id == "MiniMaxAI/MiniMax-H3" else ""
         for rfn, sz in all_siblings:
             if prefix_filter and not rfn.startswith(prefix_filter):
@@ -437,6 +458,560 @@ def _pull_from_rclone_drive_if_exists(remote_folder: str, local_dir: str) -> boo
     return False
 
 
+GUIDE_PREPROCESSOR_CODE = r'''#!/usr/bin/env python3
+"""
+4-Mode Guide Video & Photo Preprocessor for MiniMax-H3-Ref2VA (Card 06) and MiniMax-H3-Image (Card 01):
+  - clay          : 3D Studio Clay White Model (Depth-Anything-V2 -> smoothed normals + 3-point soft studio shading + clean foreground cutout)
+  - subject_depth : Subject-only 3D Depth on pure black background (TanLuAI subject_depth style)
+  - full_depth    : Full-scene Depth-Anything-V2 with temporal EMA stabilization (zero flicker)
+  - pose          : Multi-person OpenPose-style colored body skeleton on black canvas (KeypointRCNN)
+Supports both MP4 video (with start/end clip trimming, exact 24fps resampling, and original audio muxing)
+and single photo (PNG/JPG base64 -> PNG base64).
+"""
+import base64
+import gc
+import io
+import os
+import subprocess
+import tempfile
+import threading
+import time
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import cv2
+import numpy as np
+import torch
+import torch.nn.functional as F
+from PIL import Image
+
+_PREPROC_LOCK = threading.Lock()
+_CACHE: Dict[str, Any] = {}
+
+_OPENPOSE_LIMBS = [
+    ((5, 6), (255, 85, 0)),
+    ((5, 7), (255, 170, 0)),
+    ((7, 9), (255, 255, 0)),
+    ((6, 8), (170, 255, 0)),
+    ((8, 10), (0, 255, 0)),
+    ((5, 11), (0, 255, 170)),
+    ((6, 12), (0, 170, 255)),
+    ((11, 12), (0, 85, 255)),
+    ((11, 13), (85, 0, 255)),
+    ((13, 15), (170, 0, 255)),
+    ((12, 14), (255, 0, 170)),
+    ((14, 16), (255, 0, 85)),
+    ((0, 1), (255, 0, 255)),
+    ((0, 2), (170, 0, 255)),
+    ((1, 3), (255, 85, 255)),
+    ((2, 4), (85, 85, 255)),
+]
+
+
+def _pick_device() -> Tuple[str, bool]:
+    if not torch.cuda.is_available():
+        return "cpu", False
+    try:
+        free_b, _ = torch.cuda.mem_get_info("cuda")
+        if free_b >= 2.2 * (1024 ** 3):
+            return "cuda", (free_b < 8.0 * (1024 ** 3))
+    except Exception:
+        pass
+    return "cpu", False
+
+
+def _get_depth_model(device: str):
+    key = "depth_anything_v2"
+    if key not in _CACHE:
+        from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+        model_id = "depth-anything/Depth-Anything-V2-Small-hf"
+        proc = AutoImageProcessor.from_pretrained(model_id)
+        dtype = torch.float16 if device == "cuda" else torch.float32
+        mdl = AutoModelForDepthEstimation.from_pretrained(model_id, torch_dtype=dtype).eval()
+        _CACHE[key] = (proc, mdl)
+    proc, mdl = _CACHE[key]
+    mdl.to(device)
+    return proc, mdl
+
+
+def _get_seg_model(device: str):
+    key = "deeplabv3_seg"
+    if key not in _CACHE:
+        import torchvision
+        weights = torchvision.models.segmentation.DeepLabV3_ResNet101_Weights.DEFAULT
+        mdl = torchvision.models.segmentation.deeplabv3_resnet101(weights=weights).eval()
+        _CACHE[key] = (mdl, weights.transforms())
+    mdl, tfm = _CACHE[key]
+    mdl.to(device)
+    if device == "cuda":
+        mdl.half()
+    else:
+        mdl.float()
+    return mdl, tfm
+
+
+def _get_pose_model(device: str):
+    key = "keypoint_rcnn"
+    if key not in _CACHE:
+        import torchvision
+        weights = torchvision.models.detection.KeypointRCNN_ResNet50_FPN_Weights.DEFAULT
+        mdl = torchvision.models.detection.keypointrcnn_resnet50_fpn(weights=weights).eval()
+        _CACHE[key] = mdl
+    mdl = _CACHE[key]
+    mdl.to(device)
+    return mdl
+
+
+def _offload_models_if_needed(offload: bool):
+    if not offload:
+        return
+    for val in _CACHE.values():
+        objs = val if isinstance(val, tuple) else (val,)
+        for obj in objs:
+            if hasattr(obj, "to"):
+                try:
+                    obj.to("cpu")
+                except Exception:
+                    pass
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+@torch.inference_mode()
+def _infer_depth_batch(frames_rgb: List[np.ndarray], device: str, batch_size: int = 8) -> List[np.ndarray]:
+    proc, mdl = _get_depth_model(device)
+    out: List[np.ndarray] = []
+    model_dtype = next(mdl.parameters()).dtype
+    for i in range(0, len(frames_rgb), batch_size):
+        chunk = frames_rgb[i : i + batch_size]
+        pils = [Image.fromarray(f) for f in chunk]
+        inp = proc(images=pils, return_tensors="pt")
+        inp = {k: v.to(device=device, dtype=model_dtype if v.is_floating_point() else v.dtype) for k, v in inp.items()}
+        pred = mdl(**inp).predicted_depth
+        h, w = chunk[0].shape[:2]
+        pred = F.interpolate(pred.unsqueeze(1).float(), size=(h, w), mode="bicubic", align_corners=False).squeeze(1)
+        arr = pred.detach().cpu().numpy()
+        for j in range(arr.shape[0]):
+            out.append(arr[j])
+    return out
+
+
+@torch.inference_mode()
+def _infer_fg_masks_batch(frames_rgb: List[np.ndarray], device: str, batch_size: int = 6) -> List[np.ndarray]:
+    mdl, _ = _get_seg_model(device)
+    mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
+    std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
+    use_half = device == "cuda"
+    if use_half:
+        mean = mean.half()
+        std = std.half()
+    masks: List[np.ndarray] = []
+    for i in range(0, len(frames_rgb), batch_size):
+        chunk = frames_rgb[i : i + batch_size]
+        h, w = chunk[0].shape[:2]
+        scale = 520.0 / max(1, min(h, w))
+        sh = max(64, int(round(h * scale / 8.0)) * 8)
+        sw = max(64, int(round(w * scale / 8.0)) * 8)
+        if max(sh, sw) > 768:
+            r2 = 768.0 / max(sh, sw)
+            sh = max(64, int(round(sh * r2 / 8.0)) * 8)
+            sw = max(64, int(round(sw * r2 / 8.0)) * 8)
+        batch_np = np.stack([cv2.resize(f, (sw, sh), interpolation=cv2.INTER_LINEAR) for f in chunk], axis=0)
+        t = torch.from_numpy(batch_np).permute(0, 3, 1, 2).to(device=device, dtype=torch.float16 if use_half else torch.float32) / 255.0
+        t = (t - mean) / std
+        logits = mdl(t)["out"].float()
+        probs = torch.softmax(logits, dim=1)
+        person_prob = probs[:, 15:16, :, :]
+        fg_any_prob = 1.0 - probs[:, 0:1, :, :]
+        person_up = F.interpolate(person_prob, size=(h, w), mode="bilinear", align_corners=False).squeeze(1).cpu().numpy()
+        fg_up = F.interpolate(fg_any_prob, size=(h, w), mode="bilinear", align_corners=False).squeeze(1).cpu().numpy()
+        for p_m, a_m in zip(person_up, fg_up):
+            m = p_m if float((p_m > 0.45).mean()) >= 0.012 else a_m
+            # Soft crisp foreground alpha with slight edge feather
+            m = np.clip((m - 0.30) / 0.42, 0.0, 1.0).astype(np.float32)
+            m = cv2.GaussianBlur(m, (5, 5), 1.1)
+            masks.append(m)
+    return masks
+
+
+def _render_clay_frame(depth_norm: np.ndarray, mask: Optional[np.ndarray], keep_bg: bool = False, smoothness: str = "balanced") -> np.ndarray:
+    sm = (smoothness or "balanced").strip().lower()
+    if sm == "soft":
+        blur_sigma, grad_scale, ao_str = 3.2, 1.55, 0.55
+    elif sm == "detail":
+        blur_sigma, grad_scale, ao_str = 0.8, 2.95, 1.55
+    else:
+        blur_sigma, grad_scale, ao_str = 1.6, 2.2, 1.15
+    d_smooth = cv2.GaussianBlur(depth_norm.astype(np.float32), (0, 0), blur_sigma)
+    gx = cv2.Sobel(d_smooth, cv2.CV_32F, 1, 0, ksize=5) * grad_scale
+    gy = cv2.Sobel(d_smooth, cv2.CV_32F, 0, 1, ksize=5) * grad_scale
+    nz = np.ones_like(d_smooth, dtype=np.float32)
+    inv_len = 1.0 / np.sqrt(gx * gx + gy * gy + nz * nz + 1e-6)
+    nx, ny, nz = -gx * inv_len, -gy * inv_len, nz * inv_len
+
+    # 3-point soft studio clay lighting (matches Blender matte white clay mannequin)
+    l1 = np.array([-0.34, -0.44, 0.83], dtype=np.float32)
+    l1 /= np.linalg.norm(l1)
+    l2 = np.array([0.46, -0.14, 0.88], dtype=np.float32)
+    l2 /= np.linalg.norm(l2)
+    diff1 = np.clip(nx * l1[0] + ny * l1[1] + nz * l1[2], 0.0, 1.0)
+    diff2 = np.clip(nx * l2[0] + ny * l2[1] + nz * l2[2], 0.0, 1.0)
+
+    # Local concavity ambient occlusion for clothing folds & limb joints
+    d_blur_wide = cv2.GaussianBlur(d_smooth, (0, 0), 9.0)
+    ao = np.clip(0.92 + (d_smooth - d_blur_wide) * ao_str, 0.72, 1.04)
+
+    shade = (0.40 + 0.44 * diff1 + 0.16 * diff2) * ao
+    # Subtle depth aerial gradient for sculptural clarity
+    clay = np.clip(0.46 + 0.48 * shade + 0.06 * d_smooth, 0.24, 0.96)
+
+    if mask is not None and not keep_bg:
+        # Clean bright studio backdrop (#F1F2F4) with subtle vignette
+        h, w = clay.shape
+        yy = np.linspace(-1.0, 1.0, h, dtype=np.float32)[:, None]
+        xx = np.linspace(-1.0, 1.0, w, dtype=np.float32)[None, :]
+        bg = np.clip(0.955 - 0.045 * (xx * xx * 0.5 + yy * yy * 0.5), 0.88, 0.96)
+        alpha = np.clip(mask, 0.0, 1.0)
+        comp = clay * alpha + bg * (1.0 - alpha)
+    else:
+        comp = clay
+
+    u8 = np.clip(comp * 255.0, 0, 255).astype(np.uint8)
+    return np.stack([u8, u8, u8], axis=-1)
+
+
+def _render_subject_depth_frame(depth_raw: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    fg_sel = mask > 0.45
+    if int(fg_sel.sum()) < 64:
+        # Depth-based fallback when no class mask triggers
+        lo = float(np.percentile(depth_raw, 40))
+        hi = float(np.percentile(depth_raw, 99.5))
+        d_norm = np.clip((depth_raw - lo) / max(1e-5, hi - lo), 0.0, 1.0)
+        u8 = np.clip(d_norm * 255.0, 0, 255).astype(np.uint8)
+        return np.stack([u8, u8, u8], axis=-1)
+
+    fg_vals = depth_raw[fg_sel]
+    d_lo = float(np.percentile(fg_vals, 2))
+    d_hi = float(np.percentile(fg_vals, 99))
+    d_norm = np.clip((depth_raw - d_lo) / max(1e-5, d_hi - d_lo), 0.0, 1.0)
+    # Rescale subject depth to [0.28..1.0] so farthest limb stays visible against pure black background
+    fg_val = (0.28 + 0.72 * d_norm) * np.clip(mask, 0.0, 1.0)
+    u8 = np.clip(fg_val * 255.0, 0, 255).astype(np.uint8)
+    return np.stack([u8, u8, u8], axis=-1)
+
+
+@torch.inference_mode()
+def _render_pose_frames(frames_rgb: List[np.ndarray], device: str) -> List[np.ndarray]:
+    mdl = _get_pose_model(device)
+    out: List[np.ndarray] = []
+    for i in range(0, len(frames_rgb), 4):
+        chunk = frames_rgb[i : i + 4]
+        tensors = [torch.from_numpy(f).permute(2, 0, 1).float().to(device) / 255.0 for f in chunk]
+        preds = mdl(tensors)
+        for frame, pred in zip(chunk, preds):
+            h, w = frame.shape[:2]
+            canvas = np.zeros((h, w, 3), dtype=np.uint8)
+            thick = max(2, int(round(min(h, w) / 140.0)))
+            rad = max(3, int(round(min(h, w) / 115.0)))
+            scores = pred.get("scores", torch.empty(0)).detach().cpu().numpy()
+            kps_all = pred.get("keypoints", torch.empty(0)).detach().cpu().numpy()
+            kp_sc_all = pred.get("keypoints_scores", torch.empty(0)).detach().cpu().numpy()
+            for pi, sc in enumerate(scores):
+                if float(sc) < 0.65:
+                    continue
+                kps = kps_all[pi]
+                ksc = kp_sc_all[pi] if pi < len(kp_sc_all) else np.ones(len(kps))
+                # Draw neck connector from nose to shoulder midpoint
+                if ksc[0] > 0.2 and ksc[5] > 0.2 and ksc[6] > 0.2:
+                    mx = int(round((kps[5, 0] + kps[6, 0]) * 0.5))
+                    my = int(round((kps[5, 1] + kps[6, 1]) * 0.5))
+                    cv2.line(canvas, (int(round(kps[0, 0])), int(round(kps[0, 1]))), (mx, my), (255, 0, 0), thick, cv2.LINE_AA)
+                for (a, b), col in _OPENPOSE_LIMBS:
+                    if a < len(kps) and b < len(kps) and ksc[a] > 0.15 and ksc[b] > 0.15:
+                        p1 = (int(round(kps[a, 0])), int(round(kps[a, 1])))
+                        p2 = (int(round(kps[b, 0])), int(round(kps[b, 1])))
+                        cv2.line(canvas, p1, p2, col, thick, cv2.LINE_AA)
+                for ji in range(min(17, len(kps))):
+                    if ksc[ji] > 0.15:
+                        pt = (int(round(kps[ji, 0])), int(round(kps[ji, 1])))
+                        cv2.circle(canvas, pt, rad, (255, 255, 255), -1, cv2.LINE_AA)
+            out.append(canvas)
+    return out
+
+
+def _process_frames_rgb(frames_rgb: List[np.ndarray], mode: str, keep_bg: bool = False, smoothness: str = "balanced") -> List[np.ndarray]:
+    mode = (mode or "clay").strip().lower()
+    device, should_offload = _pick_device()
+    try:
+        if mode == "pose":
+            return _render_pose_frames(frames_rgb, device)
+
+        depths = _infer_depth_batch(frames_rgb, device)
+        if mode == "full_depth":
+            out = []
+            ema_lo, ema_hi = None, None
+            for d in depths:
+                lo = float(np.percentile(d, 2))
+                hi = float(np.percentile(d, 98.5))
+                if ema_lo is None:
+                    ema_lo, ema_hi = lo, hi
+                else:
+                    ema_lo = 0.85 * ema_lo + 0.15 * lo
+                    ema_hi = 0.85 * ema_hi + 0.15 * hi
+                dn = np.clip((d - ema_lo) / max(1e-5, ema_hi - ema_lo), 0.0, 1.0)
+                if smoothness == "soft":
+                    dn = cv2.GaussianBlur(dn.astype(np.float32), (0, 0), 2.4)
+                u8 = np.clip(dn * 255.0, 0, 255).astype(np.uint8)
+                out.append(np.stack([u8, u8, u8], axis=-1))
+            return out
+
+        masks = _infer_fg_masks_batch(frames_rgb, device)
+        if mode == "subject_depth":
+            res_sd = []
+            for d, m in zip(depths, masks):
+                d_use = cv2.GaussianBlur(d.astype(np.float32), (0, 0), 2.4) if smoothness == "soft" else d
+                res_sd.append(_render_subject_depth_frame(d_use, m))
+            return res_sd
+
+        # Default: clay (3D studio white model)
+        out = []
+        ema_lo, ema_hi = None, None
+        for d, m in zip(depths, masks):
+            sel = m > 0.45
+            vals = d[sel] if int(sel.sum()) > 128 and not keep_bg else d
+            lo = float(np.percentile(vals, 2))
+            hi = float(np.percentile(vals, 98.5))
+            if ema_lo is None:
+                ema_lo, ema_hi = lo, hi
+            else:
+                ema_lo = 0.85 * ema_lo + 0.15 * lo
+                ema_hi = 0.85 * ema_hi + 0.15 * hi
+            dn = np.clip((d - ema_lo) / max(1e-5, ema_hi - ema_lo), 0.0, 1.0)
+            out.append(_render_clay_frame(dn, None if keep_bg else m, keep_bg=keep_bg, smoothness=smoothness))
+        return out
+    finally:
+        _offload_models_if_needed(should_offload)
+
+
+def _detect_black_bar_crop(video_path: str) -> str:
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-v", "info", "-i", video_path, "-t", "1.5", "-vf", "cropdetect=24:16:0", "-f", "null", "-"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        import re as _re
+        matches = _re.findall(r"crop=(\d+:\d+:\d+:\d+)", r.stderr or "")
+        if matches:
+            cw, ch, cx, cy = [int(v) for v in matches[-1].split(":")]
+            if cw >= 160 and ch >= 160 and (cx > 4 or cy > 4):
+                return f"crop={cw}:{ch}:{cx}:{cy}"
+    except Exception:
+        pass
+    return ""
+
+
+def _has_audio_stream(video_path: str) -> bool:
+    try:
+        out = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", video_path],
+            text=True,
+            timeout=10,
+        ).strip()
+        return bool(out)
+    except Exception:
+        return False
+
+
+def preprocess_guide(payload: dict, output_dir: str, gpu_lock: Optional[threading.Lock] = None) -> dict:
+    t0 = time.time()
+    mode = str(payload.get("mode") or "clay").strip().lower()
+    if mode not in ("clay", "subject_depth", "full_depth", "pose", "raw"):
+        mode = "clay"
+    keep_bg = bool(payload.get("keep_bg", False))
+    smoothness = str(payload.get("smoothness") or "balanced").strip().lower()
+    if smoothness not in ("soft", "balanced", "detail"):
+        smoothness = "balanced"
+    crop_mode = str(payload.get("crop_mode") or "none").strip().lower()
+
+    lock = gpu_lock or _PREPROC_LOCK
+
+    # Case 1: Single image preprocessing (Card 01 photo -> white model / depth / pose)
+    image_b64 = str(payload.get("image_b64") or "").strip()
+    if image_b64:
+        raw_b = base64.b64decode(image_b64.split(",", 1)[-1])
+        pil_im = Image.open(io.BytesIO(raw_b)).convert("RGB")
+        w0, h0 = pil_im.size
+        # Cap inference edge at 1280 for speed while preserving crisp detail
+        max_e = max(w0, h0)
+        if max_e > 1280:
+            s = 1280.0 / max_e
+            pil_work = pil_im.resize((max(32, int(round(w0 * s))), max(32, int(round(h0 * s)))), Image.Resampling.LANCZOS)
+        else:
+            pil_work = pil_im
+        rgb = np.asarray(pil_work, dtype=np.uint8)
+        with lock:
+            res_frames = [rgb] if mode == "raw" else _process_frames_rgb([rgb], mode, keep_bg=keep_bg, smoothness=smoothness)
+        out_im = Image.fromarray(res_frames[0])
+        if out_im.size != (w0, h0):
+            out_im = out_im.resize((w0, h0), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        out_im.save(buf, format="PNG")
+        out_b64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        return {
+            "ok": True,
+            "kind": "image",
+            "mode": mode,
+            "width": w0,
+            "height": h0,
+            "image_b64": out_b64,
+            "elapsed_s": round(time.time() - t0, 2),
+        }
+
+    # Case 2: Video preprocessing (Card 06 real video -> 24fps clay / subject_depth / full_depth / pose MP4)
+    video_b64 = str(payload.get("video_b64") or "").strip()
+    video_name = os.path.basename(str(payload.get("video_name") or "").strip())
+    start_sec = max(0.0, float(payload.get("start_sec") or 0.0))
+    end_sec = float(payload.get("end_sec") or 0.0)
+    target_fps = 24
+    max_short_edge = max(256, min(768, int(payload.get("max_short_edge") or 512)))
+    max_frames = max(22, min(243, int(payload.get("max_frames") or 243)))
+
+    tmp_in = None
+    tmp_norm = None
+    tmp_raw_vid = None
+    try:
+        if video_b64:
+            raw_vb = base64.b64decode(video_b64.split(",", 1)[-1])
+            fd, tmp_in = tempfile.mkstemp(prefix="guide_in_", suffix=".mp4")
+            os.close(fd)
+            with open(tmp_in, "wb") as wf:
+                wf.write(raw_vb)
+            src_path = tmp_in
+        elif video_name and os.path.isfile(os.path.join(output_dir, video_name)):
+            src_path = os.path.join(output_dir, video_name)
+        else:
+            return {"ok": False, "error": "请先上传参考视频或提供图片"}
+
+        fd2, tmp_norm = tempfile.mkstemp(prefix="guide_norm_", suffix=".mp4")
+        os.close(fd2)
+
+        # Optional pre-crop to strip black bars or platform watermarks BEFORE depth/white-model conversion
+        crop_filter = ""
+        if crop_mode == "auto_black":
+            crop_filter = _detect_black_bar_crop(src_path)
+        elif crop_mode == "trim_6pct":
+            crop_filter = "crop=iw*0.88:ih*0.88:iw*0.06:ih*0.06"
+        elif crop_mode == "trim_10pct":
+            crop_filter = "crop=iw*0.80:ih*0.80:iw*0.10:ih*0.10"
+
+        vf_parts = [f"fps={target_fps}"]
+        if crop_filter:
+            vf_parts.append(crop_filter)
+        vf_parts.append(f"scale='if(lte(iw,ih),min({max_short_edge},iw),-2)':'if(lte(iw,ih),-2,min({max_short_edge},ih))'")
+        vf_parts.append("scale=trunc(iw/16)*16:trunc(ih/16)*16")
+        vf = ",".join(vf_parts)
+        ff_cmd = ["ffmpeg", "-y", "-v", "error"]
+        if start_sec > 0.0:
+            ff_cmd.extend(["-ss", f"{start_sec:.3f}"])
+        ff_cmd.extend(["-i", src_path])
+        if end_sec > start_sec + 0.2:
+            dur = min(end_sec - start_sec, max_frames / float(target_fps))
+            ff_cmd.extend(["-t", f"{dur:.3f}"])
+        else:
+            ff_cmd.extend(["-t", f"{max_frames / float(target_fps):.3f}"])
+        ff_cmd.extend([
+            "-vf", vf,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "32000", "-ac", "2", "-shortest",
+            tmp_norm,
+        ])
+        r_ff = subprocess.run(ff_cmd, capture_output=True, text=True, timeout=120)
+        if r_ff.returncode != 0:
+            # Retry without audio stream in case source audio codec fails
+            ff_cmd_noa = [c for c in ff_cmd if c not in ("-c:a", "aac", "-ar", "32000", "-ac", "2", "-shortest")]
+            ff_cmd_noa.insert(-1, "-an")
+            subprocess.run(ff_cmd_noa, check=True, timeout=120)
+
+        has_audio = _has_audio_stream(tmp_norm)
+        cap = cv2.VideoCapture(tmp_norm)
+        frames_rgb: List[np.ndarray] = []
+        while len(frames_rgb) < max_frames:
+            ok_r, fr = cap.read()
+            if not ok_r or fr is None:
+                break
+            frames_rgb.append(cv2.cvtColor(fr, cv2.COLOR_BGR2RGB))
+        cap.release()
+        if not frames_rgb:
+            return {"ok": False, "error": "无法读取视频帧，请确认视频格式有效 (MP4/MOV/WebM)"}
+
+        # MiniMax-H3 Ref2VA requires >= 22 frames in reference video
+        while len(frames_rgb) < 22:
+            frames_rgb.append(frames_rgb[-1].copy())
+
+        h, w = frames_rgb[0].shape[:2]
+        if mode == "raw":
+            out_frames = frames_rgb
+        else:
+            with lock:
+                out_frames = _process_frames_rgb(frames_rgb, mode, keep_bg=keep_bg, smoothness=smoothness)
+
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        out_fname = f"guide_{mode}_{ts}.mp4"
+        out_path = os.path.join(output_dir, out_fname)
+        fd3, tmp_raw_vid = tempfile.mkstemp(prefix="guide_out_", suffix=".mp4")
+        os.close(fd3)
+
+        # Write crisp H.264 MP4 via ffmpeg stdin pipe so browser plays it natively
+        enc_cmd = [
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "rawvideo", "-vcodec", "rawvideo",
+            "-s", f"{w}x{h}", "-pix_fmt", "rgb24", "-r", str(target_fps),
+            "-i", "-",
+        ]
+        if has_audio:
+            enc_cmd.extend(["-i", tmp_norm, "-map", "0:v:0", "-map", "1:a:0?", "-c:a", "aac", "-ar", "32000", "-shortest"])
+        enc_cmd.extend([
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            tmp_raw_vid,
+        ])
+        proc_enc = subprocess.Popen(enc_cmd, stdin=subprocess.PIPE)
+        assert proc_enc.stdin is not None
+        for fr_rgb in out_frames:
+            proc_enc.stdin.write(np.ascontiguousarray(fr_rgb).tobytes())
+        proc_enc.stdin.close()
+        proc_enc.wait(timeout=120)
+        if proc_enc.returncode != 0:
+            raise RuntimeError("ffmpeg encoding guide video failed")
+
+        os.replace(tmp_raw_vid, out_path)
+        tmp_raw_vid = None
+        return {
+            "ok": True,
+            "kind": "video",
+            "mode": mode,
+            "filename": out_fname,
+            "width": w,
+            "height": h,
+            "fps": target_fps,
+            "num_frames": len(out_frames),
+            "duration_sec": round(len(out_frames) / float(target_fps), 2),
+            "has_audio": has_audio,
+            "elapsed_s": round(time.time() - t0, 2),
+        }
+    finally:
+        for tp in (tmp_in, tmp_norm, tmp_raw_vid):
+            if tp and os.path.exists(tp):
+                try:
+                    os.remove(tp)
+                except Exception:
+                    pass
+'''
+
+
 MINIMAX_SERVER_CODE = r'''#!/usr/bin/env python3
 import base64
 import gc
@@ -465,8 +1040,18 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 from diffsynth.pipelines.minimax_h3_audio_video import MiniMaxH3Pipeline, ModelConfig
 from diffsynth.utils.data.audio_video import write_video_audio
+try:
+    from diffsynth.utils.data.audio_video import read_video_audio
+except Exception:
+    read_video_audio = None
+try:
+    from diffsynth.utils.data.audio import read_audio
+except Exception:
+    read_audio = None
 
 MODEL_DIR = os.environ.get("MINIMAX_MODEL_DIR", "/content/local_models/MiniMax-H3")
+MODEL_VARIANT = os.environ.get("MINIMAX_VARIANT", "FL2VA").strip() or "FL2VA"
+ENGINE_NAME = "minimax-h3-ref2va" if MODEL_VARIANT == "Ref2VA" else "minimax-h3"
 OUTPUT_DIR = "/content/outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -913,7 +1498,8 @@ def _init_pipeline():
             "computation_device": "cuda",
         }
         te_paths = [os.path.join(MODEL_DIR, f"FL2VA/text_encoder/model-{i:05d}-of-00014.safetensors") for i in range(1, 15)]
-        dit_paths = [os.path.join(MODEL_DIR, f"FL2VA/transformer/model-{i:05d}-of-00013.safetensors") for i in range(1, 14)]
+        dit_sub = "Ref2VA" if MODEL_VARIANT == "Ref2VA" else "FL2VA"
+        dit_paths = [os.path.join(MODEL_DIR, f"{dit_sub}/transformer/model-{i:05d}-of-00013.safetensors") for i in range(1, 14)]
         vvae_path = os.path.join(MODEL_DIR, "FL2VA/video_vae/source/model.safetensors")
         avae_path = os.path.join(MODEL_DIR, "FL2VA/audio_vae/model.safetensors")
 
@@ -1087,10 +1673,97 @@ def _apply_or_switch_sentinel_h3_lora(pipe, lora_path: str, lora_strength: float
     print(f"SENTINEL_H3_LORA_APPLIED: {clean_path} (strength={strength}, layers={len(applied_deltas)})", flush=True)
 
 
+def _load_ref2va_video_frames_and_audio(payload: dict):
+    import base64
+    import tempfile
+    import cv2
+    from PIL import Image
+
+    ref_name = os.path.basename(str(payload.get("ref_video_name") or "").strip())
+    ref_b64 = str(payload.get("ref_video_b64") or "").strip()
+    start_sec = max(0.0, float(payload.get("start_sec") or 0.0))
+    end_sec = float(payload.get("end_sec") or 0.0)
+    max_frames = 243
+
+    tmp_in = None
+    tmp_24 = None
+    try:
+        if ref_name and os.path.isfile(os.path.join(OUTPUT_DIR, ref_name)):
+            src_path = os.path.join(OUTPUT_DIR, ref_name)
+            already_guide = ref_name.startswith("guide_")
+        elif ref_b64:
+            raw_vb = base64.b64decode(ref_b64.split(",", 1)[-1])
+            fd, tmp_in = tempfile.mkstemp(prefix="ref2va_in_", suffix=".mp4")
+            os.close(fd)
+            with open(tmp_in, "wb") as wf:
+                wf.write(raw_vb)
+            src_path = tmp_in
+            already_guide = False
+        else:
+            return None, None, None
+
+        fd2, tmp_24 = tempfile.mkstemp(prefix="ref2va_24fps_", suffix=".mp4")
+        os.close(fd2)
+        ff_cmd = ["ffmpeg", "-y", "-v", "error"]
+        if not already_guide and start_sec > 0.0:
+            ff_cmd.extend(["-ss", f"{start_sec:.3f}"])
+        ff_cmd.extend(["-i", src_path])
+        if not already_guide and end_sec > start_sec + 0.2:
+            dur = min(end_sec - start_sec, max_frames / 24.0)
+            ff_cmd.extend(["-t", f"{dur:.3f}"])
+        else:
+            ff_cmd.extend(["-t", f"{max_frames / 24.0:.3f}"])
+        ff_cmd.extend([
+            "-vf", "fps=24,scale='if(lte(iw,ih),min(768,iw),-2)':'if(lte(iw,ih),-2,min(768,ih))',scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "32000", "-ac", "2", "-shortest",
+            tmp_24,
+        ])
+        r_ff = subprocess.run(ff_cmd, capture_output=True, text=True, timeout=120)
+        if r_ff.returncode != 0:
+            ff_noa = [c for c in ff_cmd if c not in ("-c:a", "aac", "-ar", "32000", "-ac", "2", "-shortest")]
+            ff_noa.insert(-1, "-an")
+            subprocess.run(ff_noa, check=True, timeout=120)
+
+        ref_frames = None
+        ref_audio = None
+        ref_sr = 32000
+        if read_video_audio is not None:
+            try:
+                ref_frames, ref_audio, ref_sr = read_video_audio(tmp_24)
+            except Exception:
+                ref_frames = None
+        if not ref_frames:
+            cap = cv2.VideoCapture(tmp_24)
+            ref_frames = []
+            while len(ref_frames) < max_frames:
+                ok_r, fr = cap.read()
+                if not ok_r or fr is None:
+                    break
+                ref_frames.append(Image.fromarray(cv2.cvtColor(fr, cv2.COLOR_BGR2RGB)))
+            cap.release()
+        if not ref_frames:
+            raise RuntimeError("参考视频无法解码，请检查视频文件")
+        if len(ref_frames) > max_frames:
+            ref_frames = ref_frames[:max_frames]
+        while len(ref_frames) < 22:
+            ref_frames.append(ref_frames[-1].copy())
+        return ref_frames, ref_audio, int(ref_sr or 32000)
+    finally:
+        for tp in (tmp_in, tmp_24):
+            if tp and os.path.exists(tp):
+                try:
+                    os.remove(tp)
+                except Exception:
+                    pass
+
+
 def _run_video_job(payload: dict):
     global JOB_STATE
     t0 = time.time()
     try:
+        req_mode = str(payload.get("mode") or ("ref2va" if MODEL_VARIANT == "Ref2VA" else "t2va")).strip().lower()
+        is_ref2va = (req_mode == "ref2va") or (MODEL_VARIANT == "Ref2VA")
         visual = str(payload.get("prompt") or "").strip()
         sound = str(payload.get("soundscape") or payload.get("soundscape_prompt") or "").strip()
         music = str(payload.get("music") or payload.get("music_prompt") or "").strip()
@@ -1099,7 +1772,7 @@ def _run_video_job(payload: dict):
             "stretched face, distorted face, deformed hands, extra fingers, low quality, blurry"
         )
         res_str = str(payload.get("resolution") or "832x480").strip()
-        num_frames = int(payload.get("num_frames") or 124)
+        num_frames = int(payload.get("num_frames") if payload.get("num_frames") is not None else 124)
         steps = int(payload.get("steps") or payload.get("num_inference_steps") or 30)
         fps = int(payload.get("fps") or 24)
         batch_count = max(1, min(4, int(payload.get("batch_count") or 1)))
@@ -1120,8 +1793,69 @@ def _run_video_job(payload: dict):
         else:
             width, height = res_map.get(res_str, (832, 480))
 
-        if visual and "实拍原片" not in visual and "raw unedited cinema camera footage" not in visual.lower():
-            visual = visual.rstrip("。.,， ") + "。电影摄影机实拍原片，纯洁干净画面 (raw unedited cinema camera footage, pure clean frame)。"
+        # Pre-load Ref2VA multimodal references once across batch draws
+        ref2va_refs = None
+        if is_ref2va:
+            import base64, io, tempfile
+            from PIL import Image
+            JOB_STATE["message"] = "🕺 正在准备 Ref2VA 参考视频 (24fps) 与多图参考特征..."
+            ref2va_refs = []
+            for img_b64 in (payload.get("ref_images_b64") or [])[:9]:
+                if not str(img_b64 or "").strip():
+                    continue
+                raw_ib = str(img_b64).split(",", 1)[-1]
+                pil_ref = Image.open(io.BytesIO(base64.b64decode(raw_ib))).convert("RGB")
+                ref2va_refs.append({"type": "image", "image": pil_ref})
+            ref_frames, ref_audio, ref_sr = _load_ref2va_video_frames_and_audio(payload)
+            if ref_frames is not None:
+                keep_ref_audio = bool(payload.get("keep_ref_audio", False))
+                has_valid_audio = (
+                    keep_ref_audio
+                    and ref_audio is not None
+                    and hasattr(ref_audio, "numel")
+                    and int(ref_audio.numel()) > 0
+                )
+                if has_valid_audio:
+                    ref2va_refs.append({
+                        "type": "video_audio",
+                        "video": ref_frames,
+                        "audio": ref_audio,
+                        "sample_rate": ref_sr,
+                    })
+                else:
+                    ref2va_refs.append({"type": "video", "video": ref_frames})
+                if num_frames <= 0 or bool(payload.get("match_ref_duration", False)):
+                    n_step = max(2, int(round((len(ref_frames) - 5) / 17.0)))
+                    num_frames = min(243, max(39, 17 * n_step + 5))
+            if payload.get("ref_audio_b64") and read_audio is not None:
+                raw_ab = str(payload["ref_audio_b64"]).split(",", 1)[-1]
+                fd_a, tmp_a = tempfile.mkstemp(prefix="ref2va_aud_", suffix=".wav")
+                os.close(fd_a)
+                try:
+                    with open(tmp_a, "wb") as af:
+                        af.write(base64.b64decode(raw_ab))
+                    aud_t, aud_sr = read_audio(tmp_a)
+                    ref2va_refs.append({"type": "audio", "audio": aud_t, "sample_rate": aud_sr})
+                finally:
+                    try:
+                        os.remove(tmp_a)
+                    except Exception:
+                        pass
+            if num_frames <= 0:
+                num_frames = 124
+            if not ref2va_refs:
+                raise RuntimeError("Ref2VA 模式请至少提供 1 个参考视频或参考图片")
+            if "<Video 1>" not in visual and any(r["type"] in ("video", "video_audio") for r in ref2va_refs):
+                visual = f"严格跟随 <Video 1> 中的人物动作轨迹与运镜节奏。{visual}"
+            freedom = str(payload.get("motion_freedom") or "strict").strip().lower()
+            if freedom == "natural" and "自由发挥" not in visual and "natural micro-expressions" not in visual.lower():
+                visual = visual.rstrip("。., ") + "。以 <Video 1> 的大致走位与运镜节奏为主干，允许人物表情、眼神互动、呼吸微动与发丝/衣料惯性自然流畅地自由发挥 (natural micro-expressions and organic motion)。"
+            elif freedom == "strict" and "strictly locked" not in visual.lower() and "1:1" not in visual:
+                visual = visual.rstrip("。., ") + "。严格 1:1 卡拍对齐 <Video 1> 的每一帧肢体姿态、手脚位置与节奏变化 (strictly locked frame-accurate motion choreography)。"
+        else:
+            if visual and "实拍原片" not in visual and "raw unedited cinema camera footage" not in visual.lower():
+                visual = visual.rstrip("。.,， ") + "。电影摄影机实拍原片，纯洁干净画面 (raw unedited cinema camera footage, pure clean frame)。"
+
         parts = [visual]
         if sound:
             parts.append(f"Soundscape & Dialogue: {sound}")
@@ -1148,7 +1882,7 @@ def _run_video_job(payload: dict):
                 "batch_count": batch_count,
                 "completed_count": b_idx,
                 "completed_videos": completed_videos,
-                "message": f"{prefix}🔓 正在使用 32B 无审查多模态编码器解析提示词 (Seed: {cur_seed})...",
+                "message": f"{prefix}🔓 正在使用 32B 无审查多模态编码器解析{'Ref2VA 白模/动作' if is_ref2va else ''}提示词 (Seed: {cur_seed})...",
                 "error": "",
             })
 
@@ -1170,7 +1904,7 @@ def _run_video_job(payload: dict):
                 except Exception as e_lora:
                     print(f"LORA_MOUNT_WARN: {e_lora}", flush=True)
                 ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-                mode_tag = "fl2va" if payload.get("first_frame_b64") else "t2va"
+                mode_tag = "ref2va" if is_ref2va else ("fl2va" if payload.get("first_frame_b64") else "t2va")
                 call_kwargs = dict(
                     prompt=full_prompt,
                     height=height,
@@ -1182,29 +1916,35 @@ def _run_video_job(payload: dict):
                 )
                 if neg_prompt:
                     call_kwargs["negative_prompt"] = neg_prompt
-                first_b64 = payload.get("first_frame_b64")
-                last_b64 = payload.get("last_frame_b64")
-                if first_b64:
-                    import base64, inspect, io
-                    from PIL import Image, ImageOps
-                    raw_f = first_b64.split(",", 1)[-1]
-                    raw_im_f = Image.open(io.BytesIO(base64.b64decode(raw_f))).convert("RGB")
-                    img_f = ImageOps.fit(raw_im_f, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28))
-                    cond_imgs = [img_f]
-                    cond_indices = [0]
-                    if last_b64:
-                        raw_l = last_b64.split(",", 1)[-1]
-                        raw_im_l = Image.open(io.BytesIO(base64.b64decode(raw_l))).convert("RGB")
-                        img_l = ImageOps.fit(raw_im_l, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28))
-                        cond_imgs.append(img_l)
-                        cond_indices.append(-1)
-                    sig_params = inspect.signature(PIPELINE.__call__).parameters
-                    if "keyframes" in sig_params:
-                        call_kwargs["keyframes"] = cond_imgs
-                        call_kwargs["keyframe_indices"] = cond_indices
-                    else:
-                        call_kwargs["condition_images"] = cond_imgs
-                        call_kwargs["condition_images_index"] = cond_indices
+                if is_ref2va and ref2va_refs:
+                    call_kwargs["references"] = ref2va_refs
+                    call_kwargs["ref_image_short_edge"] = 2048
+                    call_kwargs["ref_video_short_edge"] = 768
+                    call_kwargs["ref_video_max_pixels"] = 768 * 1344
+                else:
+                    first_b64 = payload.get("first_frame_b64")
+                    last_b64 = payload.get("last_frame_b64")
+                    if first_b64:
+                        import base64, inspect, io
+                        from PIL import Image, ImageOps
+                        raw_f = first_b64.split(",", 1)[-1]
+                        raw_im_f = Image.open(io.BytesIO(base64.b64decode(raw_f))).convert("RGB")
+                        img_f = ImageOps.fit(raw_im_f, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28))
+                        cond_imgs = [img_f]
+                        cond_indices = [0]
+                        if last_b64:
+                            raw_l = last_b64.split(",", 1)[-1]
+                            raw_im_l = Image.open(io.BytesIO(base64.b64decode(raw_l))).convert("RGB")
+                            img_l = ImageOps.fit(raw_im_l, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.28))
+                            cond_imgs.append(img_l)
+                            cond_indices.append(-1)
+                        sig_params = inspect.signature(PIPELINE.__call__).parameters
+                        if "keyframes" in sig_params:
+                            call_kwargs["keyframes"] = cond_imgs
+                            call_kwargs["keyframe_indices"] = cond_indices
+                        else:
+                            call_kwargs["condition_images"] = cond_imgs
+                            call_kwargs["condition_images_index"] = cond_indices
                 if getattr(PIPELINE, "dit", None) is not None:
                     PIPELINE.dit._tc_step = 0
                     PIPELINE.dit._tc_total_steps = steps
@@ -1289,15 +2029,16 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/health"):
             if ENGINE_READY:
-                self._send_json({"status": "ok", "engine": "minimax-h3"})
+                self._send_json({"status": "ok", "engine": ENGINE_NAME, "variant": MODEL_VARIANT})
             else:
-                self._send_json({"status": "loading", "error": ENGINE_ERROR}, status=503)
+                self._send_json({"status": "loading", "engine": ENGINE_NAME, "variant": MODEL_VARIANT, "error": ENGINE_ERROR}, status=503)
             return
 
         if self.path.startswith("/v1/models") or self.path.startswith("/models"):
+            mid = "MiniMaxAI/MiniMax-H3-Ref2VA" if MODEL_VARIANT == "Ref2VA" else "MiniMaxAI/MiniMax-H3"
             self._send_json({
                 "object": "list",
-                "data": [{"id": "MiniMaxAI/MiniMax-H3", "object": "model", "owned_by": "MiniMaxAI"}],
+                "data": [{"id": mid, "object": "model", "owned_by": "MiniMaxAI"}],
             })
             return
 
@@ -1394,14 +2135,32 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(e)}, status=503)
             return
 
+        if self.path.startswith("/v1/guide/preprocess"):
+            try:
+                if "/content" not in sys.path:
+                    sys.path.insert(0, "/content")
+                import guide_preprocessor
+                res_gp = guide_preprocessor.preprocess_guide(payload, OUTPUT_DIR, gpu_lock=GPU_LOCK)
+                self._send_json(res_gp, status=200 if res_gp.get("ok") else 400)
+            except Exception as e:
+                self._send_json({"ok": False, "error": f"白模/深度预处理失败: {e}"}, status=500)
+            return
+
         if self.path.startswith("/v1/video/cancel"):
             open("/content/.cancel_minimax", "w").write("1")
             self._send_json({"ok": True, "message": "🛑 正在停止视频生成任务..."})
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
-            if payload.get("mode") in ("image", "avatar"):
-                self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3 cannot run image/avatar mode"}, status=503)
+            req_m = str(payload.get("mode") or "").strip().lower()
+            if req_m in ("image", "avatar"):
+                self._send_json({"ok": False, "error": f"Engine mismatch: {ENGINE_NAME} cannot run image/avatar mode"}, status=503)
+                return
+            if req_m == "ref2va" and MODEL_VARIANT != "Ref2VA":
+                self._send_json({"ok": False, "error": "Engine mismatch: need minimax-h3-ref2va for ref2va mode"}, status=503)
+                return
+            if req_m in ("t2va", "fl2va") and MODEL_VARIANT == "Ref2VA":
+                self._send_json({"ok": False, "error": "Engine mismatch: need minimax-h3 (FL2VA) for t2va/fl2va mode"}, status=503)
                 return
             if os.path.exists("/content/.cancel_minimax"):
                 try:
@@ -1468,8 +2227,12 @@ if __name__ == "__main__":
 '''
 
 
-def _start_minimax_h3_server_on_30000(target_dir: str):
-    """在远端 Colab G4 实例上启动 MiniMax-H3 (33B · 原生BF16 · 无审查) 推理引擎 (端口 30000) 并实时输出显存装载进度"""
+def _start_minimax_h3_server_on_30000(target_dir: str, variant: str = "FL2VA"):
+    """在远端 Colab G4 实例上启动 MiniMax-H3 (FL2VA 或 Ref2VA · 33B · 原生BF16 · 无审查) 推理引擎 (端口 30000)"""
+    variant = "Ref2VA" if str(variant or "").strip().lower() == "ref2va" else "FL2VA"
+    expected_engine = "minimax-h3-ref2va" if variant == "Ref2VA" else "minimax-h3"
+    engine_label = "MiniMax-H3-Ref2VA (33B · 白模/动作迁移 · 无审查)" if variant == "Ref2VA" else "MiniMax-H3 (33B · 原生BF16 · 无审查)"
+
     if not shutil.which("cloudflared"):
         log("正在安装 cloudflared 隧道客户端...")
         subprocess.run(
@@ -1479,19 +2242,28 @@ def _start_minimax_h3_server_on_30000(target_dir: str):
             check=True,
         )
 
+    # 写入通用的 4 模式白模/深度/骨骼预处理器 (供卡片06与卡片01调用)
+    with open("/content/guide_preprocessor.py", "w", encoding="utf-8") as gwf:
+        gwf.write(GUIDE_PREPROCESSOR_CODE)
+
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     already_loading_remote = False
     try:
         with opener.open("http://127.0.0.1:30000/health", timeout=3) as resp:
             if resp.status == 200:
                 h_data = json.loads(resp.read().decode("utf-8"))
-                if h_data.get("engine") == "minimax-h3":
-                    log("✅ 检测到 MiniMax-H3 (33B · 无审查) 视频推理引擎已在 GPU 显存中运行，直接复用！")
+                if h_data.get("engine") == expected_engine:
+                    log(f"✅ 检测到 {engine_label} 视频推理引擎已在 GPU 显存中运行，直接复用！")
                     return
     except urllib.error.HTTPError as he:
         if he.code == 503 and subprocess.getoutput("pgrep -f '[m]inimax_server\\.py'").strip():
-            log("⏳ 检测到 MiniMax-H3 正在后台装载显存中，直接接力等待完成 (不重复重启)...")
-            already_loading_remote = True
+            try:
+                eb = json.loads(he.read().decode("utf-8"))
+                if eb.get("engine") == expected_engine:
+                    log(f"⏳ 检测到 {engine_label} 正在后台装载显存中，直接接力等待完成 (不重复重启)...")
+                    already_loading_remote = True
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1539,7 +2311,8 @@ def _start_minimax_h3_server_on_30000(target_dir: str):
 
         env = os.environ.copy()
         env["MINIMAX_MODEL_DIR"] = target_dir
-        log("🚀 正在启动 MiniMax-H3 (33B · 原生BF16 + 无审查编码器) 视频引擎并预热至 96GB GPU 显存...")
+        env["MINIMAX_VARIANT"] = variant
+        log(f"🚀 正在启动 {engine_label} 视频引擎并预热至 96GB GPU 显存...")
         with open("/content/minimax_server.log", "w") as lf:
             proc = subprocess.Popen(
                 [sys.executable, "-u", server_py],
@@ -2051,8 +2824,8 @@ class _MiniMaxT4Handler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
-            if payload.get("mode") in ("image", "avatar"):
-                self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3 cannot run image/avatar mode"}, status=503)
+            if payload.get("mode") in ("image", "avatar", "ref2va"):
+                self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3-t4 cannot run image/avatar/ref2va mode"}, status=503)
                 return
             if os.path.exists("/content/.cancel_minimax"):
                 try:
@@ -4737,8 +5510,19 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(e)}, status=500)
             return
 
+        if self.path.startswith("/v1/guide/preprocess"):
+            try:
+                if "/content" not in sys.path:
+                    sys.path.insert(0, "/content")
+                import guide_preprocessor
+                res_gp = guide_preprocessor.preprocess_guide(payload, OUTPUT_DIR, gpu_lock=GPU_LOCK)
+                self._send_json(res_gp, status=200 if res_gp.get("ok") else 400)
+            except Exception as e:
+                self._send_json({"ok": False, "error": f"白模/深度预处理失败: {e}"}, status=500)
+            return
+
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations") or self.path.startswith("/v1/images/generations"):
-            if payload.get("mode") in ("avatar", "t2va", "fl2va"):
+            if payload.get("mode") in ("avatar", "t2va", "fl2va", "ref2va"):
                 self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3-image cannot run video/avatar mode"}, status=503)
                 return
             if os.path.exists("/content/.cancel_minimax"):
@@ -4820,6 +5604,9 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
 
     log("正在检查 ComfyUI 运行依赖 (保留 Colab 原生 PyTorch 环境)...")
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", "/content/ComfyUI/requirements.txt"], check=False)
+
+    with open("/content/guide_preprocessor.py", "w", encoding="utf-8") as gwf:
+        gwf.write(GUIDE_PREPROCESSOR_CODE)
 
     server_py = "/content/minimax_image_server.py"
     with open(server_py, "w", encoding="utf-8") as wf:
@@ -5639,9 +6426,10 @@ def ensure_llama_server() -> Tuple[str, Dict[str, str]]:
     return bin_p, _build_env()
 
 
-def _sync_local_to_rclone_drive(local_dir: str, background: bool = False):
+def _sync_local_to_rclone_drive(local_dir: str, background: bool = False, remote_folder: str = ""):
     rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
-    remote_dst = f"gdrive:models/{MODEL_FOLDER}"
+    dst_folder = (remote_folder or MODEL_FOLDER).strip()
+    remote_dst = f"gdrive:models/{dst_folder}"
     cmd = [
         "rclone", "copy", local_dir, remote_dst,
         "--config", rc_conf,
@@ -5689,7 +6477,13 @@ def run_remote_vm_main():
         vram_gb = float(vram_mib_str) / 1024.0
     except Exception:
         vram_gb = 96.0
+    is_minimax_ref2va = (
+        MODEL_FOLDER == "MiniMax-H3-Ref2VA"
+        or (HF_REPO.lower() == "minimaxai/minimax-h3" and "ref2va" in FILE_PATTERN.lower())
+    )
     if vram_gb < 24.0:
+        if is_minimax_ref2va and not DOWNLOAD_ONLY:
+            raise RuntimeError("MiniMax-H3-Ref2VA (33B 白模/动作迁移) 需要 G4 96GB / H100 / A100 显存，当前 T4 16GB 无法加载。")
         if HF_REPO.lower() == "minimaxai/minimax-h3" and not DOWNLOAD_ONLY:
             log(f"⚡ 检测到当前为 T4 ({vram_gb:.1f} GB 显存)，已自动将 134 GB 的 RTX 6000 版切换为 MiniMax-H3 (T4 量化版 · UD-Q2_K_XL · 8步有声视频)！")
             HF_REPO = "unsloth/MiniMax-H3-GGUF"
@@ -5760,8 +6554,10 @@ def run_remote_vm_main():
 
     if is_safetensors_repo:
         # Safetensors 多分片大模型 (如 MiniMax-H3 134GB) 体积远超 /dev/shm 内存盘余量，统一使用 235GB 的 /content/local_models 高速 NVMe 盘中转
-        nvme_model_dir = os.path.join("/content/local_models", MODEL_FOLDER)
-        target_dir = drive_model_dir if fuse_mounted else nvme_model_dir
+        # MiniMax-H3-Ref2VA 与 MiniMax-H3 (FL2VA) 物理共享 72.4GB 的破限 text_encoder + video_vae + audio_vae + processor！
+        storage_folder = "MiniMax-H3" if is_minimax_ref2va else MODEL_FOLDER
+        nvme_model_dir = os.path.join("/content/local_models", storage_folder)
+        target_dir = os.path.join(DRIVE_MODELS_ROOT, storage_folder) if fuse_mounted else nvme_model_dir
         os.makedirs(target_dir, exist_ok=True)
 
         # 若 /dev/shm/local_models/<MODEL_FOLDER> 中有之前已下载的完整分片，自动迁移至 NVMe 盘复用并释放 /dev/shm 内存盘空间
@@ -5785,14 +6581,15 @@ def run_remote_vm_main():
             shutil.rmtree(shm_model_dir, ignore_errors=True)
             log("✅ 已迁移已完成分片并彻底释放 /dev/shm 内存盘！")
 
-        gdrive_saved_count = _check_rclone_drive_has_model(MODEL_FOLDER) if (has_rclone and not fuse_mounted) else 0
+        gdrive_check_folder = "MiniMax-H3/Ref2VA/transformer" if is_minimax_ref2va else storage_folder
+        gdrive_saved_count = _check_rclone_drive_has_model(gdrive_check_folder) if (has_rclone and not fuse_mounted) else 0
         if gdrive_saved_count > 0:
-            log(f"☁️ 已确认 Google Drive (gdrive:models/{MODEL_FOLDER}) 已持久化保存 {gdrive_saved_count} 个核心权重文件！正在通过 Google 内网 16 线程极速预热...")
+            log(f"☁️ 已确认 Google Drive (gdrive:models/{gdrive_check_folder}) 已持久化保存 {gdrive_saved_count} 个核心权重文件！正在通过 Google 内网 16 线程极速预热...")
 
         log(f"正在解析开源多模态/音视频模型仓库 {HF_REPO} 的分片列表...")
         st_files = resolve_hf_safetensors_files(HF_REPO, FILE_PATTERN, HF_TOKEN)
         if not st_files and has_rclone and not fuse_mounted:
-            _pull_from_rclone_drive_if_exists(MODEL_FOLDER, target_dir)
+            _pull_from_rclone_drive_if_exists(storage_folder, target_dir)
 
         # 针对 MiniMaxAI/MiniMax-H3，自动将 FL2VA/text_encoder 的 14 个分片与索引替换为 huihui-ai 满血 BF16 破限无审查版 Qwen3-VL-32B-Instruct-abliterated
         uncensored_te_repo = "huihui-ai/Huihui-Qwen3-VL-32B-Instruct-abliterated"
@@ -5863,7 +6660,7 @@ def run_remote_vm_main():
             safety_margin = 18 * (1024 ** 3)  # 始终保留至少 18GB NVMe 余量，防止 git clone 或视频写出爆盘
             if free_nvme < needed_new_bytes + safety_margin:
                 for other_name in sorted(os.listdir("/content/local_models")):
-                    if other_name == MODEL_FOLDER:
+                    if other_name == storage_folder:
                         continue
                     other_p = os.path.join("/content/local_models", other_name)
                     if os.path.isdir(other_p):
@@ -5872,6 +6669,12 @@ def run_remote_vm_main():
                         free_nvme = shutil.disk_usage(target_dir).free
                         if free_nvme >= needed_new_bytes + safety_margin:
                             break
+                # 若同目录下 FL2VA 与 Ref2VA 两个 62GB transformer 无法同时驻留 NVMe，只腾挪未激活的那份 transformer，完整保留 72.4GB 共享无审查编码器与 VAE！
+                if free_nvme < needed_new_bytes + safety_margin and storage_folder == "MiniMax-H3":
+                    inactive_tr = os.path.join(target_dir, "FL2VA/transformer" if is_minimax_ref2va else "Ref2VA/transformer")
+                    if os.path.isdir(inactive_tr):
+                        log(f"🧹 [NVMe 共享底座腾挪] 保留 72.4 GB 共享破限编码器与 VAE，释放未激活的 {os.path.relpath(inactive_tr, target_dir)} (云盘已永久保存)...")
+                        shutil.rmtree(inactive_tr, ignore_errors=True)
         cum_done_bytes = 0
         st_stage_tag = "云盘极速预热" if gdrive_saved_count > 0 else "HF 下载"
         for idx, (rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, sz) in enumerate(resolved_plan, start=1):
@@ -5917,15 +6720,17 @@ def run_remote_vm_main():
                     )
                 except Exception as e_mt:
                     log(f"⚠️ 同步 MingTalker 脚本提示: {e_mt}")
-        expected_core_count = max(
-            1,
-            sum(1 for x in resolved_plan if x[0].lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))),
+        expected_core_count = (
+            13 if is_minimax_ref2va else max(
+                1,
+                sum(1 for x in resolved_plan if x[0].lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))),
+            )
         )
         if has_rclone and not fuse_mounted and gdrive_saved_count < expected_core_count:
-            _sync_local_to_rclone_drive(target_dir, background=not DOWNLOAD_ONLY)
+            _sync_local_to_rclone_drive(target_dir, background=not DOWNLOAD_ONLY, remote_folder=storage_folder)
         log(f"✅ 模型 {HF_REPO} 全部 {len(resolved_plan)} 个文件已就绪！")
         if DOWNLOAD_ONLY:
-            log(f"🎉 [仅下载模式] 已完成全部权重下载并持久化至 Google Drive 云盘 (gdrive:models/{MODEL_FOLDER})！")
+            log(f"🎉 [仅下载模式] 已完成全部权重下载并持久化至 Google Drive 云盘 (gdrive:models/{storage_folder})！")
             return
         if HF_REPO.lower() == "unsloth/minimax-h3-gguf" or MODEL_FOLDER == "MiniMax-H3-T4-GGUF":
             _start_minimax_t4_gguf_server_on_30000(target_dir)
@@ -5934,7 +6739,7 @@ def run_remote_vm_main():
         elif "minimax-h3-image" in HF_REPO.lower() or MODEL_FOLDER == "MiniMax-H3-Image":
             _start_minimax_h3_image_server_on_30000(target_dir, total_gb=total_gb)
         else:
-            _start_minimax_h3_server_on_30000(target_dir)
+            _start_minimax_h3_server_on_30000(target_dir, variant="Ref2VA" if is_minimax_ref2va else "FL2VA")
         _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
         return
 
@@ -6908,7 +7713,9 @@ def run_local_wizard():
             "minimax-h3-image" if model_folder == "MiniMax-H3-Image" else (
                 "longcat-avatar" if model_folder.startswith("LongCat-Video-Avatar") else (
                     "minimax-h3-t4" if model_folder == "MiniMax-H3-T4-GGUF" else (
-                        "minimax-h3" if model_folder == "MiniMax-H3" else ""
+                        "minimax-h3-ref2va" if model_folder == "MiniMax-H3-Ref2VA" else (
+                            "minimax-h3" if model_folder == "MiniMax-H3" else ""
+                        )
                     )
                 )
             )
@@ -6970,7 +7777,7 @@ def run_local_wizard():
             save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": False})
             sys.exit(2)
 
-    g4_only_set = {"Huihui-Qwen3.8-27B-abliterated-GGUF", "MiniMax-H3", "MiniMax-H3-Image"}
+    g4_only_set = {"Huihui-Qwen3.8-27B-abliterated-GGUF", "MiniMax-H3", "MiniMax-H3-Ref2VA", "MiniMax-H3-Image"}
     if f"[{session_name}]" not in sess_out and session_name not in sess_out:
         _allocate_colab_session(session_name)
     elif "Hardware: T4" in sess_out and (args.gpu or "G4").upper() != "T4" and model_folder in g4_only_set:
