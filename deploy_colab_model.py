@@ -200,6 +200,16 @@ PRESET_SAFETENSORS_FILES: Dict[str, List[str]] = {
     "Decorator/ReCaVSR": [
         "recavsr_wan2.2_5B.pth",
     ],
+    "IndexTeam/IndexTTS-2": [
+        "gpt.pth",
+        "s2mel.pth",
+        "qwen0.6bemo4-merge/model.safetensors",
+        "config.yaml",
+        "bpe.model",
+        "feat1.pt",
+        "feat2.pt",
+        "wav2vec2bert_stats.pt",
+    ],
     "meituan-longcat/LongCat-Video-Avatar-1.6": [
         *(f"base_model/diffusion_pytorch_model-{i:05d}-of-00006.safetensors" for i in range(1, 7)),
         "loraA/lora.safetensors",
@@ -1845,13 +1855,18 @@ def _run_video_job(payload: dict):
                 num_frames = 124
             if not ref2va_refs:
                 raise RuntimeError("Ref2VA 模式请至少提供 1 个参考视频或参考图片")
-            if "<Video 1>" not in visual and any(r["type"] in ("video", "video_audio") for r in ref2va_refs):
-                visual = f"严格跟随 <Video 1> 中的人物动作轨迹与运镜节奏。{visual}"
-            freedom = str(payload.get("motion_freedom") or "strict").strip().lower()
-            if freedom == "natural" and "自由发挥" not in visual and "natural micro-expressions" not in visual.lower():
-                visual = visual.rstrip("。., ") + "。以 <Video 1> 的大致走位与运镜节奏为主干，允许人物表情、眼神互动、呼吸微动与发丝/衣料惯性自然流畅地自由发挥 (natural micro-expressions and organic motion)。"
-            elif freedom == "strict" and "strictly locked" not in visual.lower() and "1:1" not in visual:
-                visual = visual.rstrip("。., ") + "。严格 1:1 卡拍对齐 <Video 1> 的每一帧肢体姿态、手脚位置与节奏变化 (strictly locked frame-accurate motion choreography)。"
+            has_ref_video = any(r["type"] in ("video", "video_audio") for r in ref2va_refs)
+            if has_ref_video:
+                if "<Video 1>" not in visual:
+                    visual = f"严格跟随 <Video 1> 中的人物动作轨迹与运镜节奏。{visual}"
+                freedom = str(payload.get("motion_freedom") or "strict").strip().lower()
+                if freedom == "natural" and "自由发挥" not in visual and "natural micro-expressions" not in visual.lower():
+                    visual = visual.rstrip("。., ") + "。以 <Video 1> 的大致走位与运镜节奏为主干，允许人物表情、眼神互动、呼吸微动与发丝/衣料惯性自然流畅地自由发挥 (natural micro-expressions and organic motion)。"
+                elif freedom == "strict" and "strictly locked" not in visual.lower() and "1:1" not in visual:
+                    visual = visual.rstrip("。., ") + "。严格 1:1 卡拍对齐 <Video 1> 的每一帧肢体姿态、手脚位置与节奏变化 (strictly locked frame-accurate motion choreography)。"
+            else:
+                if visual and "实拍原片" not in visual and "raw unedited cinema camera footage" not in visual.lower():
+                    visual = visual.rstrip("。.,， ") + "。电影摄影机实拍原片，纯洁干净画面 (raw unedited cinema camera footage, pure clean frame)。"
         else:
             if visual and "实拍原片" not in visual and "raw unedited cinema camera footage" not in visual.lower():
                 visual = visual.rstrip("。.,， ") + "。电影摄影机实拍原片，纯洁干净画面 (raw unedited cinema camera footage, pure clean frame)。"
@@ -1917,10 +1932,18 @@ def _run_video_job(payload: dict):
                 if neg_prompt:
                     call_kwargs["negative_prompt"] = neg_prompt
                 if is_ref2va and ref2va_refs:
+                    _out_short = min(int(width), int(height))
+                    _ref_v_short = max(384, _out_short)
+                    _ref_v_max_px = int(width) * int(height)
+                    _ref_i_short = 1024
                     call_kwargs["references"] = ref2va_refs
-                    call_kwargs["ref_image_short_edge"] = 2048
-                    call_kwargs["ref_video_short_edge"] = 768
-                    call_kwargs["ref_video_max_pixels"] = 768 * 1344
+                    call_kwargs["ref_image_short_edge"] = _ref_i_short
+                    call_kwargs["ref_video_short_edge"] = _ref_v_short
+                    call_kwargs["ref_video_max_pixels"] = _ref_v_max_px
+                    print(
+                        f"REF2VA_FAST_RES: out={width}x{height} ref_video_short={_ref_v_short} ref_video_max_px={_ref_v_max_px} ref_image_short={_ref_i_short}",
+                        flush=True,
+                    )
                 else:
                     first_b64 = payload.get("first_frame_b64")
                     last_b64 = payload.get("last_frame_b64")
@@ -1946,6 +1969,19 @@ def _run_video_job(payload: dict):
                             call_kwargs["condition_images"] = cond_imgs
                             call_kwargs["condition_images_index"] = cond_indices
                 if getattr(PIPELINE, "dit", None) is not None:
+                    _base_tc_thresh = float(os.environ.get("MINIMAX_TEACACHE_THRESH", "0.12"))
+                    if steps < 25:
+                        PIPELINE.dit._tc_enabled = False
+                        PIPELINE.dit._tc_max_skips = 0
+                        PIPELINE.dit._tc_thresh = 0.0
+                    elif is_ref2va:
+                        PIPELINE.dit._tc_enabled = True
+                        PIPELINE.dit._tc_max_skips = 1
+                        PIPELINE.dit._tc_thresh = min(_base_tc_thresh, 0.08)
+                    else:
+                        PIPELINE.dit._tc_enabled = True
+                        PIPELINE.dit._tc_max_skips = 2
+                        PIPELINE.dit._tc_thresh = _base_tc_thresh
                     PIPELINE.dit._tc_step = 0
                     PIPELINE.dit._tc_total_steps = steps
                     PIPELINE.dit._tc_prev_b0_res = None
@@ -1953,6 +1989,10 @@ def _run_video_job(payload: dict):
                     PIPELINE.dit._tc_accum_rel_l1 = 0.0
                     PIPELINE.dit._tc_consec_skips = 0
                     PIPELINE.dit._tc_skipped_count = 0
+                    print(
+                        f"TEACACHE_CFG: mode={mode_tag} steps={steps} enabled={PIPELINE.dit._tc_enabled} max_skips={PIPELINE.dit._tc_max_skips} thresh={PIPELINE.dit._tc_thresh}",
+                        flush=True,
+                    )
                 try:
                     video, audio = PIPELINE(**call_kwargs)
                 except TypeError:
@@ -2057,6 +2097,14 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
                 self._send_json({"running": False, "error": str(e)}, status=503)
             return
 
+        if self.path.startswith("/v1/audio/indextts2"):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:30003{self.path}", timeout=8) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")), status=r.status)
+            except Exception as e:
+                self._send_json({"ok": False, "ready": False, "error": str(e)}, status=503)
+            return
+
         if self.path.startswith("/v1/video/file/"):
             fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
             fpath = os.path.join(OUTPUT_DIR, fname)
@@ -2144,6 +2192,39 @@ class _MiniMaxHandler(BaseHTTPRequestHandler):
                 self._send_json(res_gp, status=200 if res_gp.get("ok") else 400)
             except Exception as e:
                 self._send_json({"ok": False, "error": f"白模/深度预处理失败: {e}"}, status=500)
+            return
+
+        if self.path.startswith("/v1/audio/indextts2"):
+            def _fwd_idx():
+                req3 = urllib.request.Request(
+                    f"http://127.0.0.1:30003{self.path}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req3, timeout=300) as r3:
+                    return r3.status, json.loads(r3.read().decode("utf-8"))
+            try:
+                st3, d3 = _fwd_idx()
+                self._send_json(d3, status=st3)
+            except urllib.error.HTTPError as he:
+                try:
+                    self._send_json(json.loads(he.read().decode("utf-8")), status=he.code)
+                except Exception:
+                    self._send_json({"ok": False, "error": str(he)}, status=he.code)
+            except Exception as e:
+                if os.path.isfile("/content/indextts2_server.py"):
+                    _idx_env = os.environ.copy()
+                    _idx_env["PYTHONPATH"] = f"/content/indextts2_pkgs:{_idx_env.get('PYTHONPATH', '')}".rstrip(":")
+                    subprocess.Popen([sys.executable, "-u", "/content/indextts2_server.py"], env=_idx_env, stdout=open("/content/indextts2_server.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+                    time.sleep(2.5)
+                    try:
+                        st3, d3 = _fwd_idx()
+                        self._send_json(d3, status=st3)
+                        return
+                    except Exception as e2:
+                        e = e2
+                self._send_json({"ok": False, "error": str(e)}, status=503)
             return
 
         if self.path.startswith("/v1/video/cancel"):
@@ -2348,6 +2429,7 @@ def _start_minimax_h3_server_on_30000(target_dir: str, variant: str = "FL2VA"):
                     log(f"[显存装载] MiniMax-H3(33B·无审查): 100% ({final_vram:.1f}/{final_vram:.1f} GiB VRAM, 已就绪)")
                     log("✅ MiniMax-H3 (33B · 原生 BF16 · 无审查) 有声视频推理引擎已就绪！")
                     _ensure_recavsr_service_on_30002()
+                    _ensure_indextts2_service_on_30003()
                     return
         except Exception as e_h:
             if hasattr(e_h, "code") and getattr(e_h, "code", 0) == 503:
@@ -2740,6 +2822,14 @@ class _MiniMaxT4Handler(BaseHTTPRequestHandler):
                 self._send_json({"running": False, "error": str(e)}, status=503)
             return
 
+        if self.path.startswith("/v1/audio/indextts2"):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:30003{self.path}", timeout=8) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")), status=r.status)
+            except Exception as e:
+                self._send_json({"ok": False, "ready": False, "error": str(e)}, status=503)
+            return
+
         if self.path.startswith("/v1/video/file/"):
             fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
             fpath = os.path.join(OUTPUT_DIR, fname)
@@ -2821,6 +2911,39 @@ class _MiniMaxT4Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/cancel"):
             open("/content/.cancel_minimax", "w").write("1")
             self._send_json({"ok": True, "message": "🛑 正在停止视频生成任务..."})
+            return
+
+        if self.path.startswith("/v1/audio/indextts2"):
+            def _fwd_idx_t4():
+                req3 = urllib.request.Request(
+                    f"http://127.0.0.1:30003{self.path}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req3, timeout=300) as r3:
+                    return r3.status, json.loads(r3.read().decode("utf-8"))
+            try:
+                st3, d3 = _fwd_idx_t4()
+                self._send_json(d3, status=st3)
+            except urllib.error.HTTPError as he:
+                try:
+                    self._send_json(json.loads(he.read().decode("utf-8")), status=he.code)
+                except Exception:
+                    self._send_json({"ok": False, "error": str(he)}, status=he.code)
+            except Exception as e:
+                if os.path.isfile("/content/indextts2_server.py"):
+                    _idx_env = os.environ.copy()
+                    _idx_env["PYTHONPATH"] = f"/content/indextts2_pkgs:{_idx_env.get('PYTHONPATH', '')}".rstrip(":")
+                    subprocess.Popen([sys.executable, "-u", "/content/indextts2_server.py"], env=_idx_env, stdout=open("/content/indextts2_server.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+                    time.sleep(2.5)
+                    try:
+                        st3, d3 = _fwd_idx_t4()
+                        self._send_json(d3, status=st3)
+                        return
+                    except Exception as e2:
+                        e = e2
+                self._send_json({"ok": False, "error": str(e)}, status=503)
             return
 
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations"):
@@ -3017,6 +3140,7 @@ def _start_minimax_t4_gguf_server_on_30000(target_dir: str):
                     log("[显存装载] MiniMax-H3(T4量化版·UD-Q2_K_XL): 100% (7.5/15.0 GiB VRAM, 已就绪)")
                     log("✅ MiniMax-H3 (T4 量化版 · UD-Q2_K_XL · 8步有声视频) 推理服务已就绪！")
                     _ensure_recavsr_service_on_30002()
+                    _ensure_indextts2_service_on_30003()
                     return
         except Exception:
             pass
@@ -3795,9 +3919,46 @@ def _run_avatar_job(payload: dict):
                 af.write(base64.b64decode(raw_a))
         elif tts_text:
             raw_v = tts_voice or ("zh-CN-YunxiNeural" if any(w in visual_prompt for w in ("男", "先生", "帅哥", "大叔", "boy", "man")) else "zh-CN-XiaoyiNeural")
-            use_ming_talker = raw_v.startswith("ming:") or bool(clone_ref_b64) or any(
+            use_indextts2 = raw_v.startswith("indextts2:")
+            use_ming_talker = (not use_indextts2) and (raw_v.startswith("ming:") or bool(clone_ref_b64) or any(
                 tag in tts_text for tag in ("[Breathing]", "[Laughter]", "[Sigh]", "[Dissatisfaction-hnn]", "[Surprise-ah]", "[Surprise-oh]", "[Question-ei]", "[Question-huh]", "[Uhm]", "[Cough]")
-            )
+            ))
+            if use_indextts2:
+                try:
+                    JOB_STATE.update({
+                        "running": True,
+                        "pct": 4,
+                        "message": f"🎙️ 正在使用 IndexTTS-2 云端原版合成高拟真情绪语音: 「{tts_text[:28]}...」",
+                        "error": "",
+                    })
+                    idx_req = urllib.request.Request(
+                        "http://127.0.0.1:30003/v1/audio/indextts2",
+                        data=json.dumps({
+                            "text": tts_text,
+                            "voice": raw_v,
+                            "clone_ref_b64": clone_ref_b64,
+                            "emo_mode": payload.get("emo_mode") or "auto",
+                            "emo_text": payload.get("emo_text") or "",
+                            "emo_preset": payload.get("emo_preset") or "",
+                            "emo_alpha": payload.get("emo_alpha", 0.75),
+                            "emo_vector": payload.get("emo_vector"),
+                            "target_duration_sec": payload.get("target_duration_sec", 0),
+                        }).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(idx_req, timeout=240) as idx_r:
+                        idx_d = json.loads(idx_r.read().decode("utf-8"))
+                    if idx_d.get("ok") and idx_d.get("audio_b64"):
+                        audio_path = "/tmp/longcat_indextts2_audio.wav"
+                        with open(audio_path, "wb") as af:
+                            af.write(base64.b64decode(str(idx_d["audio_b64"]).split(",", 1)[-1]))
+                        tts_note = f" (已使用 IndexTTS-2 云端原版合成: {raw_v.replace('indextts2:', '')})"
+                    else:
+                        raise RuntimeError(idx_d.get("error") or "IndexTTS-2 返回空音频")
+                except Exception as e_idx:
+                    print(f"[IndexTTS2 Fallback to Edge-TTS] {e_idx}", flush=True)
+                    use_indextts2 = False
             if use_ming_talker:
                 try:
                     with GPU_LOCK:
@@ -3812,7 +3973,7 @@ def _run_avatar_job(payload: dict):
                 except Exception as e_ming:
                     print(f"[MingTalker Fallback to Edge-TTS] {e_ming}", flush=True)
                     use_ming_talker = False
-            if not use_ming_talker:
+            if not use_indextts2 and not use_ming_talker:
                 v_parts = [p.strip() for p in raw_v.split("|") if p.strip()]
                 voice_name = v_parts[0] if v_parts and not v_parts[0].startswith("ming:") else "zh-CN-XiaoyiNeural"
                 extra_flags = []
@@ -4265,6 +4426,14 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"running": False, "error": str(e)}, status=503)
             return
+
+        if self.path.startswith("/v1/audio/indextts2"):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:30003{self.path}", timeout=8) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")), status=r.status)
+            except Exception as e:
+                self._send_json({"ok": False, "ready": False, "error": str(e)}, status=503)
+            return
         if self.path.startswith("/v1/video/file/"):
             fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
             fpath = os.path.join(OUTPUT_DIR, fname)
@@ -4369,6 +4538,39 @@ class _LongCatAvatarHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/video/cancel"):
             open("/content/.cancel_minimax", "w").write("1")
             self._send_json({"ok": True, "message": "🛑 正在停止数字人视频生成任务..."})
+            return
+
+        if self.path.startswith("/v1/audio/indextts2"):
+            def _fwd_idx_av():
+                req3 = urllib.request.Request(
+                    f"http://127.0.0.1:30003{self.path}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req3, timeout=300) as r3:
+                    return r3.status, json.loads(r3.read().decode("utf-8"))
+            try:
+                st3, d3 = _fwd_idx_av()
+                self._send_json(d3, status=st3)
+            except urllib.error.HTTPError as he:
+                try:
+                    self._send_json(json.loads(he.read().decode("utf-8")), status=he.code)
+                except Exception:
+                    self._send_json({"ok": False, "error": str(he)}, status=he.code)
+            except Exception as e:
+                if os.path.isfile("/content/indextts2_server.py"):
+                    _idx_env = os.environ.copy()
+                    _idx_env["PYTHONPATH"] = f"/content/indextts2_pkgs:{_idx_env.get('PYTHONPATH', '')}".rstrip(":")
+                    subprocess.Popen([sys.executable, "-u", "/content/indextts2_server.py"], env=_idx_env, stdout=open("/content/indextts2_server.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+                    time.sleep(2.5)
+                    try:
+                        st3, d3 = _fwd_idx_av()
+                        self._send_json(d3, status=st3)
+                        return
+                    except Exception as e2:
+                        e = e2
+                self._send_json({"ok": False, "error": str(e)}, status=503)
             return
 
         if self.path.startswith("/v1/audio/ming_tts"):
@@ -4619,6 +4821,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
                         log(f"[显存装载] {os.path.basename(target_dir)}: 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
                         log("✅ LongCat-Video-Avatar-1.6 数字人音频驱动视频服务已启动 (端口 30000)！")
                         _ensure_recavsr_service_on_30002()
+                        _ensure_indextts2_service_on_30003()
                         return
         except Exception:
             pass
@@ -5366,6 +5569,14 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"running": False, "error": str(e)}, status=503)
             return
+
+        if self.path.startswith("/v1/audio/indextts2"):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:30003{self.path}", timeout=8) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")), status=r.status)
+            except Exception as e:
+                self._send_json({"ok": False, "ready": False, "error": str(e)}, status=503)
+            return
         if self.path.startswith("/v1/video/file/"):
             fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
             fpath = os.path.join(OUTPUT_DIR, fname)
@@ -5521,6 +5732,39 @@ class _MiniMaxImageHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": f"白模/深度预处理失败: {e}"}, status=500)
             return
 
+        if self.path.startswith("/v1/audio/indextts2"):
+            def _fwd_idx():
+                req3 = urllib.request.Request(
+                    f"http://127.0.0.1:30003{self.path}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req3, timeout=300) as r3:
+                    return r3.status, json.loads(r3.read().decode("utf-8"))
+            try:
+                st3, d3 = _fwd_idx()
+                self._send_json(d3, status=st3)
+            except urllib.error.HTTPError as he:
+                try:
+                    self._send_json(json.loads(he.read().decode("utf-8")), status=he.code)
+                except Exception:
+                    self._send_json({"ok": False, "error": str(he)}, status=he.code)
+            except Exception as e:
+                if os.path.isfile("/content/indextts2_server.py"):
+                    _idx_env = os.environ.copy()
+                    _idx_env["PYTHONPATH"] = f"/content/indextts2_pkgs:{_idx_env.get('PYTHONPATH', '')}".rstrip(":")
+                    subprocess.Popen([sys.executable, "-u", "/content/indextts2_server.py"], env=_idx_env, stdout=open("/content/indextts2_server.log", "a"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+                    time.sleep(2.5)
+                    try:
+                        st3, d3 = _fwd_idx()
+                        self._send_json(d3, status=st3)
+                        return
+                    except Exception as e2:
+                        e = e2
+                self._send_json({"ok": False, "error": str(e)}, status=503)
+            return
+
         if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations") or self.path.startswith("/v1/images/generations"):
             if payload.get("mode") in ("avatar", "t2va", "fl2va", "ref2va"):
                 self._send_json({"ok": False, "error": "Engine mismatch: minimax-h3-image cannot run video/avatar mode"}, status=503)
@@ -5635,6 +5879,7 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
                         log(f"[显存装载] MiniMax-H3-Image(33B·无审查4K): 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
                         log("✅ MiniMax-H3-Image (11秒4K无审查写真 + 免Mask锁脸换装) 服务已启动 (端口 30000)！")
                         _ensure_recavsr_service_on_30002()
+                        _ensure_indextts2_service_on_30003()
                         return
         except Exception:
             pass
@@ -6196,11 +6441,24 @@ class _ReCaVSRHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "未指定要超分的视频文件名"}, status=400)
                 return
             if UPSCALE_STATE["running"]:
-                self._send_json({"ok": True, "already_running": True, "message": "当前已有视频正在超分中，已复用当前任务"})
+                self._send_json({
+                    "ok": True,
+                    "already_running": True,
+                    "source_video": UPSCALE_STATE.get("source_video", ""),
+                    "message": "当前已有视频正在超分中，已复用当前任务",
+                })
                 return
             UPSCALE_CANCEL = False
+            UPSCALE_STATE.update({
+                "running": True,
+                "pct": 3,
+                "step": 0,
+                "source_video": fname,
+                "error": "",
+                "message": f"⏳ 已提交 ReCaVSR 超分任务: {fname}",
+            })
             threading.Thread(target=_run_upscale_job, args=(payload,), daemon=True).start()
-            self._send_json({"ok": True, "message": "已启动 ReCaVSR 视频超分任务"})
+            self._send_json({"ok": True, "source_video": fname, "message": "已启动 ReCaVSR 视频超分任务"})
             return
 
         self._send_json({"ok": False, "error": "Unknown endpoint"}, status=404)
@@ -6244,6 +6502,817 @@ def _ensure_recavsr_service_on_30002():
         log("✅ ReCaVSR (Wan2.2-5B · 单步流式 2K/4K 超分服务) 已启动并挂载至 30002 端口 (后台自动预热权重)！")
     except Exception as ex:
         log(f"⚠️ ReCaVSR 启动提示: {ex}")
+
+
+INDEXTTS2_SERVER_CODE = r'''#!/usr/bin/env python3
+import os
+import sys
+
+ISOLATED_PKGS_DIR = "/content/indextts2_pkgs"
+if os.path.isdir(ISOLATED_PKGS_DIR) and ISOLATED_PKGS_DIR not in sys.path:
+    sys.path.insert(0, ISOLATED_PKGS_DIR)
+
+import base64
+import gc
+import json
+import math
+import re
+import shutil
+import subprocess
+import tempfile
+import threading
+import time
+import traceback
+import types
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
+
+PORT = int(os.environ.get("INDEXTTS2_PORT", "30003"))
+STANDALONE = (PORT == 30000)
+MODEL_DIR = Path(os.environ.get("INDEXTTS2_MODEL_DIR", "/content/models/IndexTTS-2"))
+CODE_DIR = Path("/content/index-tts")
+PRESET_DIR = MODEL_DIR / "voice_presets"
+IDLE_UNLOAD_SECONDS = int(os.environ.get("INDEXTTS2_IDLE_UNLOAD_SEC", "600"))
+
+EMO_PRESET_MAP = {
+    "happy": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "angry": [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "sad": [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "afraid": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+    "disgusted": [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+    "melancholic": [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+    "surprised": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    "calm": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+}
+
+BUILTIN_VOICE_SPECS = {
+    "甜美少女": ("zh-CN-XiaoyiNeural", [], "你好呀，今天的风很温柔，我想把这段美好的故事慢慢讲给你听。"),
+    "温柔知性": ("zh-CN-XiaoxiaoNeural", ["--rate=-4%"], "夜色渐渐柔和下来，别着急，我们一步一步把想说的话认真讲清楚。"),
+    "台妹软糯": ("zh-TW-HsiaoChenNeural", ["--rate=-5%"], "真的好开心见到你喔，今天天气超舒服的，我们一起去散步好不好呀。"),
+    "清冷御姐": ("zh-CN-XiaoxiaoNeural", ["--pitch=-6Hz", "--rate=-6%"], "事情的真相从来不会自己浮出水面，保持冷静，听我把局势拆解给你看。"),
+    "磁性暖男": ("zh-CN-YunxiNeural", ["--pitch=-3Hz", "--rate=-4%"], "别担心，不管外面风浪有多大，有我在你身边，一切都会慢慢好起来的。"),
+    "沉稳霸总": ("zh-CN-YunjianNeural", ["--pitch=-5Hz", "--rate=-5%"], "从现在开始，所有的决定都由我来负责，你只需要站在我身后看着就行。"),
+    "温润书生": ("zh-CN-YunyangNeural", ["--rate=-4%"], "山高水长，知音难觅，这一盏清茶敬过往，也敬我们即将启程的明天。"),
+    "美式女声": ("en-US-AvaMultilingualNeural", [], "Welcome back. Take a deep breath and let me guide you through every detail clearly."),
+}
+
+TTS_LOCK = threading.Lock()
+TTS_ENGINE = None
+TTS_DEVICE = "none"
+LAST_USED_TS = 0.0
+STATE = {
+    "ready": False,
+    "loading": False,
+    "loaded": False,
+    "device": "none",
+    "error": "",
+    "message": "待命 (0 MB 显存，首次调用自动加载)" if not STANDALONE else "正在初始化 IndexTTS-2 云端引擎...",
+}
+
+
+def _log(msg: str):
+    print(f"[IndexTTS-2] {msg}", flush=True)
+
+
+def _install_deps():
+    # 在隔离包目录 (/content/indextts2_pkgs) 内锁定官方 transformers==4.52.1 + tokenizers==0.21.0 + huggingface-hub==0.34.4，零干扰系统 transformers 5.x
+    os.makedirs(ISOLATED_PKGS_DIR, exist_ok=True)
+    if ISOLATED_PKGS_DIR not in sys.path:
+        sys.path.insert(0, ISOLATED_PKGS_DIR)
+    need_tf_pin = not (
+        os.path.isdir(os.path.join(ISOLATED_PKGS_DIR, "transformers"))
+        and os.path.isdir(os.path.join(ISOLATED_PKGS_DIR, "tokenizers"))
+        and os.path.isdir(os.path.join(ISOLATED_PKGS_DIR, "huggingface_hub"))
+    )
+    if need_tf_pin:
+        _log("正在隔离目录 (/content/indextts2_pkgs) 内安装官方兼容版本 (transformers==4.52.1 + tokenizers==0.21.0 + huggingface-hub==0.34.4)...")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "--target", ISOLATED_PKGS_DIR, "--no-deps", "--upgrade",
+             "transformers==4.52.1", "tokenizers==0.21.0", "huggingface-hub==0.34.4"],
+            check=True,
+        )
+    # 仅安装缺失的轻量依赖，绝不破坏 Colab 已有 torch 环境
+    checks = [
+        ("omegaconf", "omegaconf"),
+        ("librosa", "librosa"),
+        ("soundfile", "soundfile"),
+        ("safetensors", "safetensors"),
+        ("sentencepiece", "sentencepiece"),
+        ("einops", "einops"),
+        ("munch", "munch"),
+        ("jieba", "jieba"),
+        ("g2p_en", "g2p-en"),
+        ("cn2an", "cn2an"),
+        ("pypinyin", "pypinyin"),
+        ("wetext", "wetext"),
+        ("edge_tts", "edge-tts"),
+        ("whisper", "openai-whisper"),
+        ("tiktoken", "tiktoken"),
+        ("audiotools", "descript-audiotools"),
+        ("importlib_resources", "importlib-resources"),
+        ("flatten_dict", "flatten-dict"),
+        ("argbind", "argbind"),
+        ("pyloudnorm", "pyloudnorm"),
+        ("julius", "julius"),
+        ("ffmpy", "ffmpy"),
+        ("pystoi", "pystoi"),
+        ("torch_stoi", "torch-stoi"),
+        ("markdown2", "markdown2"),
+        ("randomname", "randomname"),
+        ("json5", "json5"),
+        ("fugashi", "fugashi"),
+        ("unidic_lite", "unidic-lite"),
+        ("textstat", "textstat"),
+        ("ffmpeg", "ffmpeg-python"),
+    ]
+    missing = []
+    for mod, pkg in checks:
+        try:
+            __import__(mod)
+        except Exception:
+            missing.append(pkg)
+    if missing:
+        _log(f"正在安装缺失依赖: {' '.join(missing)} ...")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "--no-deps", *missing],
+            check=False,
+        )
+        safe_pkgs = [p for p in missing if p in ("munch", "g2p-en", "cn2an", "pypinyin", "wetext", "edge-tts", "omegaconf", "jieba", "tiktoken", "json5", "fugashi", "unidic-lite", "textstat", "ffmpeg-python", "importlib-resources", "flatten-dict", "argbind", "pyloudnorm", "julius", "ffmpy", "pystoi", "torch-stoi", "markdown2", "randomname")]
+        if safe_pkgs:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", *safe_pkgs],
+                check=False,
+            )
+    # 预先下载 g2p-en 所需 nltk 数据（避免英文混读报 LookupError）
+    try:
+        import nltk
+        for res_name, sub_path in (
+            ("averaged_perceptron_tagger_eng", "taggers/averaged_perceptron_tagger_eng"),
+            ("averaged_perceptron_tagger", "taggers/averaged_perceptron_tagger"),
+            ("cmudict", "corpora/cmudict"),
+        ):
+            try:
+                nltk.data.find(sub_path)
+            except LookupError:
+                nltk.download(res_name, quiet=True)
+    except Exception:
+        pass
+
+
+def _ensure_code_and_weights(sync_blocking: bool = False):
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    PRESET_DIR.mkdir(parents=True, exist_ok=True)
+    if not (CODE_DIR / "indextts" / "infer_v2.py").is_file():
+        _log("正在克隆官方 IndexTTS-2 推理仓库 (index-tts/index-tts)...")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "https://github.com/index-tts/index-tts.git", str(CODE_DIR)],
+            check=True,
+        )
+    if str(CODE_DIR) not in sys.path:
+        sys.path.insert(0, str(CODE_DIR))
+
+    # 兼容 modelscope 导入：若环境未装 modelscope 或版本冲突，自动用 transformers.AutoModelForCausalLM 接管，零副作用
+    try:
+        import modelscope  # noqa: F401
+        from modelscope import AutoModelForCausalLM as _ms_am  # noqa: F401
+    except Exception:
+        from transformers import AutoModelForCausalLM as _tf_am
+        ms_mod = types.ModuleType("modelscope")
+        ms_mod.AutoModelForCausalLM = _tf_am
+        sys.modules["modelscope"] = ms_mod
+
+    # 兼容 Linux 下 Python 3.13 无 pynini/WeTextProcessing(tn) 时自动桥接至 wetext.Normalizer
+    try:
+        import tn.chinese.normalizer  # noqa: F401
+        import tn.english.normalizer  # noqa: F401
+    except Exception:
+        try:
+            from wetext import Normalizer as _WetextNorm
+            class _ShimZhNorm:
+                def __init__(self, *args, **kwargs):
+                    self._n = _WetextNorm(remove_erhua=bool(kwargs.get("remove_erhua", False)), lang="zh", operator="tn")
+                def normalize(self, text):
+                    return self._n.normalize(text)
+            class _ShimEnNorm:
+                def __init__(self, *args, **kwargs):
+                    self._n = _WetextNorm(lang="en", operator="tn")
+                def normalize(self, text):
+                    return self._n.normalize(text)
+            _tn_pkg = types.ModuleType("tn")
+            _tn_zh_pkg = types.ModuleType("tn.chinese")
+            _tn_zh_norm = types.ModuleType("tn.chinese.normalizer")
+            _tn_zh_norm.Normalizer = _ShimZhNorm
+            _tn_en_pkg = types.ModuleType("tn.english")
+            _tn_en_norm = types.ModuleType("tn.english.normalizer")
+            _tn_en_norm.Normalizer = _ShimEnNorm
+            sys.modules["tn"] = _tn_pkg
+            sys.modules["tn.chinese"] = _tn_zh_pkg
+            sys.modules["tn.chinese.normalizer"] = _tn_zh_norm
+            sys.modules["tn.english"] = _tn_en_pkg
+            sys.modules["tn.english.normalizer"] = _tn_en_norm
+        except Exception as _e_tn:
+            _log(f"⚠️ wetext 桥接提示: {_e_tn}")
+
+    # 兼容 Linux 下的文本规范化：如果未装 pynini/WeTextProcessing 但装了 wetext，提前确保 front.py 可平滑走 wetext
+    has_rclone = os.path.isfile("/root/.config/rclone/rclone.conf")
+    need_main = not (
+        (MODEL_DIR / "gpt.pth").is_file()
+        and (MODEL_DIR / "s2mel.pth").is_file()
+        and (MODEL_DIR / "config.yaml").is_file()
+        and (MODEL_DIR / "qwen0.6bemo4-merge" / "model.safetensors").is_file()
+    )
+    need_aux = not (
+        (MODEL_DIR / "hf_cache" / "bigvgan" / "bigvgan_generator.pt").is_file()
+        and (MODEL_DIR / "hf_cache" / "campplus_cn_common.bin").is_file()
+        and (MODEL_DIR / "hf_cache" / "semantic_codec_model.safetensors").is_file()
+    )
+
+    pulled_from_drive = False
+    if (need_main or need_aux) and has_rclone:
+        _log("☁️ 正在检查并从 Google Drive (gdrive:models/IndexTTS-2) 极速拉取持久化权重...")
+        subprocess.run(
+            ["rclone", "copy", "gdrive:models/IndexTTS-2", str(MODEL_DIR), "--transfers=8"],
+            check=False,
+        )
+        need_main = not (
+            (MODEL_DIR / "gpt.pth").is_file()
+            and (MODEL_DIR / "s2mel.pth").is_file()
+            and (MODEL_DIR / "config.yaml").is_file()
+            and (MODEL_DIR / "qwen0.6bemo4-merge" / "model.safetensors").is_file()
+        )
+        need_aux = not (
+            (MODEL_DIR / "hf_cache" / "bigvgan" / "bigvgan_generator.pt").is_file()
+            and (MODEL_DIR / "hf_cache" / "campplus_cn_common.bin").is_file()
+            and (MODEL_DIR / "hf_cache" / "semantic_codec_model.safetensors").is_file()
+        )
+        pulled_from_drive = not (need_main or need_aux)
+        if pulled_from_drive:
+            _log("✅ 已从 Google Drive 秒速恢复全套 IndexTTS-2 权重与辅助模型！")
+
+    downloaded_fresh = False
+    if need_main:
+        _log("⬇️ 正在从 HuggingFace 拉取官方原版 IndexTeam/IndexTTS-2 (5.49 GB)...")
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id="IndexTeam/IndexTTS-2",
+            local_dir=str(MODEL_DIR),
+        )
+        downloaded_fresh = True
+
+    from indextts.utils.model_download import ensure_models_available
+    if need_aux:
+        _log("⬇️ 正在拉取 IndexTTS-2 配套前端与声码器 (w2v-bert-2.0 / MaskGCT / CAMPPlus / BigVGAN v2)...")
+    aux_paths = ensure_models_available(str(MODEL_DIR))
+    if need_aux:
+        downloaded_fresh = True
+
+    if downloaded_fresh and has_rclone:
+        _log("☁️ 正在将全套 IndexTTS-2 权重与 hf_cache 持久化备份至 Google Drive (gdrive:models/IndexTTS-2)...")
+        cmd_sync = ["rclone", "copy", str(MODEL_DIR), "gdrive:models/IndexTTS-2", "--transfers=8"]
+        if sync_blocking:
+            subprocess.run(cmd_sync, check=False)
+            _log("✅ IndexTTS-2 已永久同步至 Google Drive (gdrive:models/IndexTTS-2)！")
+        else:
+            subprocess.Popen(cmd_sync, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    return aux_paths
+
+
+def _ensure_preset_voice_wav(voice_name: str) -> str:
+    PRESET_DIR.mkdir(parents=True, exist_ok=True)
+    clean_name = re.sub(r"^indextts2:", "", (voice_name or "").strip()).strip()
+    if not clean_name or clean_name == "__clone__":
+        clean_name = "甜美少女"
+    # 1. 优先查找用户自定义或已缓存的同名 wav/mp3
+    for ext in (".wav", ".mp3", ".flac", ".m4a"):
+        cand = PRESET_DIR / f"{clean_name}{ext}"
+        if cand.is_file() and cand.stat().st_size > 2048:
+            return str(cand)
+    # 2. 若云盘/本地有 Ming-3.0 现成人设参考音频也可匹配复用
+    for root_cand in Path("/content/local_models").glob("*/ming_talker/voice_presets"):
+        for f in root_cand.glob("*.wav"):
+            if clean_name in f.stem:
+                return str(f)
+    # 3. 内置 8 款标准参考音色：首次按需用 edge-tts 合成 6 秒纯净 22.05kHz 单声道参考底音并持久化至云盘
+    spec = BUILTIN_VOICE_SPECS.get(clean_name) or BUILTIN_VOICE_SPECS["甜美少女"]
+    edge_voice, flags, sample_txt = spec
+    out_wav = PRESET_DIR / f"{clean_name}.wav"
+    tmp_mp3 = PRESET_DIR / f".tmp_{clean_name}.mp3"
+    subprocess.run(
+        [sys.executable, "-m", "edge_tts", "--voice", edge_voice, *flags, "--text", sample_txt, "--write-media", str(tmp_mp3)],
+        check=True,
+        timeout=30,
+    )
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", str(tmp_mp3), "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le", str(out_wav)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+        timeout=20,
+    )
+    try:
+        tmp_mp3.unlink(missing_ok=True)
+    except Exception:
+        pass
+    if os.path.isfile("/root/.config/rclone/rclone.conf"):
+        subprocess.Popen(
+            ["rclone", "copy", str(out_wav), "gdrive:models/IndexTTS-2/voice_presets/"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    return str(out_wav)
+
+
+def _list_available_voices():
+    names = list(BUILTIN_VOICE_SPECS.keys())
+    if PRESET_DIR.is_dir():
+        for p in sorted(PRESET_DIR.iterdir()):
+            if p.is_file() and p.suffix.lower() in (".wav", ".mp3", ".flac", ".m4a") and not p.name.startswith("."):
+                if p.stem not in names:
+                    names.append(p.stem)
+    return names
+
+
+def _load_engine_locked(sync_blocking: bool = False):
+    global TTS_ENGINE, TTS_DEVICE, LAST_USED_TS
+    if TTS_ENGINE is not None:
+        LAST_USED_TS = time.time()
+        return TTS_ENGINE
+    STATE.update({"loading": True, "error": "", "message": "⏳ 正在准备 IndexTTS-2 依赖与权重..."})
+    try:
+        _install_deps()
+        aux_paths = _ensure_code_and_weights(sync_blocking=sync_blocking)
+        import torch
+        use_cuda = False
+        free_gb = 0.0
+        if torch.cuda.is_available():
+            try:
+                free_b, total_b = torch.cuda.mem_get_info()
+                free_gb = free_b / (1024 ** 3)
+                use_cuda = (STANDALONE or free_gb >= 5.5)
+            except Exception:
+                use_cuda = True
+        device = "cuda:0" if use_cuda else "cpu"
+        use_fp16 = bool(use_cuda)
+        STATE["message"] = f"🚀 正在将 IndexTTS-2 ({'FP16 GPU' if use_cuda else 'CPU 安全回退'} · 空闲显存 {free_gb:.1f}GB) 装载至 {device}..."
+        _log(STATE["message"])
+        from indextts.infer_v2 import IndexTTS2
+        t0 = time.time()
+        TTS_ENGINE = IndexTTS2(
+            cfg_path=str(MODEL_DIR / "config.yaml"),
+            model_dir=str(MODEL_DIR),
+            use_fp16=use_fp16,
+            device=device,
+            use_cuda_kernel=False,
+            use_qwen_emo=True,
+            aux_paths=aux_paths,
+        )
+        TTS_DEVICE = device
+        LAST_USED_TS = time.time()
+        STATE.update({
+            "ready": True,
+            "loading": False,
+            "loaded": True,
+            "device": device,
+            "error": "",
+            "message": f"✅ IndexTTS-2 云端原版已就绪 ({device} · FP16={use_fp16} · 耗时 {time.time()-t0:.1f}s)",
+        })
+        _log(STATE["message"])
+        return TTS_ENGINE
+    except Exception as e:
+        err_txt = f"{e}\n{traceback.format_exc()}"
+        STATE.update({"ready": False, "loading": False, "loaded": False, "error": str(e), "message": f"❌ IndexTTS-2 加载失败: {e}"})
+        _log(f"Load error: {err_txt}")
+        raise
+
+
+def _unload_engine_locked(reason: str = "manual"):
+    global TTS_ENGINE, TTS_DEVICE
+    if TTS_ENGINE is None:
+        return
+    try:
+        del TTS_ENGINE
+        TTS_ENGINE = None
+        TTS_DEVICE = "none"
+        gc.collect()
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        STATE.update({
+            "loaded": False,
+            "device": "none",
+            "message": f"💤 IndexTTS-2 已自动释放显存 ({reason} · 0 MB 占用，下次调用自动秒载)",
+        })
+        _log(STATE["message"])
+    except Exception as e:
+        _log(f"Unload warn: {e}")
+
+
+def _idle_watchdog_loop():
+    if STANDALONE or IDLE_UNLOAD_SECONDS <= 0:
+        return
+    while True:
+        time.sleep(30)
+        if TTS_ENGINE is not None and LAST_USED_TS > 0 and (time.time() - LAST_USED_TS) > IDLE_UNLOAD_SECONDS:
+            if TTS_LOCK.acquire(blocking=False):
+                try:
+                    if TTS_ENGINE is not None and (time.time() - LAST_USED_TS) > IDLE_UNLOAD_SECONDS:
+                        _unload_engine_locked("闲置自动释放")
+                finally:
+                    TTS_LOCK.release()
+
+
+def _decode_b64_audio_to_wav(b64_str: str, prefix: str = "idx_ref") -> str:
+    raw_b64 = b64_str.split(",", 1)[-1].strip()
+    ext = ".wav"
+    if b64_str.startswith("data:audio/mpeg") or b64_str.startswith("data:audio/mp3"):
+        ext = ".mp3"
+    elif b64_str.startswith("data:audio/mp4") or b64_str.startswith("data:audio/m4a"):
+        ext = ".m4a"
+    elif b64_str.startswith("data:audio/flac"):
+        ext = ".flac"
+    elif b64_str.startswith("data:audio/ogg"):
+        ext = ".ogg"
+    fd, src_p = tempfile.mkstemp(prefix=prefix, suffix=ext)
+    os.close(fd)
+    Path(src_p).write_bytes(base64.b64decode(raw_b64))
+    fd2, wav_p = tempfile.mkstemp(prefix=prefix + "_22k_", suffix=".wav")
+    os.close(fd2)
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", src_p, "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le", wav_p],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+        timeout=30,
+    )
+    try:
+        os.unlink(src_p)
+    except Exception:
+        pass
+    return wav_p
+
+
+def _timefit_wav_if_needed(wav_path: str, target_dur: float) -> float:
+    import soundfile as sf
+    info = sf.info(wav_path)
+    actual_dur = float(info.duration)
+    if target_dur <= 0.4 or actual_dur <= 0.1:
+        return actual_dur
+    if abs(actual_dur - target_dur) <= 0.25:
+        return actual_dur
+    ratio = actual_dur / target_dur  # >1 means need to speed up; <1 means slow down
+    clamped = max(0.76, min(1.38, ratio))
+    fd, out_p = tempfile.mkstemp(prefix="idx_fit_", suffix=".wav")
+    os.close(fd)
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", wav_path, "-filter:a", f"atempo={clamped:.4f}", "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le", out_p],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+        timeout=30,
+    )
+    shutil.move(out_p, wav_path)
+    return float(sf.info(wav_path).duration)
+
+
+def _synthesize_indextts2(payload: dict) -> dict:
+    global LAST_USED_TS
+    text = str(payload.get("text") or "").strip()
+    if not text:
+        raise ValueError("台词文本不能为空")
+    # 清理 Ming 专属气口标签，避免 IndexTTS-2 念出英文方括号
+    clean_text = re.sub(
+        r"\[(Breathing|Cough|Sigh|Laughter|Surprise-ah|Surprise-oh|Dissatisfaction-hnn|Uhm|Confirmation-en|Question-ei|Question-ah|Question-en|Question-oh|Question-huh)\]",
+        "，",
+        text,
+    ).strip("， ") or text
+
+    voice = str(payload.get("voice") or "indextts2:甜美少女").strip()
+    clone_ref_b64 = str(payload.get("clone_ref_b64") or "").strip()
+    emo_audio_b64 = str(payload.get("emo_audio_b64") or "").strip()
+    emo_mode = str(payload.get("emo_mode") or "auto").strip().lower()
+    emo_text = str(payload.get("emo_text") or "").strip()
+    emo_preset = str(payload.get("emo_preset") or "").strip().lower()
+    emo_vector = payload.get("emo_vector")
+    try:
+        emo_alpha = max(0.0, min(1.0, float(payload.get("emo_alpha", 0.75))))
+    except Exception:
+        emo_alpha = 0.75
+    try:
+        target_dur = float(payload.get("target_duration_sec") or 0.0)
+    except Exception:
+        target_dur = 0.0
+    use_random = bool(payload.get("use_random", False))
+
+    tmp_files = []
+    try:
+        if clone_ref_b64:
+            spk_wav = _decode_b64_audio_to_wav(clone_ref_b64, prefix="idx_spk_")
+            tmp_files.append(spk_wav)
+            voice_lbl = "零样本声音克隆"
+        else:
+            spk_wav = _ensure_preset_voice_wav(voice)
+            voice_lbl = re.sub(r"^indextts2:", "", voice) or "甜美少女"
+
+        emo_wav = None
+        if emo_audio_b64 and emo_mode in ("audio", "auto"):
+            emo_wav = _decode_b64_audio_to_wav(emo_audio_b64, prefix="idx_emo_")
+            tmp_files.append(emo_wav)
+
+        use_emo_text = False
+        final_emo_vec = None
+        emo_desc = "自然随参考音色"
+
+        if emo_mode == "text" or (emo_mode == "auto" and emo_text):
+            if emo_text:
+                use_emo_text = True
+                emo_desc = f"文字控情绪「{emo_text[:18]}」×{emo_alpha:.2f}"
+        elif emo_mode == "vector" or (emo_mode == "auto" and (emo_vector or emo_preset)):
+            if isinstance(emo_vector, list) and len(emo_vector) == 8:
+                final_emo_vec = [max(0.0, min(1.0, float(x))) for x in emo_vector]
+                emo_desc = f"8维情绪向量×{emo_alpha:.2f}"
+            elif emo_preset in EMO_PRESET_MAP:
+                final_emo_vec = list(EMO_PRESET_MAP[emo_preset])
+                emo_desc = f"情绪「{emo_preset}」×{emo_alpha:.2f}"
+        elif emo_wav:
+            emo_desc = f"参考情绪音频×{emo_alpha:.2f}"
+
+        fd_out, out_wav = tempfile.mkstemp(prefix="idx_out_", suffix=".wav")
+        os.close(fd_out)
+        tmp_files.append(out_wav)
+
+        t0 = time.time()
+        with TTS_LOCK:
+            tts = _load_engine_locked(sync_blocking=False)
+            kwargs = {
+                "spk_audio_prompt": spk_wav,
+                "text": clean_text,
+                "output_path": out_wav,
+                "emo_alpha": emo_alpha,
+                "use_random": use_random,
+                "verbose": False,
+            }
+            if use_emo_text:
+                kwargs["use_emo_text"] = True
+                kwargs["emo_text"] = emo_text
+            elif final_emo_vec is not None:
+                kwargs["emo_vector"] = final_emo_vec
+            elif emo_wav is not None:
+                kwargs["emo_audio_prompt"] = emo_wav
+            tts.infer(**kwargs)
+            LAST_USED_TS = time.time()
+
+        dur_sec = round(_timefit_wav_if_needed(out_wav, target_dur), 2)
+        elapsed_s = round(time.time() - t0, 2)
+        wav_bytes = Path(out_wav).read_bytes()
+        auto_segs = 1 if dur_sec <= 3.85 else max(1, min(200, 1 + int(math.ceil((dur_sec - 3.72) / 3.20))))
+        b64_str = "data:audio/wav;base64," + base64.b64encode(wav_bytes).decode("ascii")
+        dur_note = f" · 卡点对齐 {dur_sec}s" if target_dur > 0 else ""
+        return {
+            "ok": True,
+            "audio_b64": b64_str,
+            "audio_ext": ".wav",
+            "duration_sec": dur_sec,
+            "auto_segments": auto_segs,
+            "engine": "indextts-2",
+            "device": TTS_DEVICE,
+            "elapsed_s": elapsed_s,
+            "note": f"🎙️ [IndexTTS-2 云端原版 · {TTS_DEVICE}] 已合成「{voice_lbl}」({emo_desc}{dur_note} · 耗时 {elapsed_s}s)",
+        }
+    finally:
+        for p in tmp_files:
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
+
+
+class _IndexTTS2Handler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        return
+
+    def _send_json(self, obj, status=200):
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path.startswith("/health"):
+            if STANDALONE and not STATE.get("ready"):
+                self._send_json({"status": "loading", "engine": "indextts-2", **STATE}, status=503)
+            else:
+                self._send_json({"status": "ok", "engine": "indextts-2", **STATE})
+            return
+        if self.path.startswith("/v1/models") or self.path.startswith("/models"):
+            self._send_json({
+                "object": "list",
+                "data": [{"id": "IndexTeam/IndexTTS-2", "object": "model", "owned_by": "IndexTeam"}],
+            })
+            return
+        if self.path.startswith("/v1/audio/indextts2_voices"):
+            self._send_json({"ok": True, "voices": _list_available_voices(), "emo_presets": list(EMO_PRESET_MAP.keys())})
+            return
+        if self.path.startswith("/v1/audio/indextts2_status"):
+            self._send_json({"ok": True, **STATE, "voices": _list_available_voices()})
+            return
+        self._send_json({"status": "ok", "engine": "indextts-2", **STATE})
+
+    def do_POST(self):
+        cl = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(cl).decode("utf-8") if cl > 0 else "{}"
+        try:
+            payload = json.loads(raw) if raw else {}
+        except Exception:
+            payload = {}
+
+        if self.path.startswith("/v1/audio/indextts2_unload"):
+            with TTS_LOCK:
+                _unload_engine_locked("手动释放")
+            self._send_json({"ok": True, **STATE})
+            return
+
+        if self.path.startswith("/v1/audio/indextts2") or (STANDALONE and self.path.startswith("/v1/audio/ming_tts")):
+            try:
+                res = _synthesize_indextts2(payload)
+                self._send_json(res)
+            except Exception as e:
+                _log(f"Synthesize error: {e}\n{traceback.format_exc()}")
+                self._send_json({"ok": False, "error": str(e)}, status=500)
+            return
+
+        if STANDALONE and self.path.startswith("/v1/shell"):
+            cmd = str(payload.get("cmd") or "").strip()
+            if not cmd:
+                self._send_json({"ok": False, "error": "empty cmd"}, status=400)
+                return
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=int(payload.get("timeout") or 120))
+                self._send_json({"ok": True, "returncode": r.returncode, "stdout": r.stdout[-16000:], "stderr": r.stderr[-16000:]})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
+            return
+
+        self._send_json({"ok": False, "error": "Unknown endpoint"}, status=404)
+
+
+def _boot_standalone_worker():
+    try:
+        with TTS_LOCK:
+            _load_engine_locked(sync_blocking=True)
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    if STANDALONE:
+        threading.Thread(target=_boot_standalone_worker, daemon=True).start()
+    else:
+        STATE["ready"] = True
+        threading.Thread(target=_idle_watchdog_loop, daemon=True).start()
+    srv = ThreadingHTTPServer(("0.0.0.0", PORT), _IndexTTS2Handler)
+    _log(f"HTTP server listening on 0.0.0.0:{PORT} (standalone={STANDALONE})")
+    srv.serve_forever()
+'''
+
+
+def _ensure_indextts2_isolated_pkgs() -> str:
+    """在独立目录 /content/indextts2_pkgs 安装官方 transformers==4.52.1 + tokenizers==0.21.0 + huggingface-hub==0.34.4（免 venv/ensurepip，零干扰系统包）"""
+    pkg_dir = "/content/indextts2_pkgs"
+    os.makedirs(pkg_dir, exist_ok=True)
+    need_install = not (
+        os.path.isdir(os.path.join(pkg_dir, "transformers"))
+        and os.path.isdir(os.path.join(pkg_dir, "tokenizers"))
+        and os.path.isdir(os.path.join(pkg_dir, "huggingface_hub"))
+    )
+    if need_install:
+        log("📦 正在独立目录 (/content/indextts2_pkgs) 安装 IndexTTS-2 官方匹配版本 (transformers==4.52.1 + tokenizers==0.21.0 + huggingface-hub==0.34.4)...")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "--target", pkg_dir, "--no-deps", "--upgrade",
+             "transformers==4.52.1", "tokenizers==0.21.0", "huggingface-hub==0.34.4"],
+            check=True,
+        )
+    return pkg_dir
+
+
+def _ensure_indextts2_service_on_30003():
+    """启动或复用伴随运行的 IndexTTS-2 云端原版语音合成服务 (端口 30003，默认 0 MB 闲置显存，首次调用懒加载)"""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:30003/health", timeout=2) as r:
+            if r.status == 200:
+                log("✅ IndexTTS-2 云端原版语音服务已在 30003 端口待命 (0 MB 闲置显存，按需自动加载)！")
+                return
+    except Exception:
+        pass
+    try:
+        log("正在挂载 IndexTTS-2 云端原版语音伴随服务 (端口 30003 · 0 MB 闲置显存)...")
+        with open("/content/indextts2_server.py", "w", encoding="utf-8") as wf:
+            wf.write(INDEXTTS2_SERVER_CODE)
+        pkg_dir = _ensure_indextts2_isolated_pkgs()
+        env = os.environ.copy()
+        env["INDEXTTS2_PORT"] = "30003"
+        env["PYTHONPATH"] = f"{pkg_dir}:{env.get('PYTHONPATH', '')}".rstrip(":")
+        subprocess.Popen(
+            [sys.executable, "-u", "/content/indextts2_server.py"],
+            env=env,
+            stdout=open("/content/indextts2_server.log", "w"),
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+        log("✅ IndexTTS-2 云端原版语音伴随服务已挂载至 30003 端口 (声音克隆 + 自然语言控情绪 + 8维情绪 + 控时长)！")
+    except Exception as ex:
+        log(f"⚠️ IndexTTS-2 伴随服务启动提示: {ex}")
+
+
+def _start_indextts2_standalone_on_30000(download_only: bool = False):
+    """独立部署并启动官方原版 IndexTeam/IndexTTS-2 服务（支持 T4 16GB 与 RTX 6000 96GB，自动持久化至 Google Drive）"""
+    if not shutil.which("cloudflared"):
+        log("正在安装 cloudflared 隧道客户端...")
+        subprocess.run(
+            "curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 "
+            "-o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared",
+            shell=True,
+            check=False,
+        )
+    with open("/content/indextts2_server.py", "w", encoding="utf-8") as wf:
+        wf.write(INDEXTTS2_SERVER_CODE)
+    pkg_dir = _ensure_indextts2_isolated_pkgs()
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{pkg_dir}:{env.get('PYTHONPATH', '')}".rstrip(":")
+
+    if download_only:
+        log("🎙️ [仅下载模式] 正在拉取官方原版 IndexTeam/IndexTTS-2 + 配套前端/声码器并永久备份至 Google Drive...")
+        prep_cmd = [
+            sys.executable, "-u", "-c",
+            "import sys; sys.path.insert(0, '/content'); import indextts2_server as s; s._install_deps(); s._ensure_code_and_weights(sync_blocking=True); print('INDEXTTS2_SYNC_OK')",
+        ]
+        subprocess.run(prep_cmd, env=env, check=True)
+        log("🎉 [仅下载模式] IndexTTS-2 全套权重与 hf_cache 已永久同步至 Google Drive (gdrive:models/IndexTTS-2)！")
+        return
+
+    subprocess.run(
+        "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|indextts2_server\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
+        shell=True,
+    )
+    time.sleep(1)
+    log("🚀 正在启动官方原版 IndexTeam/IndexTTS-2 云端语音引擎 (端口 30000 · FP16 GPU + QwenEmotion)...")
+    env["INDEXTTS2_PORT"] = "30000"
+    with open("/content/indextts2_server.log", "w") as lf:
+        proc = subprocess.Popen(
+            [sys.executable, "-u", "/content/indextts2_server.py"],
+            env=env,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    t0 = time.time()
+    last_msg = ""
+    while time.time() - t0 < 900:
+        if proc.poll() is not None:
+            tail = subprocess.getoutput("tail -n 40 /content/indextts2_server.log")
+            raise RuntimeError(f"IndexTTS-2 引擎异常退出:\n{tail}")
+        try:
+            with opener.open("http://127.0.0.1:30000/health", timeout=3) as resp:
+                if resp.status == 200:
+                    hd = json.loads(resp.read().decode("utf-8"))
+                    log(f"[显存装载] IndexTTS-2(云端原版·FP16): 100% ({hd.get('device', 'cuda:0')}, 已就绪)")
+                    log(f"✅ {hd.get('message') or 'IndexTTS-2 云端原版语音服务已就绪！'}")
+                    return
+        except Exception as e_h:
+            if hasattr(e_h, "code") and getattr(e_h, "code", 0) == 503:
+                try:
+                    err_b = json.loads(e_h.read().decode("utf-8"))
+                    if err_b.get("error"):
+                        raise RuntimeError(f"IndexTTS-2 加载失败: {err_b['error']}")
+                    m_txt = str(err_b.get("message") or "")
+                    if m_txt and m_txt != last_msg:
+                        last_msg = m_txt
+                        log(m_txt)
+                except RuntimeError:
+                    raise
+                except Exception:
+                    pass
+        time.sleep(3)
+    tail = subprocess.getoutput("tail -n 40 /content/indextts2_server.log")
+    raise TimeoutError(f"等待 IndexTTS-2 启动超时:\n{tail}")
 
 
 
@@ -6542,6 +7611,12 @@ def run_remote_vm_main():
             time.sleep(1)
         log("[显存装载] ReCaVSR (Wan2.2-5B): 100% (10.1/10.1 GiB VRAM, 已就绪)")
         _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
+        return
+
+    if MODEL_FOLDER == "IndexTTS-2" or "indextts-2" in HF_REPO.lower() or "indextts2" in HF_REPO.lower():
+        _start_indextts2_standalone_on_30000(download_only=DOWNLOAD_ONLY)
+        if not DOWNLOAD_ONLY:
+            _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
         return
 
     is_safetensors_repo = (
@@ -7609,7 +8684,9 @@ def run_local_proxy_daemon(port: int = 30000):
                             session_id=s.session_id,
                         )
                         try:
-                            rt.kernel_client._manager.client.connection_ready.wait(timeout=10)
+                            _kc_mgr = getattr(rt.kernel_client, "_manager", None)
+                            if _kc_mgr is not None and hasattr(_kc_mgr, "client") and hasattr(_kc_mgr.client, "connection_ready"):
+                                _kc_mgr.client.connection_ready.wait(timeout=10)
                             rt.execute_code("1", allow_stdin=False, timeout=10)
                         finally:
                             rt.stop()

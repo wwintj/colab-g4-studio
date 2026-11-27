@@ -407,7 +407,7 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
     start_ts = 0.0
     for i in range(len(lines) - 1, -1, -1):
         ln = lines[i]
-        if "[提交视频生成任务]" in ln or "[提交 4K 写真/换装任务]" in ln:
+        if "[提交视频生成任务]" in ln or "[提交 4K 写真/换装任务]" in ln or "[提交白模/动作迁移任务" in ln:
             m_t = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]", ln)
             start_ts = _parse_log_hms_to_epoch(m_t.group(1), now_ts) if m_t else now_ts
             start_idx = i
@@ -426,15 +426,28 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
         start_ts = now_ts
 
     elapsed_sec = max(1, int(round(now_ts - start_ts)))
-    first_step_ts = float(_VIDEO_STEP_TIMING.get("first_step_ts") or 0.0)
-    first_step_num = int(_VIDEO_STEP_TIMING.get("first_step_num") or 0)
+    first_step_ts = 0.0
+    first_step_num = 0
     prompt_enc_ts = 0.0
     latest_step_ts = 0.0
     latest_step_num = 0
     total_steps = 0
+    cur_batch_idx = 1
+    batch_total = 1
     scan_from = max(0, start_idx)
     for ln in lines[scan_from:]:
-        if "正在使用 32B 无审查多模态编码器解析提示词" in ln or "正在使用 Heretic 32B 编码指令" in ln:
+        m_b = re.search(r"\[连抽\s*(\d+)/(\d+)\]", ln)
+        if m_b:
+            b_i, b_n = int(m_b.group(1)), max(1, int(m_b.group(2)))
+            if b_i != cur_batch_idx or b_n != batch_total:
+                cur_batch_idx = b_i
+                batch_total = b_n
+                first_step_ts = 0.0
+                first_step_num = 0
+                latest_step_ts = 0.0
+                latest_step_num = 0
+                prompt_enc_ts = 0.0
+        if "正在使用 32B 无审查多模态编码器解析" in ln or "正在使用 Heretic 32B 编码指令" in ln:
             m_p = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]", ln)
             if m_p:
                 prompt_enc_ts = _parse_log_hms_to_epoch(m_p.group(1), now_ts)
@@ -461,7 +474,10 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
                 c_s = 0
                 t_s = 0
             if ts_val > 0 and t_s > 0:
-                if first_step_ts <= 0.0:
+                if c_s < latest_step_num:
+                    first_step_ts = ts_val
+                    first_step_num = c_s
+                elif first_step_ts <= 0.0:
                     first_step_ts = ts_val
                     first_step_num = c_s
                 latest_step_ts = ts_val
@@ -477,8 +493,13 @@ def _compute_video_timing_from_logs(pct_val: int) -> Dict[str, int]:
         sec_per_step = (latest_step_ts - first_step_ts) / max(1, latest_step_num - first_step_num)
         in_step_elapsed = max(0.0, min(sec_per_step * 0.95, now_ts - latest_step_ts))
         rem_steps = max(0, total_steps - latest_step_num)
-        rem_diff_sec = max(0.0, rem_steps * sec_per_step - in_step_elapsed)
-        eta_sec = max(5, int(round(rem_diff_sec + 45.0)))
+        cur_item_rem = max(0.0, rem_steps * sec_per_step - in_step_elapsed) + 25.0
+        extra_items = max(0, batch_total - cur_batch_idx)
+        avg_item_sec = total_steps * sec_per_step + 35.0
+        if extra_items > 0 and cur_batch_idx > 1 and elapsed_sec > 30:
+            est_prev_item = max(30.0, (elapsed_sec - max(0.0, now_ts - (prompt_enc_ts or first_step_ts))) / max(1, cur_batch_idx - 1))
+            avg_item_sec = 0.65 * est_prev_item + 0.35 * avg_item_sec
+        eta_sec = max(5, int(round(cur_item_rem + extra_items * avg_item_sec)))
     elif pct_val >= 88:
         eta_sec = max(3, int(round((100 - min(99, pct_val)) * 4.5)))
     elif pct_val > 5 and elapsed_sec > 10:
@@ -1594,7 +1615,9 @@ except Exception:
 print("PANEL_JSON_START:" + json.dumps(res, ensure_ascii=False) + ":PANEL_JSON_END")
 """
     try:
-        runtime.kernel_client._manager.client.connection_ready.wait(timeout=15)
+        _kc_mgr = getattr(runtime.kernel_client, "_manager", None)
+        if _kc_mgr is not None and hasattr(_kc_mgr, "client") and hasattr(_kc_mgr.client, "connection_ready"):
+            _kc_mgr.client.connection_ready.wait(timeout=15)
         outputs = runtime.execute_code(probe_code, allow_stdin=False, timeout=25)
         full_text = "".join(o.get("text", "") for o in outputs)
         m = re.search(r"PANEL_JSON_START:(\{.*\}):PANEL_JSON_END", full_text, flags=re.DOTALL)
@@ -1838,13 +1861,13 @@ def _reattach_running_deploy_if_any():
 
 
 def _is_active_llama_llm_cfg(cfg: Dict[str, Any]) -> bool:
-    """判断当前云端活跃模型是否为 llama-server 文本/多模态 LLM（非 MiniMax 视频/生图 / LongCat / ReCaVSR）"""
+    """判断当前云端活跃模型是否为 llama-server 文本/多模态 LLM（非 MiniMax 视频/生图 / LongCat / ReCaVSR / IndexTTS-2）"""
     mf = str(cfg.get("model_folder") or "").lower()
     mid = str(cfg.get("model_id") or "").lower()
     combo = f"{mf} {mid}".strip()
     if not combo:
         return False
-    if any(k in combo for k in ("minimax-h3", "longcat", "recavsr")):
+    if any(k in combo for k in ("minimax-h3", "longcat", "recavsr", "indextts")):
         return False
     return True
 
@@ -1853,7 +1876,9 @@ def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = ""
     """根据当前活跃模型异步非阻塞拉取对应远端服务日志尾部（stale-while-revalidate，绝不卡顿 /api/logs 响应）"""
     now_ts = time.time()
     hint_low = str(active_hint or "").lower()
-    if "minimax-h3-image" in hint_low:
+    if "indextts" in hint_low:
+        order = ("indextts2_server.log", "minimax_server.log", "longcat_avatar_server.log", "llama_server.log")
+    elif "minimax-h3-image" in hint_low:
         order = ("minimax_image_server.log", "minimax_server.log", "llama_server.log", "longcat_avatar_server.log")
     elif "longcat" in hint_low:
         order = ("longcat_avatar_server.log", "minimax_server.log", "llama_server.log", "minimax_image_server.log")
@@ -2189,6 +2214,11 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
     if not download_only:
         cfg["model_id"] = repo
         cfg["model_folder"] = folder
+        if not _list_active_sessions():
+            cfg["tunnel_url"] = ""
+            cfg["recavsr_tunnel_url"] = ""
+            _LAST_METRICS_CACHE["data"] = None
+            _LAST_METRICS_CACHE["timestamp"] = 0.0
     ENDPOINT_FILE.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     cmd = [
@@ -2273,6 +2303,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <title>NVIDIA RTX PRO 6000 Blackwell Server</title>
 <style>
   :root {
+    color-scheme: dark;
     --bg: #0f172a;
     --card: #1e293b;
     --border: #334155;
@@ -2284,14 +2315,21 @@ HTML_PAGE = r"""<!DOCTYPE html>
     --red: #ef4444;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  select, input, textarea, button { color-scheme: dark; }
+  select option, select optgroup { background-color: #0f172a; color: #f8fafc; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
     background: var(--bg);
     color: var(--text);
-    padding: 24px;
-    max-width: 1200px;
+    padding: 18px 24px;
+    max-width: 100%;
     margin: 0 auto;
     line-height: 1.5;
+    transition: max-width 0.18s ease;
+  }
+  body.compact-width {
+    max-width: 1200px;
+    padding: 24px;
   }
   header {
     display: flex;
@@ -2497,6 +2535,102 @@ HTML_PAGE = r"""<!DOCTYPE html>
     justify-content: center;
     gap: 6px;
   }
+  .telemetry-strip {
+    display: grid;
+    grid-template-columns: minmax(0, 1.85fr) minmax(0, 1.08fr) minmax(0, 0.72fr) minmax(0, 0.92fr) minmax(0, 0.92fr) minmax(0, 1.45fr);
+    gap: 8px;
+    margin-bottom: 12px;
+    align-items: stretch;
+  }
+  .t-cell {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 7px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 3px;
+    min-width: 0;
+  }
+  .t-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #cbd5e1;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .t-head-meta {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .t-val {
+    font-size: 13.5px;
+    font-weight: 800;
+    color: #f8fafc;
+    font-family: 'SF Mono', Menlo, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.25;
+  }
+  .t-sub {
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+  .t-cu-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    align-items: end;
+  }
+  .t-cu-item {
+    min-width: 0;
+    border-right: 1px solid rgba(51,65,85,0.55);
+    padding-right: 6px;
+  }
+  .t-cu-item:last-child { border-right: none; padding-right: 0; }
+  .t-cu-lbl { font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+  .t-cu-val {
+    font-size: 12.5px;
+    font-weight: 800;
+    color: #f8fafc;
+    font-family: 'SF Mono', Menlo, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.25;
+  }
+  .t-cu-sub {
+    font-size: 9.5px;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .t-bar { height: 4px; margin-top: 2px; border-radius: 99px; background: rgba(15,23,42,0.85); overflow: hidden; }
+  .t-bar .progress-fill { height: 100%; }
+  @media (max-width: 1360px) {
+    .telemetry-strip { gap: 6px; }
+    .t-cell { padding: 6px 8px; }
+    .t-val { font-size: 12.5px; }
+    .t-cu-val { font-size: 11.5px; }
+  }
+  @media (max-width: 960px) {
+    .telemetry-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
   .cu-header {
     display: flex;
     justify-content: space-between;
@@ -2689,12 +2823,38 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <div class="btn-group" style="align-items:center;gap:8px;flex-wrap:nowrap;">
     <button class="btn-outline" onclick="openAccountModal()" id="btnAccountSwitch" title="切换或管理 Google Colab 算力账户" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(59,130,246,0.5);color:#93c5fd;font-size:12.5px;font-weight:700;">👤 <span id="headerAccountLabel">账户</span> ▾</button>
     <button class="btn-outline" onclick="openApiConfigModal()" id="btnOpenApiModal" title="查看并复制 OpenAI 兼容 API 接入参数 (本机永久固定 URL / 公网 Tunnel URL / API Key / Model ID)" style="height:32px;padding:0 12px;border-radius:8px;border-color:rgba(168,85,247,0.55);background:rgba(168,85,247,0.14);color:#e9d5ff;font-size:12.5px;font-weight:700;">🔗 API</button>
+    <button class="btn-outline" onclick="togglePageWidthMode()" id="btnPageWidthToggle" title="一键切换全屏自适应宽度 / 1200px 居中显示（自动记住偏好）" style="height:32px;padding:0 10px;border-radius:8px;border-color:rgba(56,189,248,0.5);background:rgba(56,189,248,0.12);color:#7dd3fc;font-size:12px;font-weight:700;white-space:nowrap;">⤢ 全屏</button>
     <button class="btn-outline" onclick="refreshStatus(true)" id="btnRefresh" style="height:32px;width:92px;padding:0;justify-content:center;border-radius:8px;font-size:12.5px;font-weight:700;white-space:nowrap;">🔄 刷新</button>
     <button class="btn-success" onclick="openBootModal()" id="btnQuickStart" style="height:32px;width:96px;padding:0;justify-content:center;border-radius:8px;font-size:12.5px;font-weight:700;white-space:nowrap;transition:box-shadow 0.2s,transform 0.2s;">▶️ 一键开机</button>
-    <button class="btn-danger" onclick="stopColab()" id="btnStop" style="height:32px;width:92px;padding:0;justify-content:center;border-radius:8px;font-size:12.5px;font-weight:700;white-space:nowrap;">🛑 关机</button>
+    <button class="btn-danger" onclick="stopColab()" id="btnStop" disabled style="height:32px;width:92px;padding:0;justify-content:center;border-radius:8px;font-size:12.5px;font-weight:700;white-space:nowrap;background:#334155;border:1px solid #475569;color:#94a3b8;opacity:0.72;cursor:not-allowed;">⚪ 已关机</button>
   </div>
 </header>
 <script>
+  function applyPageWidthMode(isCompact) {
+    document.body.classList.toggle('compact-width', Boolean(isCompact));
+    const b = document.getElementById('btnPageWidthToggle');
+    if (b) {
+      if (isCompact) {
+        b.innerText = '⤡ 1200px';
+        b.style.borderColor = 'rgba(148,163,184,0.45)';
+        b.style.background = 'transparent';
+        b.style.color = '#cbd5e1';
+      } else {
+        b.innerText = '⤢ 全屏';
+        b.style.borderColor = 'rgba(56,189,248,0.5)';
+        b.style.background = 'rgba(56,189,248,0.12)';
+        b.style.color = '#7dd3fc';
+      }
+    }
+  }
+  function togglePageWidthMode() {
+    const nextCompact = !document.body.classList.contains('compact-width');
+    try { localStorage.setItem('easycolab_compact_width', nextCompact ? '1' : '0'); } catch (e) {}
+    applyPageWidthMode(nextCompact);
+  }
+  try {
+    applyPageWidthMode(localStorage.getItem('easycolab_compact_width') === '1');
+  } catch (e) {}
   try {
     const _hc = JSON.parse(localStorage.getItem('easycolab_header_cache') || 'null');
     if (_hc) {
@@ -2765,11 +2925,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border-radius:9px;background:#0f172a;border:1px solid var(--border);">
       <span style="font-size:12px;font-weight:700;color:#94a3b8;white-space:nowrap;">📦 开机加载模型</span>
       <select id="bootModelSelect" onchange="onBootModelSelectChange(this.value)" style="flex:1;height:28px;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#f8fafc;font-size:12.5px;font-weight:700;cursor:pointer;">
-        <option value="MiniMax-H3">🎬 MiniMax-H3 (33B · 有声视频主力 · 134 GB)</option>
-        <option value="MiniMax-H3-Ref2VA">🕺 MiniMax-H3-Ref2VA (33B · 白模/动作迁移 · 无审查)</option>
-        <option value="MiniMax-H3-Image">📸 MiniMax-H3-Image (4K生图/换装 · 45.2 GB)</option>
-        <option value="LongCat-Video-Avatar-1.6">🎭 LongCat-Video-Avatar-1.6 (数字人配音 · 58.8 GB)</option>
-        <option value="Huihui-Qwen3.8-27B-abliterated-GGUF">🧠 Qwen3.8-27B (无审查对话/扩写 · 53.1 GB)</option>
+        <option value="MiniMax-H3-Image">📸 [卡片01 · 4K生图/换装] MiniMax-H3-Image (45 GB · 开机最快)</option>
+        <option value="MiniMax-H3">🎬 [卡片02/03 · 文生/首尾帧] MiniMax-H3 FL2VA (134 GB · 无审查)</option>
+        <option value="MiniMax-H3-Ref2VA">🕺 [卡片06 · 白模/动作迁移] MiniMax-H3 Ref2VA (无审查)</option>
+        <option value="LongCat-Video-Avatar-1.6">🎭 [卡片04 · 数字人说话] LongCat-Avatar-1.6 (59 GB)</option>
+        <option value="Huihui-Qwen3.8-27B-abliterated-GGUF">🧠 [写提示词] Qwen3.8-27B 无审查对话 (53 GB)</option>
         <option value="CURRENT">⚙️ 保持当前模型管理中已选模型</option>
       </select>
     </div>
@@ -2801,22 +2961,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span class="boot-gpu-chk" style="color:#34d399;font-size:15px;font-weight:900;display:none;">✔</span>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">
-        <div class="boot-gpu-card" data-gpu="L4" onclick="selectBootGpuCard('L4')" style="padding:9px 11px;border-radius:10px;border:1px solid var(--border);background:#0f172a;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
-          <div style="min-width:0;">
-            <div style="font-size:12.5px;font-weight:800;color:#f8fafc;">💎 L4 <span style="margin-left:4px;padding:1px 6px;border-radius:999px;background:rgba(59,130,246,0.22);color:#93c5fd;font-size:10.5px;font-weight:800;">24 GB 显存</span></div>
-            <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">中阶省算力 · 量化版与中型模型</div>
-          </div>
-          <span class="boot-gpu-chk" style="color:#34d399;font-size:14px;font-weight:900;display:none;">✔</span>
+      <div class="boot-gpu-card" data-gpu="L4" onclick="selectBootGpuCard('L4')" style="padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:#0f172a;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
+        <div style="min-width:0;">
+          <div style="font-size:13px;font-weight:800;color:#f8fafc;">💎 L4 <span style="margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,0.22);color:#93c5fd;font-size:11px;font-weight:800;">24 GB 显存</span></div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">中阶省算力 · 量化版与中型模型备用</div>
         </div>
-
-        <div class="boot-gpu-card" data-gpu="T4" onclick="selectBootGpuCard('T4')" style="padding:9px 11px;border-radius:10px;border:1px solid var(--border);background:#0f172a;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:all 0.15s;">
-          <div style="min-width:0;">
-            <div style="font-size:12.5px;font-weight:800;color:#f8fafc;">🟢 T4 <span style="margin-left:4px;padding:1px 6px;border-radius:999px;background:rgba(16,185,129,0.2);color:#6ee7b7;font-size:10.5px;font-weight:800;">16 GB 显存</span></div>
-            <div style="font-size:10.5px;color:#94a3b8;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">0.00 CU/h · 自动匹配 T4 量化版</div>
-          </div>
-          <span class="boot-gpu-chk" style="color:#34d399;font-size:14px;font-weight:900;display:none;">✔</span>
-        </div>
+        <span class="boot-gpu-chk" style="color:#34d399;font-size:15px;font-weight:900;display:none;">✔</span>
       </div>
     </div>
 
@@ -2986,113 +3136,98 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<div class="grid-top">
-  <div class="cu-card">
-    <div class="cu-header">
-      <div class="cu-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1.5 1.5 0 1 1 1.5-1.5A1.5 1.5 0 0 1 12 16zm1-4.5V7"/>
-          <path d="M12 12L15.5 8.5"/>
-        </svg>
-        <span>算力额度与自动休眠</span>
-      </div>
-      <span id="idleCountdownText" style="font-size:12px;color:var(--muted);">已接入自动保活与闲置断电守护</span>
+<div class="telemetry-strip">
+  <!-- 1. 算力额度与运行时长 -->
+  <div class="t-cell">
+    <div class="t-head">
+      <span style="display:inline-flex;align-items:center;gap:4px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 14a1.5 1.5 0 1 1 1.5-1.5A1.5 1.5 0 0 1 12 16zm1-4.5V7"/><path d="M12 12L15.5 8.5"/></svg>
+        <span>算力额度</span>
+      </span>
+      <span id="idleCountdownText" class="t-head-meta">已接入保活与闲置守护</span>
     </div>
-
-    <div class="cu-metrics">
-      <div class="cu-col">
-        <div class="cu-col-label">预计余额</div>
-        <div class="cu-col-val" id="cuBalance">-- CU</div>
-        <div id="cuRemainHours" style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">可跑约 -- 小时</div>
+    <div class="t-cu-grid">
+      <div class="t-cu-item">
+        <div class="t-cu-lbl">余额</div>
+        <div class="t-cu-val" id="cuBalance">-- CU</div>
+        <div class="t-cu-sub" id="cuRemainHours">可跑约 --h</div>
       </div>
-      <div class="cu-col">
-        <div class="cu-col-label">扣费速率</div>
-        <div class="cu-col-val" id="cuBurnRate" style="color:var(--muted)">0.00 CU/h</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;">有效期 90 天</div>
+      <div class="t-cu-item">
+        <div class="t-cu-lbl">速率</div>
+        <div class="t-cu-val" id="cuBurnRate" style="color:var(--muted)">0.00/h</div>
+        <div class="t-cu-sub">90天有效</div>
       </div>
-      <div class="cu-col">
-        <div class="cu-col-label">本次运行</div>
-        <div class="cu-col-val" id="cuUptime" style="color:var(--muted)">00:00:00</div>
-        <div style="font-size:11px;margin-top:2px;white-space:nowrap;">
-          <span id="cuResetDayLabel" onclick="setBillingResetDay()" style="color:var(--muted);cursor:pointer;" title="点击修改每月重置日">⚙️ 设重置日</span>
-        </div>
+      <div class="t-cu-item">
+        <div class="t-cu-lbl">运行</div>
+        <div class="t-cu-val" id="cuUptime" style="color:var(--muted)">00:00:00</div>
+        <div class="t-cu-sub"><span id="cuResetDayLabel" onclick="setBillingResetDay()" style="cursor:pointer;" title="点击修改每月重置日">⚙️ 设重置日</span></div>
       </div>
-      <div class="cu-col">
-        <div class="cu-col-label">本次消耗</div>
-        <div class="cu-col-val" id="cuSessionUsed" style="color:var(--muted)">0.00 CU</div>
-        <div id="cuSessionUsedSub" style="font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;">累计: 0.000 CU</div>
+      <div class="t-cu-item">
+        <div class="t-cu-lbl">消耗</div>
+        <div class="t-cu-val" id="cuSessionUsed" style="color:var(--muted)">0.00 CU</div>
+        <div class="t-cu-sub" id="cuSessionUsedSub">累计 0.00</div>
       </div>
     </div>
   </div>
 
-  <div class="card" style="display:flex;flex-direction:column;justify-content:center;padding:10px 16px;border-radius:12px;">
-    <div>
-      <h2 style="margin-bottom:4px;font-size:14px;">
-        <span>☁️ Google Drive 云盘</span>
-        <span id="syncBadge" style="font-size:12px;color:var(--green)">--</span>
-      </h2>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:nowrap;margin-bottom:5px;" title="云盘模型目录：/content/drive/MyDrive/models/">
-        <div style="display:flex;align-items:baseline;gap:8px;white-space:nowrap;">
-          <span class="metric-val" id="driveVal" style="font-size:18px;margin-bottom:0;">-- / -- GB</span>
-          <span class="metric-sub" id="driveSub" style="margin-bottom:0;font-size:11.5px;">剩余: -- GB</span>
-        </div>
-        <code style="font-size:11px;color:var(--muted);white-space:nowrap;">MyDrive/models/</code>
-      </div>
-      <div class="progress-bar" style="height:5px;margin-top:0;"><div class="progress-fill amber" id="driveBar" style="width:0%"></div></div>
+  <!-- 2. GPU 显存 -->
+  <div class="t-cell">
+    <div class="t-head"><span>🎮 GPU 显存</span><span id="gpuTemp" class="t-head-meta">--</span></div>
+    <div class="t-val" id="gpuVal">-- / -- GB</div>
+    <div class="t-sub" id="gpuSub">等待连接实例...</div>
+    <div class="t-bar"><div class="progress-fill green" id="gpuBar" style="width:0%"></div></div>
+  </div>
+
+  <!-- 3. CPU -->
+  <div class="t-cell">
+    <div class="t-head"><span>🖥️ CPU</span><span id="cpuCores" class="t-head-meta">-- 核</span></div>
+    <div class="t-val" id="cpuVal">--%</div>
+    <div class="t-sub" id="cpuSub">等待连接...</div>
+    <div class="t-bar"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div>
+  </div>
+
+  <!-- 4. 内存盘 / RAM -->
+  <div class="t-cell">
+    <div class="t-head"><span>🧠 内存</span><span id="ramInfo" class="t-head-meta">RAM: --</span></div>
+    <div class="t-val" id="shmVal">-- / -- GB</div>
+    <div class="t-sub" id="shmSub">高速内存盘</div>
+    <div class="t-bar"><div class="progress-fill" id="shmBar" style="width:0%"></div></div>
+  </div>
+
+  <!-- 5. 本地 NVMe 盘 -->
+  <div class="t-cell">
+    <div class="t-head"><span>💾 NVMe 盘</span><span class="t-head-meta">/content</span></div>
+    <div class="t-val" id="diskVal">-- / -- GB</div>
+    <div class="t-sub" id="diskSub">剩余: -- GB</div>
+    <div class="t-bar"><div class="progress-fill" id="diskBar" style="width:0%"></div></div>
+  </div>
+
+  <!-- 6. Google Drive 云盘 + 闲置休眠与释放 -->
+  <div class="t-cell">
+    <div class="t-head">
+      <span style="display:inline-flex;align-items:center;gap:4px;min-width:0;overflow:hidden;">
+        <span>☁️ 云盘</span>
+        <span id="driveVal" style="color:#f8fafc;font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:800;overflow:hidden;text-overflow:ellipsis;">-- / -- GB</span>
+      </span>
+      <span id="syncBadge" class="t-head-meta" style="color:var(--green);max-width:72px;">--</span>
+      <span id="driveSub" style="display:none;"></span>
     </div>
-    <div class="cu-controls">
-      <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;min-width:0;">
-        <span style="font-size:12px;color:var(--muted);">闲置自动释放<small id="idleElapsedHint" style="color:#64748b;margin-left:4px;"></small></span>
-        <select id="idleSelect" class="cu-select" onchange="updateIdleConfig()">
-          <option value="15">15 分钟</option>
-          <option value="30" selected>30 分钟</option>
-          <option value="60">60 分钟</option>
-          <option value="120">120 分钟</option>
+    <div class="t-bar" style="margin-top:0;"><div class="progress-fill amber" id="driveBar" style="width:0%"></div></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;margin-top:2px;min-width:0;">
+      <div style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;min-width:0;">
+        <span style="font-size:10.5px;color:var(--muted);">休眠<small id="idleElapsedHint" style="color:#64748b;margin-left:2px;"></small></span>
+        <select id="idleSelect" class="cu-select" onchange="updateIdleConfig()" style="padding:1px 5px;font-size:10.5px;height:22px;">
+          <option value="15">15分钟</option>
+          <option value="30" selected>30分钟</option>
+          <option value="60">60分钟</option>
+          <option value="120">120分钟</option>
           <option value="0">从不</option>
         </select>
       </div>
-      <button class="btn-release-all" onclick="stopColab()" id="btnReleaseAll">
+      <button class="btn-release-all" onclick="stopColab()" id="btnReleaseAll" style="padding:2px 8px;font-size:10.5px;height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:138px;">
         ⏻ 释放实例
       </button>
     </div>
-  </div>
-</div>
-
-<div class="grid-4">
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
-    <div>
-      <h2 style="gap:6px;white-space:nowrap;"><span>🖥️ CPU 状态</span><span id="cpuCores" style="font-size:12px;color:var(--muted)">-- 核</span></h2>
-      <div class="metric-val" id="cpuVal">--%</div>
-      <div class="metric-sub" id="cpuSub" style="white-space:pre-line;line-height:1.45;">等待连接实例...</div>
-    </div>
-    <div class="progress-bar"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div>
-  </div>
-
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
-    <div>
-      <h2 style="gap:6px;white-space:nowrap;"><span>🎮 GPU 显存</span><span id="gpuTemp" style="font-size:12px;color:var(--muted)">--</span></h2>
-      <div class="metric-val" id="gpuVal">-- / -- GB</div>
-      <div class="metric-sub" id="gpuSub" style="white-space:pre-line;line-height:1.45;">等待连接 RTX PRO 6000 实例...</div>
-    </div>
-    <div class="progress-bar"><div class="progress-fill green" id="gpuBar" style="width:0%"></div></div>
-  </div>
-
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
-    <div>
-      <h2 style="gap:6px;white-space:nowrap;"><span>🧠 内存盘</span><span id="ramInfo" style="font-size:11.5px;color:var(--muted)">RAM: --</span></h2>
-      <div class="metric-val" id="shmVal">-- / -- GB</div>
-      <div class="metric-sub" id="shmSub" style="white-space:pre-line;line-height:1.45;">高速内存盘（存放当前运行权重）</div>
-    </div>
-    <div class="progress-bar"><div class="progress-fill" id="shmBar" style="width:0%"></div></div>
-  </div>
-
-  <div class="card" style="display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
-    <div>
-      <h2 style="gap:6px;white-space:nowrap;"><span>💾 本地 NVMe 盘</span><span style="font-size:11.5px;color:var(--muted)">/content</span></h2>
-      <div class="metric-val" id="diskVal">-- / -- GB</div>
-      <div class="metric-sub" id="diskSub" style="white-space:pre-line;line-height:1.45;">剩余可用: -- GB</div>
-    </div>
-    <div class="progress-bar"><div class="progress-fill" id="diskBar" style="width:0%"></div></div>
   </div>
 </div>
 
@@ -3103,17 +3238,19 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <span id="llamaBadge" class="badge offline" style="font-size:11px">⚪ 推理引擎已关机</span>
     </h2>
 
-    <div style="flex:1;display:flex;flex-direction:column;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-        <label style="font-size:12.5px;font-weight:700;color:#f8fafc;">💬 输入你想生成的视频想法 (自动扩写下方四项提示词)：</label>
-        <div style="display:flex;gap:6px;flex-wrap:nowrap;">
-          <button class="btn-primary" style="padding:5px 11px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(true)" id="btnExpand4">✨ 生成四项提示词并填入下方</button>
-          <button class="btn-outline" style="padding:5px 10px;font-size:12px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 重新填入下方四框</button>
-          <button class="btn-outline" style="padding:5px 10px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(false)" id="btnChat">💬 普通对话</button>
+    <div style="flex:1;position:relative;min-height:380px;">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;flex-shrink:0;">
+          <label style="font-size:12.5px;font-weight:700;color:#f8fafc;">💬 输入你想生成的视频想法 (自动扩写下方四项提示词)：</label>
+          <div style="display:flex;gap:6px;flex-wrap:nowrap;">
+            <button class="btn-primary" style="padding:5px 11px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(true)" id="btnExpand4">✨ 生成四项提示词并填入下方</button>
+            <button class="btn-outline" style="padding:5px 10px;font-size:12px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 重新填入下方四框</button>
+            <button class="btn-outline" style="padding:5px 10px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(false)" id="btnChat">💬 普通对话</button>
+          </div>
         </div>
+        <textarea id="chatPrompt" rows="5" placeholder="直接用中文写你想生成什么样的视频，例如：赛博朋克雨夜东京街头，穿透明雨衣的少女走向镜头..." style="flex:1.15 1 0;min-height:110px;width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+        <div class="chat-out" id="chatOutput" style="flex:1 1 0;min-height:120px;max-height:none;overflow-y:auto;font-size:12px;line-height:1.55;margin-top:10px;">输入视频想法后点击「✨ 生成四项提示词并填入下方」，Qwen3.8 会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并直接填进下方四个框！</div>
       </div>
-      <textarea id="chatPrompt" rows="5" placeholder="直接用中文写你想生成什么样的视频，例如：赛博朋克雨夜东京街头，穿透明雨衣的少女走向镜头..." style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
-      <div class="chat-out" id="chatOutput" style="flex:1;min-height:180px;max-height:300px;font-size:12px;line-height:1.55;margin-top:10px;">输入视频想法后点击「✨ 生成四项提示词并填入下方」，Qwen3.8 会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并直接填进下方四个框！</div>
     </div>
   </div>
 
@@ -3125,7 +3262,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </span>
       <div style="display:inline-flex;gap:6px;flex-shrink:0;">
         <button type="button" id="tabPresetG4" onclick="switchPresetTierTab('g4')" style="padding:4px 12px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid #3b82f6;background:rgba(59,130,246,0.22);color:#93c5fd;cursor:pointer;white-space:nowrap;">🔥 RTX 6000 (96GB)</button>
-        <button type="button" id="tabPresetT4" onclick="switchPresetTierTab('t4')" style="padding:4px 12px;font-size:11.5px;font-weight:700;border-radius:999px;border:1px solid var(--border);background:#0f172a;color:#94a3b8;cursor:pointer;white-space:nowrap;">⚡ T4 (16GB)</button>
       </div>
     </h2>
     <div id="machineLockToast" style="display:none;margin-bottom:8px;padding:7px 11px;border-radius:8px;background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.55);color:#fde68a;font-size:12px;font-weight:700;line-height:1.4;">
@@ -3167,71 +3303,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_minimax_ref2va" onclick="selectPresetModel('preset_minimax_ref2va', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3-Ref2VA', 'Ref2VA/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;grid-column:1 / -1;">
+      <div class="folder-tag preset-card" id="preset_minimax_ref2va" onclick="selectPresetModel('preset_minimax_ref2va', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3-Ref2VA', 'Ref2VA/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
         <div style="min-width:0;">
-          <div style="font-weight:700;color:#e9d5ff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🕺 MiniMax-H3-Ref2VA (33B · 白模/动作迁移 · 无审查)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">BF16 原生 Ref2VA + 共享 72.4 GB 破限编码器/VAE · 仅增量 61.7 GB</div>
+          <div style="font-weight:700;color:#e9d5ff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🕺 MiniMax-H3-Ref2VA (33B · 白模)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">BF16 动作迁移 · 共享底座增量 61.7 GB</div>
         </div>
         <span class="preset-check" style="color:#a855f7;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
-    </div>
 
-    <!-- T4 16GB 模型区 -->
-    <div style="display:none;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;margin-bottom:10px;" id="presetModelGridT4">
-      <div class="folder-tag preset-card" id="preset_t4_minimax_h3" onclick="selectPresetModel('preset_t4_minimax_h3', 'unsloth/MiniMax-H3-GGUF', 'MiniMax-H3-T4-GGUF', 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+      <div class="folder-tag preset-card" id="preset_g4_indextts2" onclick="selectPresetModel('preset_g4_indextts2', 'IndexTeam/IndexTTS-2', 'IndexTTS-2', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
         <div style="min-width:0;">
-          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎬 MiniMax-H3 (T4 量化版)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">UD-Q2_K_XL 蒸馏 · 7.5 GB (8步有声)</div>
+          <div style="font-weight:700;color:#c084fc;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎙️ IndexTTS-2 云端原版</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FP16 + Qwen情绪 · ~8.0 GB (克隆/控时长)</div>
         </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_longcat_int8" onclick="selectPresetModel('preset_t4_longcat_int8', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6-INT8', 'base_model_int8/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
-        <div style="min-width:0;">
-          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎭 LongCat-Avatar-1.6 (INT8版)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">INT8 量化主干 + 双LoRA · 14.8 GB</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_recavsr" onclick="selectPresetModel('preset_t4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
-        <div style="min-width:0;">
-          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✨ ReCaVSR (2K/4K 视频超分)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Wan2.2-5B 单步超分 · 10.1 GB</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_qwen38_q3" onclick="selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
-        <div style="min-width:0;">
-          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🧠 Qwen3.8-27B 无审查 (T4版)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">UD-Q3_K_XL · 12.4 GB (16G满速)</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_qwen38_mtp" onclick="selectPresetModel('preset_t4_qwen38_mtp', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-MTP', 'Huihui-Qwen3.8-27B-abliterated-GSQ-RCO-IQ3_S-mtp.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
-        <div style="min-width:0;">
-          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">⚡ Qwen3.8-27B 无审查 (MTP版)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">IQ3_S + 原生MTP投机 · 11.3 GB</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_qwen14b" onclick="selectPresetModel('preset_t4_qwen14b', 'bartowski/huihui-ai_Qwen3-14B-abliterated-GGUF', 'Qwen3-14B-T4-Q6', 'huihui-ai_Qwen3-14B-abliterated-Q6_K.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
-        <div style="min-width:0;">
-          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">💎 Qwen3-14B 无审查 (Q6_K)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">准无损精度 · 11.3 GB (~50 tok/s)</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
-      </div>
-
-      <div class="folder-tag preset-card" id="preset_t4_qwenvl8b" onclick="selectPresetModel('preset_t4_qwenvl8b', 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF', 'Qwen3-VL-8B-T4-Q8', '*Q8_0.gguf')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
-        <div style="min-width:0;">
-          <div style="font-weight:700;color:#34d399;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">👁️ Qwen3-VL-8B 视觉无审查</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">满血 Q8_0 + 视觉 · 8.8 GB (~75 tok/s)</div>
-        </div>
-        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
+        <span class="preset-check" style="color:#a855f7;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
     </div>
 
@@ -3746,9 +3831,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <input type="file" id="inpAvatarAudio" accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*" onchange="handleAvatarAudioSelect(this)" style="font-size:12px;color:var(--muted);width:100%;">
         <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#1e293b;border:1px solid #334155;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-            <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 台词配音 (Ming-3.0 戏剧人设/气口/克隆 + 微软极速音色 · 共75+款)</span>
+            <span style="font-size:11.5px;font-weight:700;color:#fcd34d;">💬 台词配音 (IndexTTS-2 情绪克隆 + Ming-3.0 气口 + 微软极速 · 85+款)</span>
             <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-              <select id="avatarTtsVoiceSelect" onchange="onAvatarVoiceOrStyleChange()" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;max-width:235px;">
+              <select id="avatarTtsVoiceSelect" onchange="onAvatarVoiceOrStyleChange()" style="padding:2px 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11px;font-weight:700;max-width:255px;">
+                <option value="indextts2:__clone__">🎙️ 【IndexTTS-2 克隆】零样本克隆 + 自由控情绪/控时长 (上传下方干声)</option>
+                <option value="indextts2:甜美少女">✨ 【IndexTTS-2 女声】甜美少女 (情绪解耦 · 文字/8维控情绪 · 控时长)</option>
+                <option value="indextts2:温柔知性">🌸 【IndexTTS-2 女声】温柔知性 (情绪解耦 · 文字/8维控情绪 · 控时长)</option>
+                <option value="indextts2:台妹软糯">🧋 【IndexTTS-2 女声】台妹软糯 (情绪解耦 · 文字/8维控情绪 · 控时长)</option>
+                <option value="indextts2:清冷御姐">💎 【IndexTTS-2 女声】清冷御姐 (情绪解耦 · 文字/8维控情绪 · 控时长)</option>
+                <option value="indextts2:磁性暖男">🎧 【IndexTTS-2 男声】磁性暖男 (情绪解耦 · 文字/8维控情绪 · 控时长)</option>
+                <option value="indextts2:沉稳霸总">🥂 【IndexTTS-2 男声】沉稳霸总 (情绪解耦 · 文字/8维控情绪 · 控时长)</option>
+                <option value="indextts2:温润书生">📻 【IndexTTS-2 男声】温润书生 (情绪解耦 · 文字/8维控情绪 · 控时长)</option>
+                <option value="indextts2:美式女声">🇺🇸 【IndexTTS-2 英文】美式女声 Ava (中英混读 · 控情绪)</option>
                 <option value="ming:妩媚妲己">🔥 【百灵女声】妩媚妲己 (酥麻撩人·尾音微扬魅惑女声)</option>
                 <option value="ming:灵梦">💕 【百灵女声】灵梦 (撒娇粘人·恋爱女友求陪伴)</option>
                 <option value="ming:灵恬">🍬 【百灵女声】灵恬 (蜜糖甜妹·娇羞笃定表白腔)</option>
@@ -3851,10 +3945,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
           <textarea id="inpAvatarTtsText" rows="2" oninput="onAvatarTtsInput(this)" placeholder="在此粘贴人物要说的话（支持点击上方按钮穿插 [Sigh] 叹气、[Dissatisfaction-hnn] 傲娇哼~、[Laughter] 笑声等真人气口）" style="width:100%;min-height:52px;padding:6px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:12.5px;line-height:1.45;resize:vertical;"></textarea>
 
-          <!-- Ming-3.0 零样本 3~10秒声音克隆槽位 -->
+          <!-- IndexTTS-2 专属情绪解耦 & 精准时长控制栏 (选择 IndexTTS-2 音色时自动展开) -->
+          <div id="indexTts2ControlBar" style="display:none;margin-top:6px;padding:6px 8px;border-radius:6px;background:rgba(88,28,135,0.22);border:1px solid rgba(192,132,252,0.55);flex-direction:column;gap:5px;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:11px;font-weight:800;color:#e9d5ff;white-space:nowrap;">🎭 IndexTTS-2 情绪引擎:</span>
+              <select id="selIdxEmoMode" onchange="onIdxEmoModeChange()" style="height:24px;padding:0 6px;border-radius:5px;border:1px solid #a855f7;background:#0f172a;color:#f3e8ff;font-size:11px;font-weight:700;cursor:pointer;">
+                <option value="text" selected>✍️ 自然语言控情绪 (Qwen0.6B)</option>
+                <option value="vector">🎚️ 8维情绪预设</option>
+                <option value="auto">🎵 随参考音色自然语气</option>
+              </select>
+              <input type="text" id="inpIdxEmoText" placeholder="写情绪指令，如：委屈带哭腔 / 压低声音冷笑 / 兴奋雀跃 / 温柔低语" style="flex:1;min-width:170px;height:24px;padding:0 8px;border-radius:5px;border:1px solid #7e22ce;background:#020617;color:#f8fafc;font-size:11px;">
+              <select id="selIdxEmoPreset" style="display:none;height:24px;padding:0 6px;border-radius:5px;border:1px solid #7e22ce;background:#020617;color:#f8fafc;font-size:11px;font-weight:700;cursor:pointer;">
+                <option value="happy">😄 开心雀跃 (happy)</option>
+                <option value="angry">💢 愤怒质问 (angry)</option>
+                <option value="sad" selected>💧 委屈悲伤 (sad)</option>
+                <option value="afraid">😨 惊恐慌张 (afraid)</option>
+                <option value="disgusted">😒 嫌弃冷傲 (disgusted)</option>
+                <option value="melancholic">🌙 忧郁破碎 (melancholic)</option>
+                <option value="surprised">😮 惊喜惊叹 (surprised)</option>
+                <option value="calm">☁️ 平静温柔 (calm)</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:10.5px;color:#d8b4fe;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span>情绪强度:</span>
+                <input type="range" id="rngIdxEmoAlpha" min="0.1" max="1.0" step="0.05" value="0.75" oninput="const el=document.getElementById('lblIdxEmoAlpha');if(el)el.innerText=Number(this.value).toFixed(2);" style="width:92px;accent-color:#a855f7;">
+                <span id="lblIdxEmoAlpha" style="font-family:'SF Mono',Menlo,monospace;color:#f3e8ff;font-weight:800;">0.75</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <span>⏱️ 目标时长(可选):</span>
+                <input type="number" id="inpIdxTargetSec" min="0" max="60" step="0.5" value="0" title="填 0 为自然语速；填具体秒数（如 5.0）将精准卡点对齐镜头时长" style="width:54px;height:22px;padding:0 5px;border-radius:4px;border:1px solid #7e22ce;background:#020617;color:#f8fafc;font-size:11px;text-align:center;">
+                <span style="color:#94a3b8;">秒 (0=自然)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 零样本 3~10秒声音克隆槽位 (Ming-3.0 与 IndexTTS-2 通用) -->
           <div style="margin-top:6px;padding:6px 8px;border-radius:6px;background:rgba(15,23,42,0.85);border:1px solid #334155;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:210px;">
-              <span style="font-size:11px;font-weight:700;color:#c084fc;white-space:nowrap;">🧬 3秒声音克隆(可选):</span>
+              <span style="font-size:11px;font-weight:700;color:#c084fc;white-space:nowrap;">🧬 3秒声音克隆(IndexTTS-2/Ming通用):</span>
               <input type="file" id="inpMingCloneAudio" accept=".wav,.mp3,.m4a,.flac,.ogg,audio/*" onchange="handleMingCloneAudioSelect(this)" style="font-size:10.5px;color:var(--muted);max-width:165px;">
               <input type="text" id="inpMingClonePromptText" placeholder="可选：样本音频原话(填上可开启高保真韵律续写)" style="flex:1;min-width:120px;padding:3px 7px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:11px;">
             </div>
@@ -3915,9 +4044,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
   </div>
 
   <!-- 06 · 白模/深度动作迁移工作台 (MiniMax-H3-Ref2VA · 默认隐藏，切换至 ref2va 显示) -->
-  <div id="ref2vaStudioRow" style="display:none;padding:13px 15px;margin-bottom:14px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(59,7,100,0.78) 100%);border:1.5px solid rgba(168,85,247,0.68);border-radius:12px;">
-    <!-- 顶栏：标题 + 一键从 𝕏 灵感库导入 + 清空 -->
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid rgba(168,85,247,0.28);">
+  <div id="ref2vaStudioRow" style="display:none;padding:12px 14px;margin-bottom:14px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(59,7,100,0.78) 100%);border:1.5px solid rgba(168,85,247,0.68);border-radius:12px;">
+    <!-- 顶栏：标题 + 白模库 + 一键从 𝕏 灵感库导入 + 清空 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(168,85,247,0.28);">
       <div style="display:flex;align-items:center;gap:8px;min-width:0;">
         <span style="font-size:14.5px;font-weight:900;color:#f3e8ff;white-space:nowrap;">🕺 1. 白模/动作引导视频 &lt;Video 1&gt; 与多参考图 &lt;Picture 1~4&gt;</span>
         <span style="font-size:11px;padding:2px 9px;border-radius:999px;background:rgba(168,85,247,0.2);border:1px solid rgba(192,132,252,0.45);color:#e9d5ff;font-weight:700;white-space:nowrap;">支持真人视频一键转 3D素白模 / 主体深度 / 全场景深度 / 骨骼</span>
@@ -3929,184 +4058,194 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1.12fr 1fr;gap:12px;align-items:stretch;">
-      <!-- 左侧：<Video 1> 动作源视频 + 剪辑截取 + 4模式一键转白模/深度/骨骼预览器 -->
-      <div style="padding:11px 12px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid rgba(168,85,247,0.55);display:flex;flex-direction:column;gap:9px;">
+    <div id="ref2vaMainSplitGrid" style="display:grid;grid-template-columns:minmax(0,0.82fr) minmax(0,1.18fr);gap:12px;align-items:stretch;">
+      <!-- 列 2：<Video 1> 动作源视频 + 剪辑截取 + 4模式一键转白模/深度/骨骼预览器 -->
+      <div style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid rgba(168,85,247,0.55);display:flex;flex-direction:column;gap:6px;min-width:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
-          <span style="font-size:12.5px;font-weight:900;color:#e9d5ff;white-space:nowrap;">🎞️ &lt;Video 1&gt; 动作/白模参考视频 (必填)</span>
-          <div style="display:flex;align-items:center;gap:5px;min-width:0;">
-            <span id="ref2vaVideoMetaBadge" style="font-size:10.5px;color:#c4b5fd;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">未选择视频</span>
-            <button type="button" onclick="clearRef2vaVideo()" style="padding:2px 6px;font-size:10.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;flex-shrink:0;">✕</button>
+          <span style="font-size:11.5px;font-weight:900;color:#e9d5ff;white-space:nowrap;">🎞️ &lt;Video 1&gt; 动作/白模视频</span>
+          <div style="display:flex;align-items:center;gap:4px;min-width:0;">
+            <span id="ref2vaVideoMetaBadge" style="font-size:10px;color:#c4b5fd;font-family:'SF Mono',Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">未选择视频</span>
+            <button type="button" onclick="clearRef2vaVideo()" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;flex-shrink:0;">✕</button>
           </div>
         </div>
 
-        <!-- 双视图预览盒：原始视频 / 转换后的白模深度视频 -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="font-size:10.5px;font-weight:700;color:#94a3b8;display:flex;justify-content:space-between;align-items:center;">
-              <span>① 源视频 / 现成白模</span>
-              <label for="inpRef2vaVideo" style="color:#c084fc;cursor:pointer;font-weight:800;">📤 选本地视频</label>
+        <!-- 紧凑视频预览盒：未生成预处理预览时只显示单框，生成后自动展开双框对比 -->
+        <div id="ref2vaVideoGrid" style="display:grid;grid-template-columns:1fr;gap:8px;">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:nowrap;">
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">① 源视频 / 现成白模</span>
+              <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                <button type="button" id="btnRef2vaTryDress01" onclick="sendRef2vaFirstFrameToCard01()" style="padding:1px 5px;font-size:9.5px;font-weight:800;border-radius:4px;border:1px solid rgba(244,114,182,0.65);background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;white-space:nowrap;" title="可选：截取第1帧白模送去卡片01，6秒先出4K定妆图看穿搭氛围，满意再点「🕺送入06」回来跑视频">🧪 01试妆</button>
+                <button type="button" id="btnSaveWhiteModelLib" onclick="saveCurrentGuideToWhiteModelLibrary()" style="display:none;padding:1px 5px;font-size:9.5px;font-weight:800;border-radius:4px;border:1px solid rgba(16,185,129,0.65);background:rgba(16,185,129,0.2);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把当前白模永久存入「🗿 白模动作库」并自动同步至 20TB Google Drive">💾 存白模库</button>
+                <label for="inpRef2vaVideo" style="color:#c084fc;cursor:pointer;font-weight:800;white-space:nowrap;">📤 选视频</label>
+              </div>
             </div>
-            <div onclick="if(!ref2vaSrcVideoB64)document.getElementById('inpRef2vaVideo').click();" ondragover="event.preventDefault();this.style.borderColor='#c084fc';" ondragleave="this.style.borderColor='#7e22ce';" ondrop="event.preventDefault();this.style.borderColor='#7e22ce';if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaVideoFileObj(event.dataTransfer.files[0]);" style="position:relative;height:184px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+            <div onclick="if(!ref2vaSrcVideoB64)document.getElementById('inpRef2vaVideo').click();" ondragover="event.preventDefault();this.style.borderColor='#c084fc';" ondragleave="event.target===this&&(this.style.borderColor='#7e22ce');" ondrop="event.preventDefault();this.style.borderColor='#7e22ce';if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaVideoFileObj(event.dataTransfer.files[0]);" style="position:relative;height:164px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
               <video id="ref2vaSrcVideoPreview" controls muted playsinline style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;"></video>
               <div id="ref2vaSrcVideoEmpty" style="text-align:center;color:#94a3b8;font-size:11px;padding:10px;">
-                <div style="font-size:26px;margin-bottom:4px;">🎥</div>
-                <div style="color:#e9d5ff;font-weight:800;">点击上传 MP4 / MOV</div>
-                <div style="font-size:10px;color:#64748b;margin-top:3px;">真人跳舞视频或现成白模均可<br>也可点右上角从 𝕏 灵感库导入</div>
+                <div style="font-size:22px;margin-bottom:3px;">🎥</div>
+                <div style="color:#e9d5ff;font-weight:800;">点击或拖入 MP4 / MOV（可选）</div>
+                <div style="font-size:10px;color:#64748b;margin-top:2px;">真人视频可点下方「⚡ 生成预览」转白模；现成白模直接用</div>
               </div>
               <input type="file" id="inpRef2vaVideo" accept="video/*" style="display:none;" onchange="onRef2vaVideoFileSelect(this)">
             </div>
           </div>
 
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <div style="font-size:10.5px;font-weight:700;color:#94a3b8;display:flex;justify-content:space-between;align-items:center;gap:4px;">
+          <div id="ref2vaGuidePreviewCol" style="display:none;flex-direction:column;gap:4px;min-width:0;">
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;display:flex;justify-content:space-between;align-items:center;gap:4px;">
               <span id="ref2vaGuideTitleLbl" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">② 白模/深度引导预览</span>
-              <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
-                <button type="button" id="btnRef2vaTryDress01" onclick="sendRef2vaFirstFrameToCard01()" style="padding:1px 6px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid rgba(244,114,182,0.65);background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;white-space:nowrap;" title="可选：截取第1帧白模送去卡片01，6秒先出4K定妆图看穿搭氛围，满意再点「🕺送入06」回来跑视频">🧪 第1帧去01试妆</button>
-                <button type="button" id="btnSaveWhiteModelLib" onclick="saveCurrentGuideToWhiteModelLibrary()" style="display:none;padding:1px 6px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid rgba(16,185,129,0.65);background:rgba(16,185,129,0.2);color:#6ee7b7;cursor:pointer;white-space:nowrap;" title="把当前白模永久存入「🗿 白模动作库」并自动同步至 20TB Google Drive">💾 存白模库</button>
-                <a id="ref2vaGuideDownloadLink" href="#" download style="display:none;color:#34d399;font-weight:800;text-decoration:none;white-space:nowrap;">⬇️ 下载</a>
-              </div>
+              <a id="ref2vaGuideDownloadLink" href="#" download style="display:none;color:#34d399;font-weight:800;text-decoration:none;white-space:nowrap;">⬇️ 下载</a>
             </div>
-            <div style="position:relative;height:184px;border-radius:8px;border:1.5px solid #334155;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
-              <video id="ref2vaGuideVideoPreview" controls loop playsinline style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;"></video>
+            <div style="position:relative;height:164px;border-radius:8px;border:1.5px solid #334155;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;">
+              <video id="ref2vaGuideVideoPreview" controls muted loop playsinline style="display:none;width:100%;height:100%;object-fit:contain;background:#020617;"></video>
               <div id="ref2vaGuideVideoEmpty" style="text-align:center;color:#64748b;font-size:11px;padding:10px;line-height:1.5;">
-                <div style="font-size:24px;margin-bottom:4px;">🗿</div>
-                <div style="color:#cbd5e1;font-weight:700;">一键转白模/深度预览区</div>
-                <div style="font-size:10px;margin-top:3px;">选好下方模式后点「⚡ 生成预览」<br>若源视频已是白模可直接跳过</div>
+                <div style="font-size:20px;margin-bottom:3px;">🗿</div>
+                <div style="color:#cbd5e1;font-weight:700;">白模/深度预览</div>
               </div>
             </div>
           </div>
         </div>
 
         <!-- 剪辑片段截取 + 音轨/时长开关 -->
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 8px;border-radius:7px;background:#0f172a;border:1px solid #334155;font-size:11px;">
-          <div style="display:flex;align-items:center;gap:5px;">
-            <span style="color:#94a3b8;font-weight:700;">✂️ 片段截取:</span>
-            <input id="inpRef2vaStartSec" type="number" min="0" step="0.5" value="0" style="width:52px;padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:11px;text-align:center;">
-            <span style="color:#64748b;">秒 ~</span>
-            <input id="inpRef2vaEndSec" type="number" min="0" step="0.5" value="0" placeholder="全长" title="填 0 表示自动截取至视频结尾（最长 10 秒 / 243 帧）" style="width:52px;padding:2px 5px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:11px;text-align:center;">
-            <span style="color:#64748b;">秒 (0=全长)</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;padding:5px 7px;border-radius:7px;background:#0f172a;border:1px solid #334155;font-size:10.5px;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="color:#94a3b8;font-weight:700;">✂️ 截取:</span>
+            <input id="inpRef2vaStartSec" type="number" min="0" step="0.5" value="0" style="width:44px;padding:2px 4px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:10.5px;text-align:center;">
+            <span style="color:#64748b;">~</span>
+            <input id="inpRef2vaEndSec" type="number" min="0" step="0.5" value="0" placeholder="全长" title="填 0 表示自动截取至视频结尾（最长 10 秒 / 243 帧）" style="width:44px;padding:2px 4px;border-radius:5px;border:1px solid #475569;background:#020617;color:#f8fafc;font-size:10.5px;text-align:center;">
+            <span style="color:#64748b;">秒</span>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <label title="开启后保留原视频中的 BGM / 节奏音乐输入 Ref2VA (video_audio)；关闭则让 H3 原生重配环境音与配乐" style="display:inline-flex;align-items:center;gap:4px;color:#fde68a;font-weight:700;cursor:pointer;user-select:none;">
-              <input type="checkbox" id="chkRef2vaKeepAudio" style="width:13px;height:13px;accent-color:#f59e0b;margin:0;">
-              <span>🎵 保留原视频BGM</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label title="开启后保留原视频中的 BGM / 节奏音乐输入 Ref2VA (video_audio)；关闭则让 H3 原生重配环境音与配乐" style="display:inline-flex;align-items:center;gap:3px;color:#fde68a;font-weight:700;cursor:pointer;user-select:none;white-space:nowrap;">
+              <input type="checkbox" id="chkRef2vaKeepAudio" style="width:12px;height:12px;accent-color:#f59e0b;margin:0;">
+              <span>🎵 留原BGM</span>
             </label>
-            <label title="开启后自动按参考视频帧数对齐生成时长（17n+5 帧），保证动作 1:1 严丝合缝" style="display:inline-flex;align-items:center;gap:4px;color:#6ee7b7;font-weight:700;cursor:pointer;user-select:none;">
-              <input type="checkbox" id="chkRef2vaMatchDur" checked style="width:13px;height:13px;accent-color:#10b981;margin:0;">
-              <span>⏱️ 自动匹配原时长</span>
+            <label title="开启后自动按参考视频帧数对齐生成时长（17n+5 帧），保证动作 1:1 严丝合缝" style="display:inline-flex;align-items:center;gap:3px;color:#6ee7b7;font-weight:700;cursor:pointer;user-select:none;white-space:nowrap;">
+              <input type="checkbox" id="chkRef2vaMatchDur" checked style="width:12px;height:12px;accent-color:#10b981;margin:0;">
+              <span>⏱️ 自动时长</span>
             </label>
           </div>
         </div>
 
         <!-- 4 模式预处理选择 + 生成预览按钮 -->
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <select id="selRef2vaGuideMode" style="flex:1;min-width:190px;height:32px;padding:0 8px;border-radius:7px;border:1px solid #a855f7;background:#1e1b4b;color:#f3e8ff;font-size:11.5px;font-weight:700;cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:nowrap;">
+          <select id="selRef2vaGuideMode" style="flex:1;min-width:0;height:29px;padding:0 6px;border-radius:7px;border:1px solid #a855f7;background:#1e1b4b;color:#f3e8ff;font-size:11px;font-weight:700;cursor:pointer;">
             <option value="clay" selected>🗿 转 3D 素白模 (立体白模 · 换人换装最稳推荐)</option>
             <option value="subject_depth">🖤 转主体深度 (纯黑背景 · 换场景最干净)</option>
             <option value="full_depth">🌫️ 转全场景深度 (保留原片运镜与空间布局)</option>
             <option value="pose">🦴 转骨骼姿态 (极速舞蹈/手势骨架)</option>
             <option value="raw">🎞️ 直接使用原视频 / 现成白模 (免转换)</option>
           </select>
-          <button type="button" id="btnRef2vaPreprocess" onclick="runRef2vaGuidePreprocess()" style="height:32px;padding:0 12px;border-radius:7px;border:1px solid #c084fc;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">⚡ 生成白模/深度预览</button>
-          <button type="button" id="btnRef2vaUseRawToggle" onclick="clearRef2vaPreprocessedGuide()" style="display:none;height:32px;padding:0 9px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;" title="清除已转换的白模预览，改用源视频直接作为 <Video 1>">↺ 改用源视频</button>
+          <button type="button" id="btnRef2vaPreprocess" onclick="runRef2vaGuidePreprocess()" style="height:29px;padding:0 9px;border-radius:7px;border:1px solid #c084fc;background:linear-gradient(135deg,#9333ea,#6366f1);color:#ffffff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;">⚡ 生成预览</button>
+          <button type="button" id="btnRef2vaUseRawToggle" onclick="clearRef2vaPreprocessedGuide()" style="display:none;height:29px;padding:0 8px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;" title="清除已转换的白模预览，改用源视频直接作为 <Video 1>">↺ 用源视频</button>
         </div>
 
         <!-- 云端白模细节微调：平滑度 / 去水印裁边 / 动作自由度 -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-          <select id="selRef2vaSmoothness" title="控制 3D 素白模表面平滑程度：选柔和去衣褶最不容易粘连原视频衣服纹路" style="height:27px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10.5px;font-weight:700;cursor:pointer;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;">
+          <select id="selRef2vaSmoothness" title="控制 3D 素白模表面平滑程度：选柔和去衣褶最不容易粘连原视频衣服纹路" style="height:25px;padding:0 5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10px;font-weight:700;cursor:pointer;min-width:0;">
             <option value="balanced" selected>🗿 白模平滑: 标准均衡</option>
             <option value="soft">🫧 柔和去衣褶 (换装最稳)</option>
             <option value="detail">🔍 精细保留衣褶细节</option>
           </select>
-          <select id="selRef2vaCropMode" title="转白模前在云端先裁掉平台黑边或边角水印，避免把水印转进白模" style="height:27px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10.5px;font-weight:700;cursor:pointer;">
+          <select id="selRef2vaCropMode" title="转白模前在云端先裁掉平台黑边或边角水印，避免把水印转进白模" style="height:25px;padding:0 5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10px;font-weight:700;cursor:pointer;min-width:0;">
             <option value="none" selected>✂️ 裁边去水印: 不裁边</option>
             <option value="auto_black">⬛ 自动去黑边</option>
             <option value="trim_6pct">✂️ 四周裁6% (去抖音/X水印)</option>
             <option value="trim_10pct">✂️ 四周强裁10%</option>
           </select>
-          <select id="selRef2vaFreedom" title="控制 Ref2VA 跟随白模的严格程度" style="height:27px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10.5px;font-weight:700;cursor:pointer;">
+          <select id="selRef2vaFreedom" title="控制 Ref2VA 跟随白模的严格程度" style="height:25px;padding:0 5px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:10px;font-weight:700;cursor:pointer;min-width:0;">
             <option value="strict" selected>🔒 严格卡拍锁动作</option>
             <option value="natural">🌊 适度自然发挥</option>
           </select>
         </div>
-        <div id="ref2vaGuideStatusText" style="font-size:11px;color:#c4b5fd;line-height:1.4;">💡 提示：上传任意真人跳舞/动作视频后点「⚡ 生成白模/深度预览」（约 3~6 秒），即可去掉原视频人物颜值/服饰/背景干扰；若您直接上传的是现成白模/深度视频，直接点下方开始生成即可！</div>
+        <div id="ref2vaGuideStatusText" style="font-size:10.5px;color:#c4b5fd;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="上传任意真人跳舞/动作视频后点「⚡ 生成预览」（约 3~6 秒）即可去掉原视频人物颜值/服饰/背景干扰；现成白模直接用">💡 上传真人视频可点「⚡ 生成预览」转白模；现成白模直接用</div>
       </div>
 
-      <!-- 右侧：<Picture 1> ~ <Picture 4> 多参考图槽 + 一键 Ref2VA 提示词模板 -->
-      <div style="padding:11px 12px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid rgba(56,189,248,0.5);display:flex;flex-direction:column;gap:8px;">
+      <!-- 列 3：<Picture 1> ~ <Picture 3> 默认 1×3 紧凑竖卡（+ 可选展开 P4 补充图）+ 一键 Ref2VA 提示词模板 -->
+      <div style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid rgba(56,189,248,0.5);display:flex;flex-direction:column;gap:6px;min-width:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:nowrap;">
-          <span style="font-size:12.5px;font-weight:900;color:#bae6fd;white-space:nowrap;">🖼️ 多参考图槽 (&lt;Picture 1~4&gt;)</span>
-          <span style="font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">提示词用 &lt;Picture 1&gt; / &lt;Video 1&gt;</span>
+          <span style="font-size:12px;font-weight:900;color:#bae6fd;white-space:nowrap;">🖼️ 多参考图槽 (&lt;Picture 1~4&gt;)</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+            <span style="font-size:10.5px;color:#94a3b8;white-space:nowrap;">提示词用 &lt;Picture N&gt;</span>
+            <button type="button" id="btnToggleRef2vaP4" onclick="toggleRef2vaP4Slot()" style="padding:2px 7px;font-size:10px;font-weight:800;border-radius:5px;border:1px solid rgba(56,189,248,0.55);background:rgba(14,165,233,0.16);color:#bae6fd;cursor:pointer;white-space:nowrap;" title="展开或收起第 4 张补充/道具/侧脸参考图槽">+ P4 补充图</button>
+          </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1;">
+        <div id="ref2vaPicsGrid" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:7px;flex:1 1 auto;min-height:178px;">
           <!-- <Picture 1> 主体角色 -->
-          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(192,132,252,0.5);display:flex;flex-direction:column;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:4px;">
-              <span style="font-size:11px;font-weight:800;color:#e9d5ff;white-space:nowrap;">&lt;Picture 1&gt; 🧑 主角</span>
-              <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
-                <button type="button" onclick="openCc0PortraitGalleryModal('REF2VA_PIC_0', 'portrait')" style="padding:1px 5px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;" title="从内置 1,499 张高清演员正脸库点选填入 <Picture 1>">👩脸库</button>
-                <button type="button" onclick="clearRef2vaImgSlot(0)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+          <div style="padding:6px;border-radius:8px;background:#0f172a;border:1px solid rgba(192,132,252,0.5);display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:3px;margin-bottom:4px;min-width:0;flex-shrink:0;">
+              <span title="&lt;Picture 1&gt; 主角" style="font-size:10.5px;font-weight:800;color:#e9d5ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">P1 🧑主角</span>
+              <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+                <button type="button" onclick="openCc0PortraitGalleryModal('REF2VA_PIC_0', 'portrait')" style="padding:1px 5px;font-size:9.5px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;white-space:nowrap;" title="从内置 1,499 张高清演员正脸库点选填入 <Picture 1>">脸库</button>
+                <button type="button" onclick="clearRef2vaImgSlot(0)" style="padding:1px 4px;font-size:9.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
               </div>
             </div>
-            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(0,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:100px;border-radius:6px;border:1px dashed #7e22ce;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
-              <img id="ref2vaPicPreview0" style="display:none;width:100%;height:100%;object-fit:contain;">
-              <div id="ref2vaPicEmpty0" style="text-align:center;color:#94a3b8;font-size:10.5px;">🧑 点击或拖入角色照</div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(0,event.dataTransfer.files[0]);" style="position:relative;flex:1 1 0;min-height:156px;max-height:220px;border-radius:6px;border:1px dashed #7e22ce;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview0" style="display:none;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty0" style="text-align:center;color:#94a3b8;font-size:10.5px;padding:6px;line-height:1.4;">🧑<br>点击或拖入<br>主角照</div>
               <input type="file" id="inpRef2vaPic0" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(0, this)">
             </label>
           </div>
 
           <!-- <Picture 2> 服装/背面 -->
-          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(244,114,182,0.5);display:flex;flex-direction:column;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:4px;">
-              <span style="font-size:11px;font-weight:800;color:#fbcfe8;white-space:nowrap;">&lt;Picture 2&gt; 👗 服装</span>
-              <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
-                <button type="button" onclick="openCc0PortraitGalleryModal('REF2VA_PIC_1', 'costume')" style="padding:1px 5px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid #f472b6;background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;" title="从内置 2,727 套服装库点选填入 <Picture 2>">👗衣库</button>
-                <button type="button" onclick="clearRef2vaImgSlot(1)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+          <div style="padding:6px;border-radius:8px;background:#0f172a;border:1px solid rgba(244,114,182,0.5);display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:3px;margin-bottom:4px;min-width:0;flex-shrink:0;">
+              <span title="&lt;Picture 2&gt; 服装" style="font-size:10.5px;font-weight:800;color:#fbcfe8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">P2 👗服装</span>
+              <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+                <button type="button" onclick="openCc0PortraitGalleryModal('REF2VA_PIC_1', 'costume')" style="padding:1px 5px;font-size:9.5px;font-weight:800;border-radius:4px;border:1px solid #f472b6;background:rgba(236,72,153,0.2);color:#fbcfe8;cursor:pointer;white-space:nowrap;" title="从内置 2,727 套服装库点选填入 <Picture 2>">衣库</button>
+                <button type="button" onclick="clearRef2vaImgSlot(1)" style="padding:1px 4px;font-size:9.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
               </div>
             </div>
-            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(1,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:100px;border-radius:6px;border:1px dashed #be185d;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
-              <img id="ref2vaPicPreview1" style="display:none;width:100%;height:100%;object-fit:contain;">
-              <div id="ref2vaPicEmpty1" style="text-align:center;color:#94a3b8;font-size:10.5px;">👗 可选：服装/背面图</div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(1,event.dataTransfer.files[0]);" style="position:relative;flex:1 1 0;min-height:156px;max-height:220px;border-radius:6px;border:1px dashed #be185d;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview1" style="display:none;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty1" style="text-align:center;color:#94a3b8;font-size:10.5px;padding:6px;line-height:1.4;">👗<br>可选：服装<br>或背面图</div>
               <input type="file" id="inpRef2vaPic1" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(1, this)">
             </label>
           </div>
 
           <!-- <Picture 3> 场景背景 -->
-          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(16,185,129,0.5);display:flex;flex-direction:column;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <span style="font-size:11px;font-weight:800;color:#a7f3d0;">&lt;Picture 3&gt; 🏞️ 场景背景</span>
-              <button type="button" onclick="clearRef2vaImgSlot(2)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+          <div style="padding:6px;border-radius:8px;background:#0f172a;border:1px solid rgba(16,185,129,0.5);display:flex;flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:3px;margin-bottom:4px;min-width:0;flex-shrink:0;">
+              <span title="&lt;Picture 3&gt; 场景背景" style="font-size:10.5px;font-weight:800;color:#a7f3d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">P3 🏞️场景</span>
+              <button type="button" onclick="clearRef2vaImgSlot(2)" style="padding:1px 4px;font-size:9.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;flex-shrink:0;">✕</button>
             </div>
-            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(2,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:106px;border-radius:6px;border:1px dashed #059669;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
-              <img id="ref2vaPicPreview2" style="display:none;width:100%;height:100%;object-fit:contain;">
-              <div id="ref2vaPicEmpty2" style="text-align:center;color:#94a3b8;font-size:10.5px;">🏞️ 可选：目标实景图</div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(2,event.dataTransfer.files[0]);" style="position:relative;flex:1 1 0;min-height:156px;max-height:220px;border-radius:6px;border:1px dashed #059669;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview2" style="display:none;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty2" style="text-align:center;color:#94a3b8;font-size:10.5px;padding:6px;line-height:1.4;">🏞️<br>可选：目标<br>实景图</div>
               <input type="file" id="inpRef2vaPic2" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(2, this)">
             </label>
           </div>
 
-          <!-- <Picture 4> 补充参考 -->
-          <div style="padding:7px 8px;border-radius:8px;background:#0f172a;border:1px solid rgba(56,189,248,0.5);display:flex;flex-direction:column;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <span style="font-size:11px;font-weight:800;color:#bae6fd;">&lt;Picture 4&gt; ✨ 道具/补充</span>
-              <button type="button" onclick="clearRef2vaImgSlot(3)" style="padding:1px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+          <!-- <Picture 4> 补充参考（默认折叠，点右上角 + P4 补充图 或导入4图时自动展开） -->
+          <div id="ref2vaPicSlotWrap3" style="display:none;padding:6px;border-radius:8px;background:#0f172a;border:1px solid rgba(56,189,248,0.5);flex-direction:column;min-width:0;min-height:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:3px;margin-bottom:4px;min-width:0;flex-shrink:0;">
+              <span title="&lt;Picture 4&gt; 道具/补充" style="font-size:10.5px;font-weight:800;color:#bae6fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">P4 ✨补充</span>
+              <button type="button" onclick="clearRef2vaImgSlot(3)" style="padding:1px 4px;font-size:9.5px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;flex-shrink:0;">✕</button>
             </div>
-            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(3,event.dataTransfer.files[0]);" style="position:relative;flex:1;min-height:106px;border-radius:6px;border:1px dashed #0284c7;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
-              <img id="ref2vaPicPreview3" style="display:none;width:100%;height:100%;object-fit:contain;">
-              <div id="ref2vaPicEmpty3" style="text-align:center;color:#94a3b8;font-size:10.5px;">✨ 可选：补充参考图</div>
+            <label ondragover="event.preventDefault();" ondrop="event.preventDefault();if(event.dataTransfer&&event.dataTransfer.files&&event.dataTransfer.files[0])handleRef2vaImgFileObj(3,event.dataTransfer.files[0]);" style="position:relative;flex:1 1 0;min-height:156px;max-height:220px;border-radius:6px;border:1px dashed #0284c7;background:#020617;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+              <img id="ref2vaPicPreview3" style="display:none;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;">
+              <div id="ref2vaPicEmpty3" style="text-align:center;color:#94a3b8;font-size:10.5px;padding:6px;line-height:1.4;">✨<br>可选：道具<br>或侧脸图</div>
               <input type="file" id="inpRef2vaPic3" accept="image/*" style="display:none;" onchange="onRef2vaImgFileChange(3, this)">
             </label>
           </div>
         </div>
 
-        <!-- 一键 Ref2VA 黄金提示词模板填充条 -->
-        <div style="margin-top:auto;padding:7px 9px;border-radius:7px;background:rgba(15,23,42,0.9);border:1px dashed rgba(168,85,247,0.45);display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-          <span style="font-size:10.5px;font-weight:800;color:#d8b4fe;white-space:nowrap;">⚡ 一键填词模板:</span>
-          <button type="button" onclick="applyRef2vaPromptTemplate('clay_swap')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(192,132,252,0.5);background:rgba(168,85,247,0.18);color:#f3e8ff;cursor:pointer;">🗿 白模换真人</button>
-          <button type="button" onclick="applyRef2vaPromptTemplate('depth_scene')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(16,185,129,0.5);background:rgba(16,185,129,0.16);color:#a7f3d0;cursor:pointer;">🖤 深度换人+换景</button>
-          <button type="button" onclick="applyRef2vaPromptTemplate('outfit_dance')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(244,114,182,0.5);background:rgba(236,72,153,0.16);color:#fbcfe8;cursor:pointer;">👗 换装跟跳</button>
-          <button type="button" onclick="applyRef2vaPromptTemplate('cinema_raw')" style="padding:3px 8px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(56,189,248,0.5);background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;">🎥 电影实拍</button>
+        <!-- 一键 Ref2VA 智能提示词模板 + 外站词一键转 H3 规范 -->
+        <div style="padding:6px 8px;border-radius:7px;background:rgba(15,23,42,0.92);border:1px dashed rgba(168,85,247,0.48);display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <span style="font-size:10.5px;font-weight:800;color:#d8b4fe;white-space:nowrap;">⚡ 一键填词模板:</span>
+            <button type="button" onclick="applyRef2vaPromptTemplate('clay_swap')" style="padding:3px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(192,132,252,0.5);background:rgba(168,85,247,0.18);color:#f3e8ff;cursor:pointer;" title="按当前上传的 <Picture 1~4> 自动防冲突编排白模换人/换装/换景提示词">🗿 白模换真人</button>
+            <button type="button" onclick="applyRef2vaPromptTemplate('vfx_clay')" style="padding:3px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(251,146,60,0.6);background:rgba(234,88,12,0.2);color:#ffedd5;cursor:pointer;" title="适合自带火焰/粒子/光效/烟雾的白模视频：严格保留特效时机并强化人物衣物与场景受光反射">🔥 特效白模复刻</button>
+            <button type="button" onclick="applyRef2vaPromptTemplate('depth_scene')" style="padding:3px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(16,185,129,0.5);background:rgba(16,185,129,0.16);color:#a7f3d0;cursor:pointer;" title="自动识别深度图或白模，防图1与图2服装冲突，重点融合 <Picture 3> 实景光影投影">🖤 深度换人+换景</button>
+            <button type="button" onclick="applyRef2vaPromptTemplate('outfit_dance')" style="padding:3px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(244,114,182,0.5);background:rgba(236,72,153,0.16);color:#fbcfe8;cursor:pointer;" title="高动态卡拍跟跳：强调 <Picture 1> 锁脸、<Picture 2> 衣裙物理摆动与全身完整构图">👗 换装跟跳</button>
+            <button type="button" onclick="applyRef2vaPromptTemplate('multi_img')" style="padding:3px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(251,191,36,0.55);background:rgba(245,158,11,0.18);color:#fde68a;cursor:pointer;" title="不传引导视频，直接把 <Picture 1~4> 多图融合成电影感实拍视频">🖼️ 纯多图融合</button>
+            <button type="button" onclick="applyRef2vaPromptTemplate('cinema_raw')" style="padding:3px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid rgba(56,189,248,0.5);background:rgba(56,189,248,0.16);color:#bae6fd;cursor:pointer;" title="电影实拍质感：自动兼容有/无参考视频与多参考图槽位">🎥 电影实拍</button>
+            <span style="color:#334155;font-size:11px;user-select:none;">|</span>
+            <button type="button" onclick="convertExternalPromptToRef2va()" style="padding:3px 8px;font-size:10.5px;font-weight:800;border-radius:5px;border:1px solid rgba(251,146,60,0.75);background:linear-gradient(135deg,rgba(234,88,12,0.34),rgba(147,51,234,0.32));color:#fff7ed;cursor:pointer;white-space:nowrap;" title="把粘贴的 Wan3 / RunningHub / 可灵 / 𝕏 提示词一键清洗废话、转 <Video 1>/<Picture N>、按当前人/衣/景槽位自动重映射并处理静音冲突（框空时自动读剪贴板）">🪄 外站词转 H3</button>
+            <button type="button" id="btnRef2vaPromptUndo" onclick="undoRef2vaPromptChange()" style="display:none;padding:3px 7px;font-size:10.5px;font-weight:700;border-radius:5px;border:1px solid #475569;background:rgba(30,41,59,0.9);color:#cbd5e1;cursor:pointer;white-space:nowrap;" title="撤销上一次一键填词或外站词转换，还原之前内容">↩ 撤销</button>
+          </div>
+          <div id="ref2vaPromptAssistHint" style="display:none;font-size:10.5px;line-height:1.4;color:#a7f3d0;padding:3px 7px;border-radius:5px;background:rgba(2,6,23,0.75);border:1px solid rgba(16,185,129,0.3);"></div>
         </div>
 
         <!-- 成片后期流水线 + 同一白模批量换主角连拍 + 拍完自动关机 -->
@@ -4223,6 +4362,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <textarea id="videoPrompt" rows="4" oninput="if (currentMiniMaxMode === 'image') { const fp = document.getElementById('fusionPropsActionInput'); if (fp) fp.value = this.value; } autoSplitAvatarPromptAndTts(this); if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();" placeholder="描述画面主体、构图、运镜方式、光影与风格..." style="width:100%;min-height:110px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13.5px;line-height:1.55;resize:vertical;"></textarea>
     </div>
 
+    <!-- 卡片 06 专用：默认折叠空副框（音效/配乐/负面词），一屏直达规格与 LoRA 栏 -->
+    <div id="ref2vaExtraPromptsToggleBar" style="display:none;margin-top:8px;">
+      <button type="button" id="btnToggleRef2vaExtraPrompts" onclick="toggleRef2vaExtraPrompts()" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:5px 11px;border-radius:8px;border:1px dashed #334155;background:rgba(30,41,59,0.55);color:#94a3b8;font-size:11.5px;font-weight:700;cursor:pointer;">
+        <span id="ref2vaExtraPromptsToggleTxt">▸ 展开可选高级框（2. 环境音效 · 3. 背景音乐 · 4. 反向提示词）</span>
+        <span style="font-size:10.5px;color:#64748b;">有内容时自动展开</span>
+      </button>
+    </div>
+
+    <div id="ref2vaExtraPromptsDrawer">
     <!-- 框 2 (单独一行)：环境音效与台词对白（可选） -->
     <div id="videoSoundBoxWrap" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
@@ -4253,6 +4401,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <div id="negPromptWrap">
         <textarea id="videoNegPrompt" rows="3" placeholder="例如：low quality, blurry, watermark, text, deformed, bad anatomy, extra limbs, static frame..." style="width:100%;min-height:76px;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:#1e293b;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
       </div>
+    </div>
     </div>
   </div>
 
@@ -4320,8 +4469,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div id="h3SentinelLoraBar" style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;background:linear-gradient(135deg,rgba(30,41,59,0.96),rgba(59,7,100,0.68));padding:5px 10px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid rgba(192,132,252,0.65);margin-bottom:10px;min-width:0;">
       <span style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:6px;background:linear-gradient(135deg,#9333ea,#4f46e5);color:#ffffff;font-size:12px;font-weight:800;white-space:nowrap;flex-shrink:0;box-shadow:0 2px 8px rgba(147,51,234,0.4);">✨ H3云端LoRA插件</span>
       <select id="h3SentinelLoraSelect" onchange="onH3SentinelLoraChange(this.value)" style="flex:1;width:0;min-width:170px;height:26px;padding:0 8px;font-size:12.5px;font-weight:700;border-radius:6px;border:1px solid #c084fc;background:#0f172a;color:#ffffff;cursor:pointer;">
-        <option value="AUTO" selected>🤖 【智能自动匹配】根据提示词自动选择最优 LoRA 插件 (推荐)</option>
-        <option value="">🚫 【纯原生基座】不挂载额外 LoRA (通用风景 / 动漫 / 常规叙事)</option>
+        <option value="AUTO" selected>🤖 【智能自动匹配】根据当前模式与提示词自动选择最优 LoRA (推荐)</option>
+        <option value="">🚫 【纯原生基座 · Ref2VA白模换人换衣换景首选】不挂载额外 LoRA</option>
+        <option value="2027766/3352167/minimax_h3_head_swap_v1.0_r32.safetensors">👤 【仅限真人视频二次换头·严禁用于白模】BFS Head Swap v1.0 (锁定原视频身体/衣服/背景，只替换整颗头+脸型+发型)</option>
+        <option value="2027766/3412620/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors">🎭 【真人视频换人·保留原背景】BFS Character Swap v1.1 Ref2VA (适合真人视频直接换人，白模换景慎用)</option>
+        <option value="2940916/3329609/SS_FaceSwap_MiniMax_H3_REF2VA.safetensors">🧑 【视频局部换脸】SS FaceSwap REF2VA v1.0 (参考图五官锁定 · 自动加 Faceswap 触发词)</option>
         <option value="3039167/3453951/minimax-sensual-v0.1.safetensors">💋 【性感写真·纯欲眼神】MiniMax Sensual v0.1 (暧昧对视 / 网红自拍 / 呼吸感)</option>
         <option value="2985832/3406313/H3-nsfw-round-breasts-posing-V1.5.safetensors">👙 【写真姿态·身材曲线】NSFW Posing V1.5 (模特凹造型 / 睡衣丝袜 / 曲线展示)</option>
         <option value="3008596/3413917/MM-H3 - Gyrating Hips v1.2.safetensors">🍑 【腰臀律动·扭腰摆臀】Gyrating Hips v1.2 (腰臀摆动 / 扭胯 / 性感身材律动)</option>
@@ -4335,9 +4487,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <option value="3056235/3476658/Dance Beat-Sync Slider.safetensors">🎵 【卡点街舞·音乐节拍】Dance Beat-Sync (强鼓点 / 音乐重拍卡点律动)</option>
         <option value="2986532/3386042/wushu_h3_v8_final_fp16.safetensors">🥋 【武术格斗·近身打斗】wushu_action v8 (功夫拳脚 / 冷兵器过招 · 自动加触发词)</option>
         <option value="2941150/3329892/GunFu.safetensors">🔫 【近身枪斗·特工枪战】GUNFU (疾速追杀式战术射击 · 自动加 BUNNY)</option>
-        <option value="2027766/3412620/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors">🎭 【视频锁脸·全身换人】BFS Character Swap v1.1 (首尾帧 / 参考图跨帧强锁脸)</option>
-        <option value="2940916/3329609/SS_FaceSwap_MiniMax_H3_REF2VA.safetensors">🧑 【面部锁脸·五官防崩】SS FaceSwap REF2VA v1.0 (参考图五官锁定 · 自动加触发词)</option>
-        <option value="2027766/3352167/minimax_h3_head_swap_v1.0_r32.safetensors">👤 【头部替换·发型保持】BFS Head Swap v1.0 (视频头部与发型整体锁定)</option>
         <option value="CUSTOM">🛠️ 【自定义路径】手动输入 Sentinel7/h3 仓库内任意 .safetensors 相对路径...</option>
       </select>
       <span id="h3AutoLoraMatchBadge" title="当前智能匹配到的云端 LoRA 插件（输入提示词时实时自动识别；也可在左侧下拉框手动指定）" style="display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:6px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.48);color:#6ee7b7;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;">🎯 待输入提示词自动匹配</span>
@@ -4346,7 +4495,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span style="font-size:11.5px;color:#e2e8f0;font-weight:700;">权重</span>
         <input type="number" id="h3SentinelLoraStrength" value="0.85" min="0.1" max="1.5" step="0.05" style="width:48px;height:20px;padding:0 3px;border-radius:4px;border:1px solid #64748b;background:#020617;color:#fde68a;font-size:12px;font-weight:700;text-align:center;">
       </div>
-      <label title="HearmemanAI 推荐黄金采样参数：Euler · Steps=18 · Shift=12.0 (挂载 LoRA 时自动同步步数为 18 步并注入 Shift=12)" style="display:inline-flex;align-items:center;gap:4px;height:26px;box-sizing:border-box;font-size:11.5px;font-weight:700;color:#fde68a;background:rgba(245,158,11,0.16);border:1px solid rgba(245,158,11,0.48);padding:0 8px;border-radius:6px;cursor:pointer;white-space:nowrap;user-select:none;flex-shrink:0;">
+      <label id="lblH3SentinelAutoGoldenSpec" title="HearmemanAI 推荐黄金采样参数：Euler · Steps=18 · Shift=12.0 (挂载 LoRA 时自动同步步数为 18 步并注入 Shift=12)" style="display:inline-flex;align-items:center;gap:4px;height:26px;box-sizing:border-box;font-size:11.5px;font-weight:700;color:#fde68a;background:rgba(245,158,11,0.16);border:1px solid rgba(245,158,11,0.48);padding:0 8px;border-radius:6px;cursor:pointer;white-space:nowrap;user-select:none;flex-shrink:0;">
         <input type="checkbox" id="chkH3SentinelAutoGoldenSpec" checked style="width:12.5px;height:12.5px;accent-color:#f59e0b;cursor:pointer;margin:0;">
         <span>⚡ 黄金采样(18步·Shift 12)</span>
       </label>
@@ -5486,49 +5635,14 @@ let lastDriveFoldersRaw = [];
 let currentPresetTier = 'g4';
 
 function switchPresetTierTab(tier, autoSelect = true) {
-  currentPresetTier = tier;
+  currentPresetTier = 'g4';
   const gG4 = document.getElementById('presetModelGrid');
-  const gT4 = document.getElementById('presetModelGridT4');
   const bG4 = document.getElementById('tabPresetG4');
-  const bT4 = document.getElementById('tabPresetT4');
-  if (tier === 't4') {
-    if (gG4) gG4.style.display = 'none';
-    if (gT4) gT4.style.display = 'grid';
-    if (bT4) {
-      bT4.style.borderColor = '#10b981';
-      bT4.style.background = 'rgba(16,185,129,0.22)';
-      bT4.style.color = '#34d399';
-    }
-    if (bG4) {
-      bG4.style.borderColor = 'var(--border)';
-      bG4.style.background = '#0f172a';
-      bG4.style.color = '#94a3b8';
-    }
-    if (autoSelect) {
-      const curF = (document.getElementById('inpFolder') || {}).value || '';
-      if (!curF.includes('-T4-') && !curF.endsWith('-INT8') && curF !== 'ReCaVSR') {
-        selectPresetModel('preset_t4_qwen38_q3', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Qwen3.8-27B-T4-Q3', 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf');
-      }
-    }
-  } else {
-    if (gG4) gG4.style.display = 'grid';
-    if (gT4) gT4.style.display = 'none';
-    if (bG4) {
-      bG4.style.borderColor = '#3b82f6';
-      bG4.style.background = 'rgba(59,130,246,0.22)';
-      bG4.style.color = '#93c5fd';
-    }
-    if (bT4) {
-      bT4.style.borderColor = 'var(--border)';
-      bT4.style.background = '#0f172a';
-      bT4.style.color = '#94a3b8';
-    }
-    if (autoSelect) {
-      const curF = (document.getElementById('inpFolder') || {}).value || '';
-      if (curF.includes('-T4-') || curF.endsWith('-INT8') || curF === 'ReCaVSR') {
-        selectPresetModel('preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf');
-      }
-    }
+  if (gG4) gG4.style.display = 'grid';
+  if (bG4) {
+    bG4.style.borderColor = '#3b82f6';
+    bG4.style.background = 'rgba(59,130,246,0.22)';
+    bG4.style.color = '#93c5fd';
   }
 }
 
@@ -5539,7 +5653,6 @@ function renderGroupedDriveFolders(folders, updateButtons = true) {
   const curSelFolder = (document.getElementById('inpFolder') || {}).value || '';
   savedDriveFolders.clear();
   const g4List = [];
-  const t4List = [];
   const nonModelFolders = new Set(['PoseWear-Catalog', 'MiniMax-H3_outputs', 'MiniMax-H3-LoRAs']);
   (lastDriveFoldersRaw || []).forEach(item => {
     if (!item || !item.folder || nonModelFolders.has(item.folder)) return;
@@ -5547,9 +5660,9 @@ function renderGroupedDriveFolders(folders, updateButtons = true) {
     const fileCnt = Array.isArray(item.files) ? item.files.length : 0;
     if (fileCnt === 0 && gb <= 0.05) return;
     savedDriveFolders.add(item.folder);
-    const isT4Named = item.folder.includes('-T4-') || item.folder.endsWith('-INT8') || item.folder === 'ReCaVSR';
-    if (!isT4Named && gb > 15.5) g4List.push(item);
-    else t4List.push(item);
+    // 已移除 T4 专区：隐藏旧的 T4 量化文件夹，统一展示 RTX 6000 (96GB) 云盘模型与通用伴随引擎 (IndexTTS-2 / ReCaVSR)
+    if (item.folder.includes('-T4-') || item.folder.endsWith('-INT8')) return;
+    g4List.push(item);
   });
   const displayFolderNameMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B-GGUF',
@@ -5572,24 +5685,15 @@ function renderGroupedDriveFolders(folders, updateButtons = true) {
     </div>`;
   };
   let pendingG4Html = '';
-  let pendingT4Html = '';
   if (curSelFolder && !savedDriveFolders.has(curSelFolder)) {
-    const pendingTag = `<div class="folder-tag" data-folder="${curSelFolder}" title="该模型尚未存入您的 Google Drive 云盘；点击下方按钮即可从 HuggingFace 下载并永久保存到云盘" style="margin:0;padding:6px 10px;justify-content:space-between;min-width:0;grid-column:1 / -1;border:1.5px dashed #3b82f6;background:rgba(59,130,246,0.14);">
+    pendingG4Html = `<div class="folder-tag" data-folder="${curSelFolder}" title="该模型尚未存入您的 Google Drive 云盘；点击下方按钮即可从 HuggingFace 下载并永久保存到云盘" style="margin:0;padding:6px 10px;justify-content:space-between;min-width:0;grid-column:1 / -1;border:1.5px dashed #3b82f6;background:rgba(59,130,246,0.14);">
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">☁️ <b>${curSelFolder}</b></span>
       <span style="color:#93c5fd;flex-shrink:0;white-space:nowrap;font-size:11.5px;">(尚未存云盘 · 点下方下载入盘) <span class="drive-folder-check" style="color:#3b82f6;font-weight:700;display:inline;margin-left:4px;">✔</span></span>
     </div>`;
-    if (curSelFolder.includes('-T4-') || currentPresetTier === 't4') {
-      pendingT4Html = pendingTag;
-    } else {
-      pendingG4Html = pendingTag;
-    }
   }
   let html = '';
   if (g4List.length > 0 || pendingG4Html) {
-    html += `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:4px;">🔥 RTX 6000 (96GB) 云盘模型：</div><div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:6px;">${g4List.map(renderTag).join('')}${pendingG4Html}</div></div>`;
-  }
-  if (t4List.length > 0 || pendingT4Html) {
-    html += `<div><div style="font-size:11px;font-weight:700;color:#34d399;margin-bottom:4px;">⚡ T4 (16GB) 云盘模型：</div><div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:6px;">${t4List.map(renderTag).join('')}${pendingT4Html}</div></div>`;
+    html += `<div><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:4px;">🔥 RTX 6000 (96GB) 云盘模型：</div><div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:6px;">${g4List.map(renderTag).join('')}${pendingG4Html}</div></div>`;
   }
   fBox.innerHTML = html || '当前 MyDrive/models/ 下暂无模型文件夹';
   if (updateButtons) syncDriveFolderHighlight(curSelFolder, false);
@@ -5620,6 +5724,7 @@ function syncDriveFolderHighlight(folderName, rerenderList = true) {
     'Qwen3-VL-8B-T4-Q8': 'Qwen3-VL-8B',
     'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4)',
     'ReCaVSR': 'ReCaVSR',
+    'IndexTTS-2': 'IndexTTS-2',
   };
   const shortLabel = shortMap[folderName] || folderName || '当前模型';
   const inDrive = savedDriveFolders.has(folderName);
@@ -5693,6 +5798,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'Qwen3-VL-8B-T4-Q8': 'mradermacher/Qwen3-VL-8B-Instruct-abliterated-v2.0-GGUF',
     'MiniMax-H3-T4-GGUF': 'unsloth/MiniMax-H3-GGUF',
     'ReCaVSR': 'Decorator/ReCaVSR',
+    'IndexTTS-2': 'IndexTeam/IndexTTS-2',
   };
   const cardMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'preset_qwen_bf16',
@@ -5708,6 +5814,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'Qwen3-VL-8B-T4-Q8': 'preset_t4_qwenvl8b',
     'MiniMax-H3-T4-GGUF': 'preset_t4_minimax_h3',
     'ReCaVSR': 'preset_t4_recavsr',
+    'IndexTTS-2': 'preset_g4_indextts2',
   };
   const patternMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf',
@@ -5722,6 +5829,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'Qwen3-VL-8B-T4-Q8': '*Q8_0.gguf',
     'MiniMax-H3-T4-GGUF': 'minimax_h3_fl2va_pruned-UD-Q2_K_XL.gguf',
     'ReCaVSR': '*.pth',
+    'IndexTTS-2': '*.pth',
   };
   if (repoMap[folderName]) {
     document.getElementById('inpRepo').value = repoMap[folderName];
@@ -5816,7 +5924,45 @@ function updateMachineLockUI() {
       qBtn.style.background = '';
       qBtn.style.border = '';
       qBtn.style.color = '';
-      qBtn.title = '打开开机配置窗口，选择 GPU 显卡（G4/H100/A100/L4/T4）与模型启动机器';
+      qBtn.title = '打开开机配置窗口，选择 GPU 显卡（G4/H100/A100/L4）与模型启动机器';
+    }
+  }
+  const canStop = Boolean(isInstanceOnline || isDeployTaskRunning);
+  const sBtn = document.getElementById('btnStop');
+  if (sBtn) {
+    sBtn.disabled = !canStop;
+    if (canStop) {
+      sBtn.innerText = isInstanceOnline ? '🛑 关机' : '🛑 取消';
+      sBtn.style.background = '';
+      sBtn.style.border = '';
+      sBtn.style.color = '';
+      sBtn.style.opacity = '';
+      sBtn.style.cursor = '';
+      sBtn.title = isInstanceOnline ? '关闭并释放当前运行中的 Colab GPU 实例（立即停止扣费）' : '中止当前开机或抢卡任务';
+    } else {
+      sBtn.innerText = '⚪ 已关机';
+      sBtn.style.background = '#334155';
+      sBtn.style.border = '1px solid #475569';
+      sBtn.style.color = '#94a3b8';
+      sBtn.style.opacity = '0.72';
+      sBtn.style.cursor = 'not-allowed';
+      sBtn.title = '当前已关机（0.00 CU/h），无需重复点击';
+    }
+  }
+  const relBtn = document.getElementById('btnReleaseAll');
+  if (relBtn) {
+    relBtn.disabled = !canStop;
+    if (canStop) {
+      relBtn.style.background = '';
+      relBtn.style.opacity = '';
+      relBtn.style.cursor = 'pointer';
+    } else {
+      relBtn.innerText = '⚪ 已关机';
+      relBtn.style.background = '#1e293b';
+      relBtn.style.borderColor = '#334155';
+      relBtn.style.color = '#64748b';
+      relBtn.style.opacity = '0.72';
+      relBtn.style.cursor = 'not-allowed';
     }
   }
 }
@@ -5978,6 +6124,8 @@ async function refreshStatus(force = false) {
       'MiniMax-H3-T4-GGUF': 'MiniMax-H3(T4)',
       'unsloth/MiniMax-H3-GGUF': 'MiniMax-H3(T4)',
       'ReCaVSR': 'ReCaVSR',
+      'IndexTTS-2': 'IndexTTS-2(语音)',
+      'IndexTeam/IndexTTS-2': 'IndexTTS-2(语音)',
       'MiniMax-H3': 'MiniMax-H3(33B)',
       'MiniMax-H3-Ref2VA': 'MiniMax-H3-Ref2VA(白模)',
       'MiniMaxAI/MiniMax-H3': 'MiniMax-H3(33B)',
@@ -6038,7 +6186,9 @@ async function refreshStatus(force = false) {
     if (m) {
       if (m.gpu) {
         document.getElementById('gpuVal').innerText = `${m.gpu.used_gb} / ${m.gpu.total_gb} GB (${m.gpu.pct}%)`;
-        document.getElementById('gpuSub').innerText = `${m.gpu.name}\n负载 ${m.gpu.util}% · ${m.gpu.power}`;
+        const gsEl = document.getElementById('gpuSub');
+        gsEl.innerText = `负载 ${m.gpu.util}% · ${m.gpu.power}`;
+        gsEl.title = `${m.gpu.name} · 负载 ${m.gpu.util}% · ${m.gpu.power}`;
         document.getElementById('gpuTemp').innerText = `${m.gpu.temp}°C`;
         document.getElementById('gpuBar').style.width = `${Math.min(100, m.gpu.pct)}%`;
       } else if (isInstanceOnline) {
@@ -6052,7 +6202,9 @@ async function refreshStatus(force = false) {
         const cBar = document.getElementById('cpuBar');
         document.getElementById('cpuVal').innerText = `${cPct.toFixed(1)}%`;
         document.getElementById('cpuCores').innerText = `${m.cpu.cores || '--'} 核`;
-        document.getElementById('cpuSub').innerText = `${m.cpu.model || 'Colab VM CPU'}\n1分钟负载 ${m.cpu.load_1m ?? '--'}`;
+        const csEl = document.getElementById('cpuSub');
+        csEl.innerText = `1m负载 ${m.cpu.load_1m ?? '--'}`;
+        csEl.title = `${m.cpu.model || 'Colab VM CPU'} · 1分钟负载 ${m.cpu.load_1m ?? '--'}`;
         if (cBar) {
           cBar.style.width = `${Math.min(100, cPct)}%`;
           cBar.style.background = cPct >= 85 ? '#f59e0b' : '';
@@ -6201,6 +6353,9 @@ async function pollLogs() {
       let latestUpscaleErr = null;
       for (let i = d.logs.length - 1; i >= 0; i--) {
         const line = d.logs[i];
+        if (line.includes('DEPLOYMENT SUCCESSFUL') || line.includes('开始执行 [一键部署与加载模型]')) {
+          break;
+        }
         const mvSrErr = line.match(/\[视频超分失败\]\s+(.+)$/);
         if (mvSrErr) {
           latestUpscaleErr = mvSrErr[1];
@@ -6590,9 +6745,22 @@ function openBootModal() {
   if (tEl) tEl.innerText = isInstanceOnline ? '🚀 当前实例已运行 · 选择重连/加载模型' : '🚀 一键开机 · 选择 GPU 显卡与启动模式';
   if (rEl) rEl.style.display = 'none';
   if (mSel) {
+    const tabModelMap = {
+      image: 'MiniMax-H3-Image',
+      fusion: 'MiniMax-H3-Image',
+      t2va: 'MiniMax-H3',
+      fl2va: 'MiniMax-H3',
+      avatar: 'LongCat-Video-Avatar-1.6',
+      drama: 'MiniMax-H3-Image',
+      ref2va: 'MiniMax-H3-Ref2VA',
+    };
     const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
     const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
-    mSel.value = known.has(curF) ? curF : 'CURRENT';
+    const autoTarget = tabModelMap[currentMiniMaxMode] || (known.has(curF) ? curF : 'CURRENT');
+    mSel.value = autoTarget;
+    if (autoTarget !== 'CURRENT') {
+      onBootModelSelectChange(autoTarget);
+    }
   }
   selectBootGpuCard(_selectedBootGpu || 'G4');
   if (m) m.style.display = 'flex';
@@ -6827,11 +6995,12 @@ async function startDeploy(downloadOnly = false, fromQuickStart = false, overrid
 }
 
 async function stopColab(forceInterruptLlm = false) {
+  if (!isInstanceOnline && !isDeployTaskRunning) return;
   if (!forceInterruptLlm && !confirm('确定要关闭当前运行的 Colab RTX PRO 6000 实例吗？\n关闭后将立即停止消耗算力单元 (CU)，已同步到 Google Drive 的模型不会丢失。')) return;
   const btn = document.getElementById('btnStop');
   const relBtn = document.getElementById('btnReleaseAll');
-  if (btn) { btn.disabled = true; btn.innerText = '🛑 正在关机...'; }
-  if (relBtn) { relBtn.disabled = true; relBtn.innerText = '🛑 正在释放远端实例...'; }
+  if (btn) { btn.disabled = true; btn.innerText = '🛑 关机中...'; }
+  if (relBtn) { relBtn.disabled = true; relBtn.innerText = '🛑 释放中...'; }
   try {
     const r = await fetch('/api/stop', {
       method: 'POST',
@@ -6850,8 +7019,7 @@ async function stopColab(forceInterruptLlm = false) {
     alert(d.message);
     await refreshStatus(true);
   } finally {
-    if (btn) { btn.disabled = false; btn.innerText = '🛑 关机'; }
-    if (relBtn) { relBtn.disabled = false; }
+    updateMachineLockUI();
   }
 }
 
@@ -6950,6 +7118,7 @@ function clearSingleVideoPrompt(boxId) {
     el.focus();
   }
   if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
+  if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
 }
 
 function clearAllVideoPrompts() {
@@ -6958,6 +7127,7 @@ function clearAllVideoPrompts() {
     if (el) el.value = '';
   });
   if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
+  if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
   const st = document.getElementById('videoGenStatus');
   if (st) {
     st.innerText = '🗑️ 已一键清空全部四个提示词框';
@@ -7008,6 +7178,7 @@ function selectDurationFrames(frames, isAuto = false, autoSec = 0) {
   const slider = document.getElementById('videoFrames');
   if (slider) slider.value = String(frames);
   onFramesSliderChange(frames, isAuto, autoSec);
+  if (typeof saveLocalStudioDraftDebounced === 'function') saveLocalStudioDraftDebounced();
 }
 
 function selectBatchCount(count) {
@@ -7018,6 +7189,7 @@ function selectBatchCount(count) {
     btn.style.color = active ? '#ffffff' : '#cbd5e1';
     btn.style.fontWeight = active ? '700' : '600';
   });
+  if (typeof saveLocalStudioDraftDebounced === 'function') saveLocalStudioDraftDebounced();
 }
 
 let currentMiniMaxMode = 't2va';
@@ -7161,6 +7333,8 @@ function switchMiniMaxMode(mode) {
     if (box2Wrap) box2Wrap.style.display = 'none';
     if (box3Wrap) box3Wrap.style.display = 'none';
     if (box4Wrap) box4Wrap.style.display = 'none';
+    const r2ebHide = document.getElementById('ref2vaExtraPromptsToggleBar');
+    if (r2ebHide) r2ebHide.style.display = 'none';
     if (stepsWrap) stepsWrap.style.display = 'none';
     if (batchWrap) batchWrap.style.display = 'none';
     if (specRowsCont) {
@@ -7219,6 +7393,8 @@ function switchMiniMaxMode(mode) {
     if (box2Wrap) box2Wrap.style.display = 'none';
     if (box3Wrap) box3Wrap.style.display = 'none';
     if (box4Wrap) box4Wrap.style.display = 'none';
+    const r2ebHide = document.getElementById('ref2vaExtraPromptsToggleBar');
+    if (r2ebHide) r2ebHide.style.display = 'none';
     if (stepsWrap) stepsWrap.style.display = 'none';
     if (batchWrap) batchWrap.style.display = 'none';
     if (specRowsCont) {
@@ -7254,7 +7430,9 @@ function switchMiniMaxMode(mode) {
       autoSplitAvatarPromptAndTts(pEl);
     }
   } else {
-    if (loraBar) loraBar.style.display = isRef2 ? 'none' : 'flex';
+    if (loraBar) loraBar.style.display = 'flex';
+    const lblGolden = document.getElementById('lblH3SentinelAutoGoldenSpec');
+    if (lblGolden) lblGolden.style.display = isRef2 ? 'none' : 'inline-flex';
     const lblSixSec = document.getElementById('lblAutoH3SixSection');
     if (lblSixSec) lblSixSec.style.display = isRef2 ? 'none' : 'inline-flex';
     if (titleEl) {
@@ -7275,12 +7453,29 @@ function switchMiniMaxMode(mode) {
     if (pSecSubHint) pSecSubHint.style.display = 'none';
     if (fourBtns) fourBtns.style.display = 'flex';
     if (singleBtns) singleBtns.style.display = 'none';
+    const r2ExtraBar = document.getElementById('ref2vaExtraPromptsToggleBar');
+    const r2ExtraDrawer = document.getElementById('ref2vaExtraPromptsDrawer');
+    if (isImg || isAv) {
+      if (r2ExtraBar) r2ExtraBar.style.display = 'none';
+      if (r2ExtraDrawer) r2ExtraDrawer.style.display = 'block';
+    }
     if (box1Hdr) box1Hdr.style.display = 'flex';
-    if (box1Wrap) box1Wrap.style.marginBottom = '14px';
+    if (box1Wrap) box1Wrap.style.marginBottom = isRef2 ? '0' : '14px';
     if (box1Lbl) box1Lbl.innerText = isRef2 ? '1. 白模/动作迁移指令（已自动注入 <Video 1> 与参考图标签）' : '1. 主体、构图、光影与风格描述';
     if (box2Wrap) box2Wrap.style.display = 'block';
     if (box3Wrap) box3Wrap.style.display = 'block';
     if (box4Wrap) box4Wrap.style.display = 'block';
+    if (r2ExtraBar) r2ExtraBar.style.display = isRef2 ? 'block' : 'none';
+    if (r2ExtraDrawer) {
+      if (isRef2) {
+        const hasExtraTxt = ['videoSoundPrompt', 'videoMusicPrompt', 'videoNegPrompt'].some(id => ((document.getElementById(id) || {}).value || '').trim().length > 0);
+        if (typeof _setRef2vaExtraPromptsOpen === 'function') _setRef2vaExtraPromptsOpen(hasExtraTxt);
+        else r2ExtraDrawer.style.display = hasExtraTxt ? 'block' : 'none';
+      } else {
+        r2ExtraDrawer.style.display = 'block';
+        r2ExtraDrawer.style.marginTop = '0';
+      }
+    }
     if (stepsWrap) stepsWrap.style.display = 'flex';
     if (batchWrap) batchWrap.style.display = 'flex';
     if (specRowsCont) {
@@ -7308,8 +7503,13 @@ function switchMiniMaxMode(mode) {
       }
     }
     if (pEl) {
-      pEl.rows = 4;
-      pEl.style.minHeight = '110px';
+      pEl.rows = isRef2 ? 3 : 4;
+      pEl.style.minHeight = isRef2 ? '88px' : '110px';
+    }
+    if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
+    if (currentMiniMaxMode === 'ref2va' && typeof _setRef2vaExtraPromptsOpen === 'function') {
+      const hasExtra = ['videoSoundPrompt', 'videoMusicPrompt', 'videoNegPrompt'].some(id => ((document.getElementById(id) || {}).value || '').trim().length > 0);
+      _setRef2vaExtraPromptsOpen(hasExtra);
     }
   }
 }
@@ -9535,7 +9735,7 @@ let mingCloneAudioB64 = '';
 
 function getCombinedAvatarTtsSpec() {
   const vRaw = ((document.getElementById('avatarTtsVoiceSelect') || {}).value || 'ming:灵雨汐_中性').trim();
-  if (vRaw.startsWith('ming:')) {
+  if (vRaw.startsWith('ming:') || vRaw.startsWith('indextts2:')) {
     return vRaw;
   }
   const sRaw = ((document.getElementById('avatarTtsStyleSelect') || {}).value || '').trim();
@@ -9543,6 +9743,29 @@ function getCombinedAvatarTtsSpec() {
     return `${vRaw}|${sRaw}`;
   }
   return vRaw;
+}
+
+function getIndexTts2ExtraParams() {
+  const mode = ((document.getElementById('selIdxEmoMode') || {}).value || 'text').trim();
+  const emoText = ((document.getElementById('inpIdxEmoText') || {}).value || '').trim();
+  const emoPreset = ((document.getElementById('selIdxEmoPreset') || {}).value || 'sad').trim();
+  const emoAlpha = parseFloat((document.getElementById('rngIdxEmoAlpha') || {}).value || '0.75');
+  const targetSec = parseFloat((document.getElementById('inpIdxTargetSec') || {}).value || '0');
+  return {
+    emo_mode: mode,
+    emo_text: mode === 'text' ? emoText : '',
+    emo_preset: mode === 'vector' ? emoPreset : '',
+    emo_alpha: isNaN(emoAlpha) ? 0.75 : emoAlpha,
+    target_duration_sec: isNaN(targetSec) ? 0 : Math.max(0, targetSec),
+  };
+}
+
+function onIdxEmoModeChange() {
+  const mode = ((document.getElementById('selIdxEmoMode') || {}).value || 'text').trim();
+  const inpTxt = document.getElementById('inpIdxEmoText');
+  const selPre = document.getElementById('selIdxEmoPreset');
+  if (inpTxt) inpTxt.style.display = (mode === 'text') ? 'block' : 'none';
+  if (selPre) selPre.style.display = (mode === 'vector') ? 'inline-block' : 'none';
 }
 
 function insertMingParalinguisticTag(tag) {
@@ -9562,6 +9785,7 @@ function insertMingParalinguisticTag(tag) {
   const vSel = document.getElementById('avatarTtsVoiceSelect');
   if (vSel && !String(vSel.value || '').startsWith('ming:')) {
     vSel.value = 'ming:灵雨汐_中性';
+    onAvatarVoiceOrStyleChange();
   }
   onAvatarTtsInput(el);
 }
@@ -9579,9 +9803,13 @@ function handleMingCloneAudioSelect(inputEl) {
     avatarAudioB64 = '';
     avatarUseBuiltinSample = false;
     const vSel = document.getElementById('avatarTtsVoiceSelect');
-    if (vSel) vSel.value = 'ming:__clone__';
+    const keepIdx = vSel && String(vSel.value || '').startsWith('indextts2:');
+    if (vSel) vSel.value = keepIdx ? 'indextts2:__clone__' : 'ming:__clone__';
+    onAvatarVoiceOrStyleChange();
     if (stEl) {
-      stEl.innerText = `🧬 已载入声音克隆样本「${file.name}」！输入台词后点「🔊 合成并试听」或「🎬 生成数字人视频」即可复刻该音色`;
+      stEl.innerText = keepIdx
+        ? `🎙️ 已载入 IndexTTS-2 声音克隆样本「${file.name}」！可配合上方情绪控制 & 控时长点击「🔊 合成并试听」`
+        : `🧬 已载入声音克隆样本「${file.name}」！输入台词后点「🔊 合成并试听」或「🎬 生成数字人视频」即可复刻该音色`;
     }
   };
   reader.readAsDataURL(file);
@@ -9596,22 +9824,33 @@ function clearMingCloneAudio() {
   if (inp) inp.value = '';
   if (pTxt) pTxt.value = '';
   if (vSel && vSel.value === 'ming:__clone__') vSel.value = 'ming:灵雨汐_中性';
-  if (stEl) stEl.innerText = '✅ 已清除克隆样本，已切回 Ming-3.0 内置戏剧人设音色';
+  if (vSel && vSel.value === 'indextts2:__clone__') vSel.value = 'indextts2:甜美少女';
+  onAvatarVoiceOrStyleChange();
+  if (stEl) stEl.innerText = '✅ 已清除克隆样本，已切回内置音色';
 }
 
 function onAvatarVoiceOrStyleChange() {
   avatarAudioB64 = '';
   const vSel = document.getElementById('avatarTtsVoiceSelect');
   const sSel = document.getElementById('avatarTtsStyleSelect');
-  const isMing = vSel && String(vSel.value || '').startsWith('ming:');
+  const idxBar = document.getElementById('indexTts2ControlBar');
+  const vStr = vSel ? String(vSel.value || '') : '';
+  const isMing = vStr.startsWith('ming:');
+  const isIdx2 = vStr.startsWith('indextts2:');
   if (sSel) {
-    sSel.style.display = isMing ? 'none' : 'inline-block';
+    sSel.style.display = (isMing || isIdx2) ? 'none' : 'inline-block';
+  }
+  if (idxBar) {
+    idxBar.style.display = isIdx2 ? 'flex' : 'none';
+    if (isIdx2) onIdxEmoModeChange();
   }
   const stEl = document.getElementById('avatarAudioStatus');
   if (stEl) {
-    stEl.innerText = isMing
-      ? '🎭 已切换至 Ming-3.0 百灵戏剧/克隆音色 (支持呼吸/笑声/哼声标签)！可点「🔊 合成并试听」或直接点下方生成视频'
-      : '🎙️ 已切换至微软 Edge-TTS 极速音色！可点「🔊 合成并试听」试听新音色，或直接点下方开始生成';
+    stEl.innerText = isIdx2
+      ? '🎙️ 已切换至 IndexTTS-2 云端原版！支持零样本克隆 + 自然语言写情绪 / 8维情绪滑块 + 精准控时长，点「🔊 合成并试听」立即体验'
+      : (isMing
+        ? '🎭 已切换至 Ming-3.0 百灵戏剧/克隆音色 (支持呼吸/笑声/哼声标签)！可点「🔊 合成并试听」或直接点下方生成视频'
+        : '🎙️ 已切换至微软 Edge-TTS 极速音色！可点「🔊 合成并试听」试听新音色，或直接点下方开始生成');
   }
 }
 
@@ -9670,6 +9909,7 @@ async function previewAvatarTts() {
   }
   if (stEl) stEl.innerText = `⏳ 正在使用 ${voice} 合成高拟真语音...`;
   const clonePromptText = ((document.getElementById('inpMingClonePromptText') || {}).value || '').trim();
+  const idxExtra = voice.startsWith('indextts2:') ? getIndexTts2ExtraParams() : {};
   try {
     const r = await fetch('/api/tts_preview', {
       method: 'POST',
@@ -9679,6 +9919,7 @@ async function previewAvatarTts() {
         voice,
         clone_ref_b64: mingCloneAudioB64,
         clone_prompt_text: clonePromptText,
+        ...idxExtra,
       }),
     });
     const d = await r.json();
@@ -9759,8 +10000,14 @@ function handleFrameFileSelect(inputEl, previewId) {
   const file = inputEl.files && inputEl.files[0];
   const imgEl = document.getElementById(previewId);
   if (!file) {
-    if (previewId === 'firstFramePreview' || previewId === 'avatarImagePreview') firstFrameB64 = '';
-    if (previewId === 'lastFramePreview') lastFrameB64 = '';
+    if (previewId === 'firstFramePreview' || previewId === 'avatarImagePreview') {
+      firstFrameB64 = '';
+      if (typeof _idbDelMedia === 'function') _idbDelMedia('fl2va_first_frame');
+    }
+    if (previewId === 'lastFramePreview') {
+      lastFrameB64 = '';
+      if (typeof _idbDelMedia === 'function') _idbDelMedia('fl2va_last_frame');
+    }
     if (imgEl) imgEl.style.display = 'none';
     return;
   }
@@ -9770,8 +10017,12 @@ function handleFrameFileSelect(inputEl, previewId) {
     if (previewId === 'firstFramePreview' || previewId === 'avatarImagePreview') {
       firstFrameB64 = dataUrl;
       avatarUseBuiltinSample = false;
+      if (typeof _idbPutMedia === 'function') _idbPutMedia('fl2va_first_frame', dataUrl);
     }
-    if (previewId === 'lastFramePreview') lastFrameB64 = dataUrl;
+    if (previewId === 'lastFramePreview') {
+      lastFrameB64 = dataUrl;
+      if (typeof _idbPutMedia === 'function') _idbPutMedia('fl2va_last_frame', dataUrl);
+    }
     if (imgEl) {
       imgEl.src = dataUrl;
       imgEl.style.display = 'block';
@@ -9784,6 +10035,7 @@ function clearRefFrame(which) {
   if (which === 'first') {
     firstFrameB64 = '';
     avatarUseBuiltinSample = false;
+    if (typeof _idbDelMedia === 'function') _idbDelMedia('fl2va_first_frame');
     const inp = document.getElementById('inpFirstFrame');
     const img = document.getElementById('firstFramePreview');
     const avInp = document.getElementById('inpAvatarImage');
@@ -9796,6 +10048,7 @@ function clearRefFrame(which) {
     if (hintEl) hintEl.innerText = '✨ 已切换为纯「文+音生数字人 (AT2V)」模式（不传照片，直接根据提示词和音频生成说话人物）。';
   } else {
     lastFrameB64 = '';
+    if (typeof _idbDelMedia === 'function') _idbDelMedia('fl2va_last_frame');
     const inp = document.getElementById('inpLastFrame');
     const img = document.getElementById('lastFramePreview');
     if (inp) inp.value = '';
@@ -9825,6 +10078,7 @@ async function continueFromCurrentVideoLastFrame() {
       return;
     }
     firstFrameB64 = d.data_url;
+    if (typeof _idbPutMedia === 'function') _idbPutMedia('fl2va_first_frame', d.data_url);
     const imgEl = document.getElementById('firstFramePreview');
     if (imgEl) {
       imgEl.src = d.data_url;
@@ -10071,7 +10325,7 @@ function renderLocalHistoryList() {
   }).join('');
 }
 
-function _updatePreviewMediaMode(fname, url) {
+function _updatePreviewMediaMode(fname, url, forceReload = false) {
   const isImg = /\.(png|jpe?g|webp)$/i.test(fname || '');
   const player = document.getElementById('mmVideoPlayer');
   const imgPrev = document.getElementById('mmImagePreview');
@@ -10092,9 +10346,11 @@ function _updatePreviewMediaMode(fname, url) {
     if (imgPrev) { imgPrev.style.display = 'none'; }
     if (player) {
       player.style.display = 'block';
-      if (player.getAttribute('data-fname') !== fname) {
-        player.src = url;
+      const needReload = Boolean(forceReload) || player.getAttribute('data-fname') !== fname || !player.src || Boolean(player.error) || player.readyState === 0;
+      if (needReload) {
+        player.src = url + (url.includes('?') ? '&' : '?') + '_v=' + Date.now();
         player.setAttribute('data-fname', fname);
+        player.load();
       }
     }
     if (imgBtns) imgBtns.style.display = 'none';
@@ -10122,20 +10378,17 @@ async function runH3VideoFaceFixCurrent() {
     st.style.color = '#34d399';
   }
   try {
-    const refFaceB64 = (typeof fusionFaceOrigB64 !== 'undefined' && fusionFaceOrigB64)
-      ? fusionFaceOrigB64
-      : ((typeof fusionSlotsB64 !== 'undefined' && fusionSlotsB64[0]) ? fusionSlotsB64[0] : '');
-    const r = await fetch('/api/video_h3_facefix', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        name: currentSelectedVideoName,
-        face_b64: refFaceB64,
-        full_fix_below_px: 110,
-        no_fix_above_px: 180,
-      }),
+    const refFaceB64 = (currentMiniMaxMode === 'ref2va' && typeof ref2vaImgSlots !== 'undefined' && ref2vaImgSlots[0])
+      ? ref2vaImgSlots[0]
+      : ((typeof fusionFaceOrigB64 !== 'undefined' && fusionFaceOrigB64)
+        ? fusionFaceOrigB64
+        : ((typeof fusionSlotsB64 !== 'undefined' && fusionSlotsB64[0]) ? fusionSlotsB64[0] : ''));
+    const d = await _runFacefixWithLiveProgress({
+      name: currentSelectedVideoName,
+      face_b64: refFaceB64,
+      full_fix_below_px: 110,
+      no_fix_above_px: 180,
     });
-    const d = await r.json();
     if (!d || !d.ok) {
       alert('H3 视频崩脸精修失败: ' + ((d && d.error) || '未知错误'));
       if (st) {
@@ -10515,6 +10768,10 @@ function autoDetectBestH3SentinelLora() {
   const p3 = ((document.getElementById('videoMusicPrompt') || {}).value || '').trim();
   const fullText = `${p1} ${p2} ${p3}`.trim();
   const hasRef = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
+  if (currentMiniMaxMode === 'ref2va') {
+    // Ref2VA 白模换人+换衣+换景必须默认走纯原生基座；Head Swap / Character Swap 仅用于真人视频二次换头/换人，由用户手动选择，绝不自动挂载
+    return { path: '', label: '🎯 Ref2VA 原生基座直出（白模换人换衣换景最稳；真人二次换头再手动选 Head Swap）', weight: '0.85', empty: !fullText };
+  }
   if (!fullText) {
     return { path: '', label: '🎯 待输入提示词自动匹配', weight: '0.85', empty: true };
   }
@@ -10705,21 +10962,25 @@ function updateH3AutoLoraPreview() {
     badge.style.color = '#6ee7b7';
     const strInp = document.getElementById('h3SentinelLoraStrength');
     if (strInp) strInp.value = matched.weight;
-    const chkGolden = document.getElementById('chkH3SentinelAutoGoldenSpec');
-    if (chkGolden) chkGolden.checked = true;
-    const stSlider = document.getElementById('videoSteps');
-    const stLbl = document.getElementById('stepsValLabel');
-    if (stSlider) stSlider.value = '18';
-    if (stLbl) stLbl.innerText = '18 步';
+    if (currentMiniMaxMode !== 'ref2va') {
+      const chkGolden = document.getElementById('chkH3SentinelAutoGoldenSpec');
+      if (chkGolden) chkGolden.checked = true;
+      const stSlider = document.getElementById('videoSteps');
+      const stLbl = document.getElementById('stepsValLabel');
+      if (stSlider) stSlider.value = '18';
+      if (stLbl) stLbl.innerText = '18 步';
+    }
   } else {
     badge.style.background = 'rgba(59,130,246,0.16)';
     badge.style.borderColor = 'rgba(59,130,246,0.45)';
     badge.style.color = '#93c5fd';
-    const stSlider = document.getElementById('videoSteps');
-    const stLbl = document.getElementById('stepsValLabel');
-    if (stSlider && stSlider.value === '18') {
-      stSlider.value = '30';
-      if (stLbl) stLbl.innerText = '30 步';
+    if (currentMiniMaxMode !== 'ref2va') {
+      const stSlider = document.getElementById('videoSteps');
+      const stLbl = document.getElementById('stepsValLabel');
+      if (stSlider && stSlider.value === '18') {
+        stSlider.value = '30';
+        if (stLbl) stLbl.innerText = '30 步';
+      }
     }
   }
 }
@@ -10747,6 +11008,7 @@ function onH3SentinelLoraChange(val) {
   }
   if (val === 'AUTO') {
     updateH3AutoLoraPreview();
+    if (typeof saveLocalStudioDraftDebounced === 'function') saveLocalStudioDraftDebounced();
     return;
   }
   updateH3AutoLoraPreview();
@@ -10754,19 +11016,22 @@ function onH3SentinelLoraChange(val) {
   if (strInp && val && val !== 'CUSTOM') {
     if (val.includes('wushu_h3_v8')) {
       strInp.value = '0.75';
+    } else if (val.includes('head_swap')) {
+      strInp.value = '0.85';
     } else if (val.includes('FaceSwap') || val.includes('character_swap')) {
-      strInp.value = '1.00';
+      strInp.value = '0.90';
     } else {
       strInp.value = '0.85';
     }
   }
   const chkGolden = document.getElementById('chkH3SentinelAutoGoldenSpec');
-  if (val && chkGolden && chkGolden.checked) {
+  if (currentMiniMaxMode !== 'ref2va' && val && chkGolden && chkGolden.checked) {
     const stSlider = document.getElementById('videoSteps');
     const stLbl = document.getElementById('stepsValLabel');
     if (stSlider) stSlider.value = '18';
     if (stLbl) stLbl.innerText = '18 步';
   }
+  if (typeof saveLocalStudioDraftDebounced === 'function') saveLocalStudioDraftDebounced();
 }
 
 function compileVideoPromptToH3SixSection(rawPrompt, soundPrompt, musicPrompt, hasFirstFrame, loraPath) {
@@ -10936,9 +11201,9 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
   const seedVal = randSeed ? -1 : (parseInt(document.getElementById('videoSeed').value || '42', 10) || 42);
   const soundTxt = document.getElementById('videoSoundPrompt').value.trim();
   const musicTxt = document.getElementById('videoMusicPrompt').value.trim();
-  const loraPath = (!isImgMode && !isAvMode && !isRef2Mode) ? getSelectedH3SentinelLoraPath() : '';
+  const loraPath = (!isImgMode && !isAvMode) ? getSelectedH3SentinelLoraPath() : '';
   const loraStrength = parseFloat(((document.getElementById('h3SentinelLoraStrength') || {}).value) || '0.85') || 0.85;
-  const autoGolden = Boolean(((document.getElementById('chkH3SentinelAutoGoldenSpec') || {}).checked));
+  const autoGolden = (!isRef2Mode) && Boolean(((document.getElementById('chkH3SentinelAutoGoldenSpec') || {}).checked));
   const autoSixSec = Boolean(((document.getElementById('chkAutoH3SixSection') || {}).checked));
   const hasRefFrame = (currentMiniMaxMode === 'fl2va' && Boolean(firstFrameB64));
   const finalVideoPrompt = isImgMode
@@ -10983,10 +11248,11 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
     }
     payload.start_sec = parseFloat((document.getElementById('inpRef2vaStartSec') || {}).value || '0') || 0;
     payload.end_sec = parseFloat((document.getElementById('inpRef2vaEndSec') || {}).value || '0') || 0;
-    payload.keep_ref_audio = Boolean((document.getElementById('chkRef2vaKeepAudio') || {}).checked);
-    payload.match_ref_duration = Boolean((document.getElementById('chkRef2vaMatchDur') || {}).checked);
+    const hasRefVid = Boolean(ref2vaGuideVideoName || ref2vaSrcVideoB64);
+    payload.keep_ref_audio = hasRefVid && Boolean((document.getElementById('chkRef2vaKeepAudio') || {}).checked);
+    payload.match_ref_duration = hasRefVid && Boolean((document.getElementById('chkRef2vaMatchDur') || {}).checked);
     payload.motion_freedom = (document.getElementById('selRef2vaFreedom') || {}).value || 'strict';
-    if (payload.match_ref_duration) payload.num_frames = 0;
+    if (payload.match_ref_duration && hasRefVid) payload.num_frames = 0;
     window._lastRef2vaJobMeta = {
       mode: 'ref2va',
       start_sec: payload.start_sec,
@@ -11012,6 +11278,9 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
     payload.tts_voice = getCombinedAvatarTtsSpec();
     payload.clone_ref_b64 = mingCloneAudioB64;
     payload.clone_prompt_text = ((document.getElementById('inpMingClonePromptText') || {}).value || '').trim();
+    if (String(payload.tts_voice || '').startsWith('indextts2:')) {
+      Object.assign(payload, getIndexTts2ExtraParams());
+    }
     payload.use_builtin_sample = avatarUseBuiltinSample;
     payload.num_segments = parseInt((document.getElementById('avatarSegmentsSelect') || {}).value ?? '0', 10);
     if (isNaN(payload.num_segments)) payload.num_segments = 0;
@@ -11063,6 +11332,7 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
         videoPollTimer = setInterval(pollVideoStatus, 2000);
         return;
       }
+      window._lastRef2vaJobMeta = null;
       st.innerText = '❌ ' + (d.error || '启动失败（请确认模型服务已就绪）');
       st.style.color = '#ef4444';
       setVideoBtnRunningState(false);
@@ -11128,10 +11398,12 @@ function _autoMatchRef2vaVideoRes(vw, vh) {
   }
 }
 
-function _setRef2vaVideoBlobPreview(blobOrDataUrl, labelText) {
+function _setRef2vaVideoBlobPreview(blobOrDataUrl, labelText, opts = {}) {
   const v = document.getElementById('ref2vaSrcVideoPreview');
   const emp = document.getElementById('ref2vaSrcVideoEmpty');
   const meta = document.getElementById('ref2vaVideoMetaBadge');
+  const skipAutoRes = Boolean(opts && opts.skipAutoRes);
+  const skipSave = Boolean(opts && opts.skipSave);
   if (v) {
     v.src = blobOrDataUrl;
     v.style.display = 'block';
@@ -11141,13 +11413,20 @@ function _setRef2vaVideoBlobPreview(blobOrDataUrl, labelText) {
         const dim = (v.videoWidth && v.videoHeight) ? `${v.videoWidth}×${v.videoHeight}` : '';
         meta.innerText = [labelText || ref2vaSrcVideoName || '已加载', dim, dur].filter(Boolean).join(' · ');
       }
-      _autoMatchRef2vaVideoRes(v.videoWidth, v.videoHeight);
+      if (!skipAutoRes) {
+        _autoMatchRef2vaVideoRes(v.videoWidth, v.videoHeight);
+        if (typeof saveLocalStudioDraftDebounced === 'function') saveLocalStudioDraftDebounced();
+      }
     };
   }
   if (emp) emp.style.display = 'none';
   if (meta && labelText) meta.innerText = labelText;
   const svBtn = document.getElementById('btnSaveWhiteModelLib');
   if (svBtn) svBtn.style.display = 'inline-block';
+  if (!skipSave && blobOrDataUrl) {
+    if (typeof _idbPutMedia === 'function') _idbPutMedia('ref2va_src_video', blobOrDataUrl);
+    if (typeof saveLocalStudioDraftDebounced === 'function') saveLocalStudioDraftDebounced();
+  }
 }
 
 function handleRef2vaVideoFileObj(file) {
@@ -11173,9 +11452,58 @@ function onRef2vaVideoFileSelect(inputEl) {
   handleRef2vaVideoFileObj(file);
 }
 
+function _setRef2vaGuideColVisible(show) {
+  const col = document.getElementById('ref2vaGuidePreviewCol');
+  const vGrid = document.getElementById('ref2vaVideoGrid');
+  const mainGrid = document.getElementById('ref2vaMainSplitGrid');
+  if (col) col.style.display = show ? 'flex' : 'none';
+  if (vGrid) vGrid.style.gridTemplateColumns = show ? '1fr 1fr' : '1fr';
+  if (mainGrid) {
+    mainGrid.style.gridTemplateColumns = show
+      ? 'minmax(0,0.98fr) minmax(0,1.02fr)'
+      : 'minmax(0,0.82fr) minmax(0,1.18fr)';
+  }
+}
+
+function _setRef2vaP4Visible(show) {
+  const wrap = document.getElementById('ref2vaPicSlotWrap3');
+  const grid = document.getElementById('ref2vaPicsGrid');
+  const btn = document.getElementById('btnToggleRef2vaP4');
+  if (wrap) wrap.style.display = show ? 'flex' : 'none';
+  if (grid) grid.style.gridTemplateColumns = show ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))';
+  if (btn) btn.innerText = show ? '− 收起 P4' : '+ P4 补充图';
+}
+
+function toggleRef2vaP4Slot() {
+  const wrap = document.getElementById('ref2vaPicSlotWrap3');
+  const isOpen = wrap && wrap.style.display !== 'none';
+  _setRef2vaP4Visible(!isOpen);
+}
+
+function _setRef2vaExtraPromptsOpen(open) {
+  const drawer = document.getElementById('ref2vaExtraPromptsDrawer');
+  const txt = document.getElementById('ref2vaExtraPromptsToggleTxt');
+  if (drawer) {
+    drawer.style.display = open ? 'block' : 'none';
+    drawer.style.marginTop = open ? '10px' : '0';
+  }
+  if (txt) {
+    txt.innerText = open
+      ? '▾ 收起可选高级框（2. 环境音效 · 3. 背景音乐 · 4. 反向提示词）'
+      : '▸ 展开可选高级框（2. 环境音效 · 3. 背景音乐 · 4. 反向提示词）';
+  }
+}
+
+function toggleRef2vaExtraPrompts() {
+  const drawer = document.getElementById('ref2vaExtraPromptsDrawer');
+  const isOpen = drawer && drawer.style.display !== 'none';
+  _setRef2vaExtraPromptsOpen(!isOpen);
+}
+
 function clearRef2vaPreprocessedGuide(silent = false) {
   ref2vaGuideVideoName = '';
   ref2vaGuideModeUsed = '';
+  _setRef2vaGuideColVisible(false);
   const gv = document.getElementById('ref2vaGuideVideoPreview');
   const gEmp = document.getElementById('ref2vaGuideVideoEmpty');
   const dl = document.getElementById('ref2vaGuideDownloadLink');
@@ -11191,6 +11519,7 @@ function clearRef2vaPreprocessedGuide(silent = false) {
   if (!silent) {
     const st = document.getElementById('ref2vaGuideStatusText');
     if (st) st.innerText = '↺ 已清除白模预览，生成时将直接使用左侧源视频作为 <Video 1>。';
+    if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
   }
 }
 
@@ -11198,6 +11527,7 @@ function clearRef2vaVideo() {
   ref2vaSrcVideoB64 = '';
   ref2vaSrcVideoName = '';
   clearRef2vaPreprocessedGuide(true);
+  if (typeof _idbDelMedia === 'function') _idbDelMedia('ref2va_src_video');
   const inp = document.getElementById('inpRef2vaVideo');
   if (inp) inp.value = '';
   const v = document.getElementById('ref2vaSrcVideoPreview');
@@ -11206,6 +11536,7 @@ function clearRef2vaVideo() {
   if (v) { v.pause(); v.src = ''; v.style.display = 'none'; }
   if (emp) emp.style.display = 'block';
   if (meta) meta.innerText = '未选择视频';
+  if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
 }
 
 function handleRef2vaImgFileObj(idx, file) {
@@ -11220,16 +11551,21 @@ function onRef2vaImgFileChange(idx, inputEl) {
   handleRef2vaImgFileObj(idx, file);
 }
 
-function setRef2vaImgSlot(idx, dataUrl) {
+function setRef2vaImgSlot(idx, dataUrl, opts = {}) {
   ref2vaImgSlots[idx] = dataUrl || '';
   const img = document.getElementById('ref2vaPicPreview' + idx);
   const emp = document.getElementById('ref2vaPicEmpty' + idx);
   if (dataUrl) {
     if (img) { img.src = dataUrl; img.style.display = 'block'; }
     if (emp) emp.style.display = 'none';
+    if (idx === 3 && typeof _setRef2vaP4Visible === 'function') _setRef2vaP4Visible(true);
   } else {
     if (img) { img.src = ''; img.style.display = 'none'; }
     if (emp) emp.style.display = 'block';
+  }
+  if (!(opts && opts.skipSave)) {
+    if (typeof _idbPutMedia === 'function') _idbPutMedia('ref2va_pic_' + idx, dataUrl || '');
+    if (typeof saveLocalStudioDraftDebounced === 'function') saveLocalStudioDraftDebounced();
   }
 }
 
@@ -11242,6 +11578,8 @@ function clearRef2vaImgSlot(idx) {
 function clearRef2vaAll() {
   clearRef2vaVideo();
   for (let i = 0; i < 4; i++) clearRef2vaImgSlot(i);
+  if (typeof _setRef2vaP4Visible === 'function') _setRef2vaP4Visible(false);
+  if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
   const st = document.getElementById('ref2vaGuideStatusText');
   if (st) st.innerText = '🗑️ 已清空所有视频与参考图槽。';
 }
@@ -11292,6 +11630,8 @@ async function runRef2vaGuidePreprocess() {
     }
     ref2vaGuideVideoName = d.filename;
     ref2vaGuideModeUsed = mode;
+    if (typeof _setRef2vaGuideColVisible === 'function') _setRef2vaGuideColVisible(true);
+    if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
     const url = `/api/remote_video_file?name=${encodeURIComponent(d.filename)}&t=${Date.now()}`;
     const gv = document.getElementById('ref2vaGuideVideoPreview');
     const gEmp = document.getElementById('ref2vaGuideVideoEmpty');
@@ -11316,40 +11656,446 @@ async function runRef2vaGuidePreprocess() {
   }
 }
 
-function applyRef2vaPromptTemplate(kind) {
+const _ref2vaPromptUndoStack = [];
+
+function _updateRef2vaUndoBtn() {
+  const btn = document.getElementById('btnRef2vaPromptUndo');
+  if (btn) btn.style.display = _ref2vaPromptUndoStack.length > 0 ? 'inline-flex' : 'none';
+}
+
+function _pushRef2vaPromptUndo(promptVal, soundVal) {
+  const prev = _ref2vaPromptUndoStack[_ref2vaPromptUndoStack.length - 1];
+  if (prev && prev.prompt === promptVal && prev.sound === soundVal) return;
+  _ref2vaPromptUndoStack.push({ prompt: promptVal || '', sound: soundVal || '' });
+  if (_ref2vaPromptUndoStack.length > 15) _ref2vaPromptUndoStack.shift();
+  _updateRef2vaUndoBtn();
+}
+
+function _setRef2vaAssistHint(msg, level = 'ok') {
+  const el = document.getElementById('ref2vaPromptAssistHint');
+  if (!el) return;
+  if (!msg) {
+    el.style.display = 'none';
+    el.innerText = '';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerText = msg;
+  if (level === 'warn') {
+    el.style.color = '#fde68a';
+    el.style.borderColor = 'rgba(251,191,36,0.45)';
+  } else {
+    el.style.color = '#a7f3d0';
+    el.style.borderColor = 'rgba(16,185,129,0.35)';
+  }
+}
+
+function undoRef2vaPromptChange() {
+  if (!_ref2vaPromptUndoStack.length) return;
+  const last = _ref2vaPromptUndoStack.pop();
   const pEl = document.getElementById('videoPrompt');
-  if (!pEl) return;
+  const sEl = document.getElementById('videoSoundPrompt');
+  if (pEl) pEl.value = last.prompt;
+  if (sEl) sEl.value = last.sound;
+  _updateRef2vaUndoBtn();
+  if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
+  _setRef2vaAssistHint('↩ 已还原上一次填词/转换前的提示词内容。', 'ok');
+  showGlobalCopyToast('↩ 已撤销并还原之前的提示词');
+}
+
+function _getRef2vaSlotContext() {
   const hasP1 = Boolean(ref2vaImgSlots[0]);
   const hasP2 = Boolean(ref2vaImgSlots[1]);
   const hasP3 = Boolean(ref2vaImgSlots[2]);
-  const activePics = ref2vaImgSlots.map((b, i) => b ? i : -1).filter(i => i >= 0);
+  const hasP4 = Boolean(ref2vaImgSlots[3]);
+  const activePics = ref2vaImgSlots.map((b, i) => (b ? i : -1)).filter(i => i >= 0);
   // 实际提交时只发送非空图片并按顺序编号 <Picture 1>..<Picture N>
   const picTagOf = (slotIdx) => {
     const pos = activePics.indexOf(slotIdx);
     return pos >= 0 ? `<Picture ${pos + 1}>` : `<Picture ${slotIdx + 1}>`;
   };
-  const p1 = picTagOf(0);
-  const p2 = picTagOf(1);
-  const p3 = picTagOf(2);
-  let txt = '';
-  if (kind === 'clay_swap') {
-    txt = `以 <Video 1> 中的 3D 白模动作轨迹、肢体幅度、头部转动与镜头运镜为严格动作参考，将白模人物替换为 ${p1} 中的真实人物（100% 保持 ${p1} 的五官、发型、肤色与身材比例）`;
-    if (hasP2) txt += `，身穿 ${p2} 中的完整服装与配饰`;
-    if (hasP3) txt += `，自然置身于 ${p3} 的真实实景环境中，匹配环境光影与地面接触阴影`;
-    txt += '。严格同步 <Video 1> 的每一拍动作节奏与手部细节，呈现写实电影级肌肤纹理、自然飘逸的发丝与衣料物理摆动，绝不出现白模灰白材质或网格线条。';
-  } else if (kind === 'depth_scene') {
-    txt = `严格按照 <Video 1> 的主体 3D 深度剪影与连续动作轨迹进行视频重绘：将动作主体替换为 ${p1} 中的角色（完整保留面部特征与服装细节）`;
-    if (hasP2) txt += `，服装参考 ${p2}`;
-    if (hasP3) txt += `，并将纯黑背景完整替换为 ${p3} 的写实场景环境，光影方向、景深虚化与地面投影与 ${p3} 完美融合`;
-    else txt += '，置于极具电影质感的自然光实景街道/室内环境中，85mm 浅景深柔美散景';
-    txt += '。动作流畅连贯，1.0x 实拍帧率，高快门清晰度，零残影零畸变。';
-  } else if (kind === 'outfit_dance') {
-    txt = `让 ${p1} 中的人物${hasP2 ? `换上 ${p2} 中的整套服装穿搭` : ''}，严格复刻 <Video 1> 中的全套舞蹈动作、步伐、表情神态与镜头推拉节奏${hasP3 ? `，舞台背景为 ${p3}` : ''}。衣裙与长发随舞动呈现真实物理惯性摆动，面部五官在快速转身与大幅动作中始终与 ${p1} 保持高度一致，写实单反实拍画质。`;
+  const hasRefVid = Boolean(ref2vaGuideVideoName || ref2vaSrcVideoB64);
+  const guideMode = ref2vaGuideVideoName ? (ref2vaGuideModeUsed || 'clay') : (ref2vaSrcVideoB64 ? 'raw_or_clay' : 'none');
+  const freedom = (document.getElementById('selRef2vaFreedom') || {}).value || 'strict';
+  const resVal = (document.getElementById('videoRes') || {}).value || '480x832';
+  const [rw, rh] = resVal.split('x').map(n => parseInt(n, 10) || 0);
+  const aspectHint = (rh > rw) ? '竖屏 9:16' : (rw > rh ? '横屏 16:9' : '1:1 方形');
+  const keepOrMuxBgm = Boolean(
+    ((document.getElementById('chkRef2vaKeepAudio') || {}).checked)
+    || ((document.getElementById('chkRef2vaMuxOrigBgm') || {}).checked)
+  );
+  return {
+    hasP1, hasP2, hasP3, hasP4,
+    activePics, picTagOf,
+    p1: picTagOf(0), p2: picTagOf(1), p3: picTagOf(2), p4: picTagOf(3),
+    hasRefVid, guideMode, freedom, aspectHint, keepOrMuxBgm,
+  };
+}
+
+function _buildRef2vaSmartPrompt(kind, ctx) {
+  const { hasP1, hasP2, hasP3, hasP4, p1, p2, p3, p4, hasRefVid, guideMode, freedom, aspectHint } = ctx;
+  const strictTxt = freedom === 'natural'
+    ? '自然流畅跟随 <Video 1> 的核心动作轨迹与节奏（允许细微自然肢体律动）'
+    : '严格逐帧复刻 <Video 1> 的动作顺序、肢体幅度、停顿节拍与运镜调度，不抢拍、不镜像、不漏动作';
+  const guideDescMap = {
+    clay: '<Video 1> 的 3D 素白模动作轨迹与镜头调度',
+    subject_depth: '<Video 1> 的主体 3D 深度剪影与连续动作轨迹',
+    full_depth: '<Video 1> 的全场景深度空间布局、镜头运镜与动作轨迹',
+    pose: '<Video 1> 的骨骼姿态、肢体角度与连续动作节拍',
+    raw_or_clay: '<Video 1> 的人物动作轨迹、节拍与镜头调度',
+    none: '',
+  };
+  const guideDesc = guideDescMap[guideMode] || guideDescMap.raw_or_clay;
+
+  // 核心防冲突：有 <Picture 2> 服装槽时，明确声明 <Picture 1> 仅取五官发型，不沿用原服装与背景
+  let charOutfitTxt = '';
+  if (hasP1 && hasP2) {
+    charOutfitTxt = `主角严格锁定 ${p1} 的面部五官、发型、肤色与气质身份（仅取 ${p1} 人像特征，不沿用其原服装与背景），身穿 ${p2} 的完整服装穿搭与配饰`;
+  } else if (hasP1) {
+    charOutfitTxt = `主角完整替换为 ${p1} 中的真实人物（严格保留 ${p1} 的面部五官、发型、肤色与整套服装穿搭，不沿用其原始姿势与背景）`;
+  } else if (hasP2) {
+    charOutfitTxt = `真实写实人物，身穿 ${p2} 中的完整服装穿搭与配饰`;
   } else {
-    txt = `电影摄影机实拍原片：严格跟随 <Video 1> 的主体动作、姿态变化与运镜调度，主角为 ${p1} 中的人物${hasP2 ? `（身穿 ${p2}）` : ''}${hasP3 ? `，身处 ${p3} 场景中` : ''}。自然电影级主光与发丝轮廓光，真实皮肤质感与衣料褶皱，画面干净无字幕无水印。`;
+    charOutfitTxt = `主角替换为 ${p1} 中的真实人物（100% 保持面部五官与发型特征）`;
   }
+  const propTxt = hasP4 ? `，并自然融入 ${p4} 中的道具/视觉元素细节` : '';
+
+  if (kind === 'clay_swap') {
+    let txt = `以 ${guideDesc} 为动作参考，${strictTxt}。${charOutfitTxt}`;
+    if (hasP3) {
+      txt += `，将原背景完整替换为 ${p3} 的真实实景环境，保持人物双脚与地面的真实站立接触与自然阴影，受光方向与色温同 ${p3} 融为一体`;
+    } else {
+      txt += '，人物受光自然立体、地面投影真实';
+    }
+    txt += propTxt;
+    txt += `。${aspectHint}完整全身/近全身构图，服装与长发随抬臂、转身与迈步呈现真实物理摆动，写实电影级肌肤纹理，高快门清晰度，面部五官清晰稳定，绝不残留白模灰白材质、网格线或字幕水印。`;
+    return txt;
+  }
+
+  if (kind === 'vfx_clay') {
+    let txt = `以 <Video 1> 为唯一动作、节拍、机位与特效时机参考，${strictTxt}。${charOutfitTxt}`;
+    if (hasP3) {
+      txt += `；将原影棚背景完整替换为 ${p3} 的写实实景环境，保留人物与地面的真实空间关系与接触投影`;
+    }
+    txt += propTxt;
+    txt += `。严格保留 <Video 1> 中火焰、飘落碎片、烟雾或光效的出现、增强、流动与褪去节奏：特效触发时环境明暗随特效自然变化，真实火光/特效暖光动态照亮人物面部、${hasP2 ? p2 + ' 服装褶皱' : '衣料褶皱'}${hasP3 ? '与 ' + p3 + ' 的墙面与地面' : '与周围环境'}，特效消退后恢复自然环境光。${aspectHint}正面固定机位全程近全身构图，不切近景不变焦，电影级实拍质感，五官清晰稳定，无白模残留、无字幕无水印。`;
+    return txt;
+  }
+
+  if (kind === 'depth_scene') {
+    const bgSrcPhrase = guideMode === 'subject_depth' ? '纯黑背景' : '原有背景';
+    let txt = `严格按照 ${guideDesc} 进行视频重绘，${strictTxt}：${charOutfitTxt}`;
+    if (hasP3) {
+      txt += `，并将${bgSrcPhrase}完整替换为 ${p3} 的写实场景环境，主光方向、环境反光、景深虚化与地面投影与 ${p3} 完美融合`;
+    } else {
+      txt += `，将${bgSrcPhrase}替换为极具电影质感的自然光实景环境，柔和浅景深散景与真实地面投影`;
+    }
+    txt += propTxt;
+    txt += `。${aspectHint}清晰构图，1.0x 实拍帧率，高快门清晰度，人物五官稳定不糊，零残影零畸变，无字幕无水印。`;
+    return txt;
+  }
+
+  if (kind === 'outfit_dance') {
+    let txt = `${charOutfitTxt}，严格卡拍复刻 <Video 1> 的全套舞蹈动作、步伐走位、手臂细节与节奏停顿`;
+    if (hasP3) {
+      txt += `，舞台/实景背景完整替换为 ${p3}，灯光与地面倒影/投影真实融合`;
+    }
+    txt += propTxt;
+    txt += `。${aspectHint}全程全身完整构图（头顶至双脚清晰可见），衣裙褶皱与发丝随舞动呈现真实物理惯性摆动，面部五官在快速转身与大幅动作中始终锁定 ${hasP1 ? p1 : '<Picture 1>'} 高度一致，写实单反实拍画质，高快门零拖影，无字幕无水印。`;
+    return txt;
+  }
+
+  if (kind === 'multi_img') {
+    let txt = `${charOutfitTxt.replace(/^主角(?:严格锁定|完整替换为)/, '以').replace(/^真实写实人物，/, '写实主角，')}`;
+    if (hasP1 && hasP2) {
+      txt = `以 ${p1} 中的真实人物为主角（100% 锁定 ${p1} 的五官、发型、肤色与神态，不沿用原服装与背景），身穿 ${p2} 的整套服装穿搭与细节`;
+    } else if (hasP1) {
+      txt = `以 ${p1} 中的真实人物为主角（100% 锁定 ${p1} 的五官、发型、肤色、服装与神态）`;
+    }
+    if (hasP3) txt += `，自然置身于 ${p3} 的真实实景环境中，光影方向与地面接触阴影真实统一`;
+    txt += propTxt;
+    txt += `。${aspectHint}镜头平稳缓慢跟拍，人物自然转身、微表情灵动、发丝与衣料随动作自然飘动，自然电影级柔光与真实肌肤质感，1.0x 实拍帧率，画面干净无字幕无水印。`;
+    return txt;
+  }
+
+  // cinema_raw
+  let txt = hasRefVid
+    ? `电影摄影机实拍原片：跟随 ${guideDesc} 的主体动作、姿态变化与运镜调度，${charOutfitTxt}`
+    : `电影摄影机实拍原片：${charOutfitTxt}`;
+  if (hasP3) txt += `，身处 ${p3} 的真实实景场景中，主光方向与环境色温统一`;
+  txt += propTxt;
+  txt += `。${hasRefVid ? '动作流畅自然、节拍精准，' : '人物动作自然流畅、神态生动，'}自然电影级主光与发丝轮廓光，真实皮肤质感与衣料褶皱，1.0x 实拍帧率，画面干净无字幕无水印。`;
+  return txt;
+}
+
+function applyRef2vaPromptTemplate(kind) {
+  const pEl = document.getElementById('videoPrompt');
+  const sEl = document.getElementById('videoSoundPrompt');
+  if (!pEl) return;
+  const ctx = _getRef2vaSlotContext();
+  if (pEl.value.trim()) {
+    _pushRef2vaPromptUndo(pEl.value, sEl ? sEl.value : '');
+  }
+  const txt = _buildRef2vaSmartPrompt(kind, ctx);
   pEl.value = txt;
-  showGlobalCopyToast('✨ 已按当前上传的参考图槽位自动编排 <Video 1> / <Picture N> 提示词！');
+  if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
+
+  const slotSummary = [
+    ctx.hasRefVid ? '<Video 1>' : null,
+    ctx.hasP1 ? `${ctx.p1}主角` : null,
+    ctx.hasP2 ? `${ctx.p2}服装(已隔离图1原衣)` : null,
+    ctx.hasP3 ? `${ctx.p3}场景` : null,
+    ctx.hasP4 ? `${ctx.p4}道具` : null,
+  ].filter(Boolean).join(' + ');
+  const hintMsg = slotSummary
+    ? `✨ 已按当前槽位防冲突编排：${slotSummary}`
+    : '✨ 已生成模板（上传 <Picture 1~4> 后再点一次会自动按实际槽位精准编号）';
+  _setRef2vaAssistHint(hintMsg, 'ok');
+  showGlobalCopyToast(hintMsg);
+}
+
+// ==================== Level 2: 外站提示词 (Wan3 / RunningHub / 可灵 / 𝕏) 一键转 H3 规范 ====================
+function _transformExternalPromptToRef2va(rawPrompt, ctx, curSoundVal = '') {
+  const changes = [];
+  const warnings = [];
+  let text = String(rawPrompt || '').replace(/\r\n/g, '\n').trim();
+  if (!text) return { changed: false, prompt: '', sound: curSoundVal, changes, warnings };
+
+  // 1. 清洗帖子开头废话与结尾引流链接
+  const origLines = text.split('\n');
+  let lines = origLines.slice();
+  const promptMarkerRe = /^\s*(?:【?\s*(?:完整)?(?:画面|正向)?提示词\s*】?|Prompt)\s*[：:]\s*(.*)$/i;
+  let markerIdx = -1;
+  for (let i = 0; i < Math.min(lines.length, 14); i++) {
+    if (promptMarkerRe.test(lines[i])) {
+      markerIdx = i;
+      break;
+    }
+  }
+  if (markerIdx >= 0) {
+    const rest = (lines[markerIdx].match(promptMarkerRe)[1] || '').trim();
+    const droppedIntro = lines.slice(0, markerIdx).some(l => l.trim().length > 0);
+    lines = (rest ? [rest] : []).concat(lines.slice(markerIdx + 1));
+    if (droppedIntro || markerIdx >= 0) changes.push('清理开头说明文案');
+  }
+
+  const promoLineRe = /(https?:\/\/\S+|runninghub\.cn|liblib\.art|civitai\.com|画布上进行操作|做成了工作流|一键同款|完整工作流|评论区自取|点个赞|求关注|👇|👇🏻)/i;
+  const keepContentRe = /(【|<Video|<Picture|@视频|@图片|@图|\d+\s*[-–—~]\s*\d+\s*秒)/i;
+  let strippedPromo = 0;
+  lines = lines.filter((line) => {
+    const t = line.trim();
+    if (!t) return true;
+    if (/^https?:\/\/\S+$/i.test(t)) { strippedPromo++; return false; }
+    if (promoLineRe.test(t) && !keepContentRe.test(t) && t.length < 140) {
+      strippedPromo++;
+      return false;
+    }
+    return true;
+  });
+  if (strippedPromo > 0) changes.push(`移除 ${strippedPromo} 行外站链接/推广文案`);
+  text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  // 2. 统一所有视频/图片引用为临时占位符 __VID_1__ / __PIC_1..4__
+  const cnNum = { '一': 1, '二': 2, '三': 3, '四': 4, '1': 1, '2': 2, '3': 3, '4': 4 };
+  let tagConvertCount = 0;
+
+  // 先把已有的 <Video N> / <Picture N> 暂存为占位符（不计入“外站标签转换”次数，但支持后续槽位重映射）
+  text = text.replace(/<\s*Video\s*(\d+)\s*>/gi, () => '__VID_1__');
+  text = text.replace(/<\s*Picture\s*([1-4])\s*>/gi, (_, n) => `__PIC_${n}__`);
+
+  // 外站视频标签：@视频1 / @参考视频1 / 视频1 / Video 1
+  text = text.replace(/[@＠]\s*(?:参考视频|白模视频|动作视频|原视频|视频)\s*([1-9一二三四])(?![\d%])/g, () => {
+    tagConvertCount++;
+    return '__VID_1__';
+  });
+  text = text.replace(/(?:参考视频|白模视频|动作视频|视频)\s*([1-4一二三四])(?![\d%秒分帧x×])/g, (m, n, offset, full) => {
+    const prevCh = offset > 0 ? full[offset - 1] : '';
+    if (/[A-Za-z0-9_]/.test(prevCh)) return m;
+    tagConvertCount++;
+    return '__VID_1__';
+  });
+  text = text.replace(/[@＠]?\bVideo\s*[-_#]?\s*([1-4])\b/gi, () => {
+    tagConvertCount++;
+    return '__VID_1__';
+  });
+
+  // 外站图片标签：@图片1 / @图2 / @参考图1 / 图片1 / 图1 / 图二 / Image 1 / Pic 2
+  text = text.replace(/[@＠]\s*(?:参考图片?|图片|照片|人像|场景图?|图)\s*([1-4一二三四])(?![\d%])/g, (_, n) => {
+    tagConvertCount++;
+    return `__PIC_${cnNum[n] || n}__`;
+  });
+  text = text.replace(/(?:参考图片?|图片|图)\s*([1-4一二三四])(?![\d%秒分帧x×倍层格张步])/g, (m, n, offset, full) => {
+    const prevCh = offset > 0 ? full[offset - 1] : '';
+    if (/[构地截企试意视蓝草拼组大缩略贴动配插]/.test(prevCh)) return m;
+    tagConvertCount++;
+    return `__PIC_${cnNum[n] || n}__`;
+  });
+  text = text.replace(/[@＠]?\b(?:Image|Picture|Pic|Img|Photo|Ref)\s*[-_#]?\s*([1-4])\b/gi, (_, n) => {
+    tagConvertCount++;
+    return `__PIC_${n}__`;
+  });
+  if (tagConvertCount > 0) changes.push(`转换 ${tagConvertCount} 处外站标签为 H3 格式`);
+
+  // 3. 检测当前提示词中引用的图片编号与上下文角色
+  const usedPicNums = new Set();
+  const picScanRe = /__PIC_([1-4])__/g;
+  let mPic;
+  while ((mPic = picScanRe.exec(text)) !== null) usedPicNums.add(parseInt(mPic[1], 10));
+
+  const pic2SceneRe = /(?:【场景】[^。\n]*__PIC_2__|__PIC_2__[^。\n]{0,24}(?:场景|背景|环境|影棚|换景|房间|街道|室内|室外|舞台|实景)|(?:场景|背景|环境|投影|受光|照明|光影)[^。\n]{0,24}__PIC_2__|scene[^.\n]{0,24}__PIC_2__|background[^.\n]{0,24}__PIC_2__)/i;
+  const pic2IsScene = usedPicNums.has(2) && pic2SceneRe.test(text);
+  const picMap = {
+    1: ctx.p1,
+    2: ctx.p2,
+    3: ctx.p3,
+    4: ctx.p4,
+  };
+
+  let didSceneRemap = false;
+  let didOutfitBind = false;
+
+  // 情形 A：外站 2 图词（图1人+衣、图2景），但用户填了 3 槽（槽1主角 + 槽2服装 + 槽3场景）
+  if (usedPicNums.has(2) && !usedPicNums.has(3) && pic2IsScene && ctx.hasP2 && ctx.hasP3) {
+    picMap[2] = ctx.p3; // 原图2(场景) -> <Picture 3>
+    didSceneRemap = true;
+    changes.push(`原图2(场景)→${ctx.p3}`);
+
+    // 自动解绑“服装按图1”，改绑定到服装槽 <Picture 2>
+    let outfitRewritten = false;
+    const outfitDirectRe = /((?:服装|穿搭|服饰|衣着|着装)[^。\n；;，,]{0,8}(?:按|参考|采用|保持|沿用|为|使用|取自)\s*)__PIC_1__/g;
+    if (outfitDirectRe.test(text)) {
+      text = text.replace(outfitDirectRe, `$1${ctx.p2}`);
+      outfitRewritten = true;
+    }
+    const roleOutfitListRe = /(面容|面部|五官)([、,，\s]*发型(?:[、,，\s]*身材)?)[、,，\s]*(?:服装|服饰)(?:与|和|及)?配饰?/g;
+    if (roleOutfitListRe.test(text)) {
+      text = text.replace(roleOutfitListRe, `$1$2（仅取 __PIC_1__ 面部与身份，不沿用其原服装与背景），服装与配饰严格按 ${ctx.p2} 呈现，`);
+      outfitRewritten = true;
+    }
+    const faceAndOutfitRe = /((?:完整)?保留(?:面部特征|五官特征|面容特征))(?:与|和|及)(服装细节|服装穿搭|服装)/g;
+    if (faceAndOutfitRe.test(text)) {
+      text = text.replace(faceAndOutfitRe, `$1与发型（不沿用原服装与背景），服装穿搭严格按 ${ctx.p2} 呈现`);
+      outfitRewritten = true;
+    }
+    if (!outfitRewritten) {
+      // 如果原词没有明确写“服装按图1”，在【角色】段后或开头补一句服装绑定
+      const roleSecRe = /(【角色】[^\n]+)/;
+      if (roleSecRe.test(text)) {
+        text = text.replace(roleSecRe, `$1\n【服装】角色身穿 ${ctx.p2} 的完整服装穿搭与配饰（不沿用 __PIC_1__ 原服装），随动作自然摆动不穿模。`);
+      } else {
+        text = `【服装】角色身穿 ${ctx.p2} 的完整服装穿搭与配饰（不沿用 __PIC_1__ 原服装）。\n` + text;
+      }
+    }
+    didOutfitBind = true;
+    changes.push(`自动绑定服装槽 ${ctx.p2}`);
+  } else if (ctx.hasP1 && !ctx.hasP2 && ctx.hasP3) {
+    // 情形 B：用户只传了 槽1主角 + 槽3场景（槽2服装空着），提交时 槽3 会紧缩为 <Picture 2>
+    if (usedPicNums.has(3)) {
+      picMap[3] = ctx.p3; // 即 <Picture 2>
+      changes.push(`因未传服装图，场景标签自动紧缩为 ${ctx.p3}`);
+    } else if (usedPicNums.has(2) && pic2IsScene) {
+      picMap[2] = ctx.p3; // 也是 <Picture 2>，保持精确对齐
+    }
+  } else if (usedPicNums.has(2) && !usedPicNums.has(3) && pic2IsScene && ctx.hasP2 && !ctx.hasP3) {
+    // 情形 C：原词图2是场景，但用户把衣服放进了槽2且槽3场景为空
+    warnings.push('原词中图2指代场景，但当前 <Picture 2> 槽位为服装且 <Picture 3> 场景为空，建议把场景图放入 <Picture 3> 后再点一次转换');
+  }
+
+  // 替换占位符为最终 H3 标签
+  text = text.replace(/__VID_1__/g, '<Video 1>');
+  text = text.replace(/__PIC_([1-4])__/g, (_, n) => picMap[parseInt(n, 10)] || `<Picture ${n}>`);
+
+  // 如果用户传了 <Picture 4> 道具/补充但提示词未引用，自动补充提示
+  if (ctx.hasP4 && !text.includes(ctx.p4)) {
+    text += `\n【补充参考】自然融入 ${ctx.p4} 中的道具与补充视觉细节。`;
+    changes.push(`补充引用 ${ctx.p4}`);
+  }
+
+  // 4. 音画分流与静音冲突处理
+  let nextSound = curSoundVal || '';
+  if (ctx.keepOrMuxBgm) {
+    // 用户已勾选“保留原视频BGM”或“无损回贴原声BGM”，剥离原词中冲突的“移除配乐/全程静音”指令
+    const muteClauseRe = /[；;，,]?\s*(?:移除配乐[，,、\s]*)?(?:全程静音|无配乐|静音输出)(?:[，,、\s]*无(?:对白|音乐|音效|环境声|人声|背景音)(?:[、，,与和及\s]*(?:对白|音乐|音效|环境声|人声|背景音))*)?[。；;]?/g;
+    if (muteClauseRe.test(text)) {
+      text = text.replace(muteClauseRe, (match, offset, full) => {
+        // 保留前句收尾句号
+        const prevCh = offset > 0 ? full[offset - 1] : '';
+        return (prevCh && !/[。！？\n]/.test(prevCh)) ? '。' : '';
+      });
+      // 清理可能残留的空 【声音】 段
+      text = text.replace(/【(?:声音|音效|音频)】\s*[。；;]?\s*(?=\n|$)/g, '');
+      text = text.replace(/【画面与声音】/g, '【画面】');
+      changes.push('移除与原声BGM冲突的静音指令');
+    }
+  } else if (!nextSound.trim()) {
+    // 未勾选保留BGM且框2为空：如果原词有独立的【音效】/【声音】段且不是纯静音指令，自动拆到框2
+    const soundSecRe = /(?:^|\n)【(?:环境音效|音效|声音|音频|配音)】\s*([^\n]+)/;
+    const sm = text.match(soundSecRe);
+    if (sm && sm[1] && !/(?:全程静音|无音效|移除配乐)/.test(sm[1])) {
+      nextSound = sm[1].trim();
+      text = text.replace(soundSecRe, '').trim();
+      changes.push('已拆分音效描述到「框 2」');
+    }
+  }
+
+  // 5. 规范空白与标点
+  text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (!ctx.hasRefVid && text.includes('<Video 1>')) {
+    warnings.push('提示词包含 <Video 1>，请记得在左侧上传或导入白模/动作视频');
+  }
+
+  const changed = (text !== String(rawPrompt || '').trim()) || (nextSound !== (curSoundVal || ''));
+  return { changed, prompt: text, sound: nextSound, changes, warnings, didSceneRemap, didOutfitBind };
+}
+
+async function convertExternalPromptToRef2va(opts = {}) {
+  const pEl = document.getElementById('videoPrompt');
+  const sEl = document.getElementById('videoSoundPrompt');
+  if (!pEl) return;
+  let raw = (pEl.value || '').trim();
+
+  // 如果框 1 为空且是用户手动点击，尝试直接读取剪贴板
+  if (!raw && !opts.fromImport) {
+    if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+      try {
+        const clip = (await navigator.clipboard.readText() || '').trim();
+        if (clip) raw = clip;
+      } catch (e) {}
+    }
+  }
+  if (!raw) {
+    const msg = '📋 请先将 Wan3 / RunningHub / 可灵 / 𝕏 提示词粘贴到下方框 1，再点「🪄 外站词转 H3」！';
+    _setRef2vaAssistHint(msg, 'warn');
+    showGlobalCopyToast(msg);
+    return;
+  }
+
+  const ctx = _getRef2vaSlotContext();
+  const res = _transformExternalPromptToRef2va(raw, ctx, sEl ? sEl.value : '');
+  if (!res.changed) {
+    if (!opts.silentIfNoChange) {
+      const okMsg = res.warnings.length
+        ? `⚠️ 提示词已是 H3 格式，但注意：${res.warnings.join('；')}`
+        : '✅ 当前提示词已是规范 H3 格式（<Video 1> / <Picture N>），无需修改。';
+      _setRef2vaAssistHint(okMsg, res.warnings.length ? 'warn' : 'ok');
+      showGlobalCopyToast(okMsg);
+    }
+    return;
+  }
+
+  _pushRef2vaPromptUndo(pEl.value || raw, sEl ? sEl.value : '');
+  pEl.value = res.prompt;
+  if (sEl && res.sound !== sEl.value) {
+    sEl.value = res.sound;
+    if (res.sound.trim() && typeof _setRef2vaExtraPromptsOpen === 'function') _setRef2vaExtraPromptsOpen(true);
+  }
+  if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
+
+  const summary = res.changes.length ? res.changes.join(' · ') : '已整理格式';
+  const warnSuffix = res.warnings.length ? ` ｜ ⚠️ ${res.warnings.join('；')}` : '';
+  const msg = `🪄 已转 H3 规范：${summary}${warnSuffix}（可点 ↩ 撤销）`;
+  _setRef2vaAssistHint(msg, res.warnings.length ? 'warn' : 'ok');
+  showGlobalCopyToast(msg);
 }
 
 function openXGalleryImportModal() {
@@ -11460,8 +12206,14 @@ async function importXGalleryItemToRef2va(itemId, videoIndex = 0) {
     }
     if (item.prompt) {
       const pEl = document.getElementById('videoPrompt');
-      if (pEl) pEl.value = item.prompt;
+      if (pEl) {
+        pEl.value = item.prompt;
+        if (/[@＠]\s*(?:视频|图片|图)|Wan3|Runninghub|https?:\/\/|\b(?:Image|Video|Pic)\s*\d|(?:图片|图)[1-4一二三四]/i.test(item.prompt)) {
+          convertExternalPromptToRef2va({ silentIfNoChange: true, fromImport: true });
+        }
+      }
     }
+    if (typeof saveLocalStudioDraftImmediate === 'function') saveLocalStudioDraftImmediate();
     const m = document.getElementById('xGalleryImportModal');
     if (m) m.style.display = 'none';
     const gSt = document.getElementById('ref2vaGuideStatusText');
@@ -11720,11 +12472,36 @@ async function _runCurrentRef2vaBatchItem() {
   }
 }
 
-async function _triggerRef2vaAutoShutdownNow() {
+window._autoShutdownCountdownTimer = null;
+
+function cancelPendingAutoShutdown() {
+  if (window._autoShutdownCountdownTimer) {
+    clearInterval(window._autoShutdownCountdownTimer);
+    window._autoShutdownCountdownTimer = null;
+  }
+  window._pendingAutoShutdownAfterUpscale = false;
+  const old = document.getElementById('autoShutdownCountdownBanner');
+  if (old) old.remove();
+  const chk = document.getElementById('chkRef2vaAutoShutdown');
+  if (chk) chk.checked = false;
+  showGlobalCopyToast('✋ 已取消自动关机，G4 实例将继续保持在线！');
+}
+
+async function _executeRef2vaAutoShutdownCommit() {
+  if (window._autoShutdownCountdownTimer) {
+    clearInterval(window._autoShutdownCountdownTimer);
+    window._autoShutdownCountdownTimer = null;
+  }
+  const old = document.getElementById('autoShutdownCountdownBanner');
+  if (old) old.remove();
   window._pendingAutoShutdownAfterUpscale = false;
   const st = document.getElementById('videoGenStatus');
   try {
-    const rs = await fetch('/api/stop', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const rs = await fetch('/api/stop', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reason: 'ref2va_auto_shutdown'}),
+    });
     const ds = await rs.json();
     if (ds && ds.ok) {
       if (st) {
@@ -11735,6 +12512,100 @@ async function _triggerRef2vaAutoShutdownNow() {
       await refreshStatus(true);
     }
   } catch (e) {}
+}
+
+async function _triggerRef2vaAutoShutdownNow() {
+  window._pendingAutoShutdownAfterUpscale = false;
+  if (window._autoShutdownCountdownTimer) {
+    clearInterval(window._autoShutdownCountdownTimer);
+    window._autoShutdownCountdownTimer = null;
+  }
+  const prev = document.getElementById('autoShutdownCountdownBanner');
+  if (prev) prev.remove();
+  let rem = 15;
+  const bar = document.createElement('div');
+  bar.id = 'autoShutdownCountdownBanner';
+  bar.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:20050;background:#1e293b;border:2px solid #ef4444;border-radius:12px;padding:12px 18px;box-shadow:0 20px 50px rgba(0,0,0,0.85);display:flex;align-items:center;gap:14px;color:#fecaca;font-size:13px;font-weight:700;';
+  bar.innerHTML = `<span id="autoShutdownCountdownText">🛑 已勾选「拍完自动关机」，将在 <b style="color:#fff;font-size:15px;">${rem}</b> 秒后释放 G4 实例…</span>`
+    + `<button type="button" onclick="cancelPendingAutoShutdown()" style="padding:6px 14px;border-radius:8px;border:1px solid #10b981;background:#059669;color:#fff;font-size:12.5px;font-weight:800;cursor:pointer;">✋ 取消关机（继续使用）</button>`;
+  document.body.appendChild(bar);
+  window._autoShutdownCountdownTimer = setInterval(() => {
+    rem -= 1;
+    const txt = document.getElementById('autoShutdownCountdownText');
+    if (rem <= 0) {
+      _executeRef2vaAutoShutdownCommit();
+    } else if (txt) {
+      txt.innerHTML = `🛑 已勾选「拍完自动关机」，将在 <b style="color:#fff;font-size:15px;">${rem}</b> 秒后释放 G4 实例…`;
+    }
+  }, 1000);
+}
+
+function _fmtFacefixSec(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}分${String(r).padStart(2, '0')}秒` : `${r}秒`;
+}
+
+function _renderFacefixProgressUI(d) {
+  if (!d) return;
+  const pct = Math.max(0, Math.min(100, Math.round(Number(d.pct) || 0)));
+  const elapsedStr = _fmtFacefixSec(d.elapsed_s || 0);
+  const etaStr = d.eta_s > 1 ? ` · 剩余约 ${_fmtFacefixSec(d.eta_s)}` : '';
+  const st = document.getElementById('videoGenStatus');
+  const tLabel = document.getElementById('taskProgressLabel');
+  const tSpeed = document.getElementById('taskProgressSpeed');
+  const tBar = document.getElementById('taskProgressBar');
+  const dState = document.getElementById('deployStateText');
+  if (d.running) {
+    const msg = d.message || `🧬 正在逐帧锁脸精修: ${d.cur || 0}/${d.total || 0} 帧 (${pct}%)`;
+    if (st) { st.innerText = `${msg}（已用 ${elapsedStr}${etaStr}）`; st.style.color = '#34d399'; }
+    if (tLabel) { tLabel.innerText = msg; tLabel.style.color = '#34d399'; }
+    if (tSpeed) { tSpeed.innerText = `${pct}% · 已用 ${elapsedStr}${etaStr}`; tSpeed.style.color = '#34d399'; }
+    if (tBar) {
+      tBar.style.width = `${Math.max(2, pct)}%`;
+      tBar.className = 'progress-fill green';
+    }
+    if (dState) { dState.innerText = `🧬 锁脸精修 ${pct}%`; dState.style.color = '#34d399'; }
+  } else if (d.ok && d.filename) {
+    if (tLabel) { tLabel.innerText = `✅ 逐帧锁脸精修完成 (100%) -> ${d.filename}`; tLabel.style.color = '#34d399'; }
+    if (tSpeed) { tSpeed.innerText = `100% · 总耗时 ${elapsedStr}`; tSpeed.style.color = '#34d399'; }
+    if (tBar) { tBar.style.width = '100%'; tBar.className = 'progress-fill green'; }
+    if (dState) { dState.innerText = '✅ 锁脸完成'; dState.style.color = '#34d399'; }
+  }
+}
+
+async function _pollFacefixUntilDone(expectedJobId = '') {
+  let tick = 0;
+  while (true) {
+    await new Promise(r => setTimeout(r, 1200));
+    tick++;
+    try {
+      const r = await fetch('/api/facefix_status');
+      const d = await r.json();
+      if (!d) continue;
+      if (expectedJobId && d.job_id && d.job_id !== expectedJobId && d.running) continue;
+      _renderFacefixProgressUI(d);
+      if (tick % 3 === 0 && typeof pollLogs === 'function') pollLogs();
+      if (!d.running) {
+        if (typeof pollLogs === 'function') pollLogs();
+        return d;
+      }
+    } catch (e) {}
+  }
+}
+
+async function _runFacefixWithLiveProgress(reqBody) {
+  const r = await fetch('/api/video_h3_facefix', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(Object.assign({}, reqBody, { async: true })),
+  });
+  const initRes = await r.json();
+  if (!initRes || !initRes.ok) return initRes || { ok: false, error: '启动锁脸精修失败' };
+  if (!initRes.started) return initRes;
+  _renderFacefixProgressUI({ running: true, pct: 2, cur: 0, total: 0, elapsed_s: 0, eta_s: 0, message: `🧬 已启动本机逐帧锁脸精修 (${reqBody.name || ''})...` });
+  return await _pollFacefixUntilDone(initRes.job_id || '');
 }
 
 async function _runRef2vaPostPipeline(rawFiles) {
@@ -11757,22 +12628,24 @@ async function _runRef2vaPostPipeline(rawFiles) {
         });
       } catch (e) {}
     }
-    // 2. 自动远景锁脸精修 (PixelAI H3 Video FaceFix)
+    // 2. 自动远景锁脸精修 (PixelAI H3 Video FaceFix · 异步轮询实时百分比进度条)
     if (meta.auto_facefix && meta.face_b64) {
-      if (st) { st.innerText = `🧬 正在以 <Picture 1> 执行自动远景锁脸精修 (${curName})...`; st.style.color = '#34d399'; }
+      if (st) { st.innerText = `🧬 正在以 <Picture 1> 启动自动远景锁脸精修 (${curName})...`; st.style.color = '#34d399'; }
       try {
-        const rf = await fetch('/api/video_h3_facefix', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({name: curName, face_b64: meta.face_b64, full_fix_below_px: 110, no_fix_above_px: 180}),
+        const df = await _runFacefixWithLiveProgress({
+          name: curName,
+          face_b64: meta.face_b64,
+          full_fix_below_px: 110,
+          no_fix_above_px: 180,
         });
-        const df = await rf.json();
         if (df && df.ok && df.filename) curName = df.filename;
       } catch (e) {}
     }
     outFiles.push(curName);
   }
   if (outFiles.length) {
+    const _pl = document.getElementById('mmVideoPlayer');
+    if (_pl) _pl.removeAttribute('data-fname');
     await loadLocalVideoHistory(false);
     playHistoryVideo(outFiles[outFiles.length - 1]);
   }
@@ -11916,11 +12789,11 @@ async function pollVideoStatus() {
         tBar.className = 'progress-fill green';
         tBar.style.width = '100%';
       }
-      await loadLocalVideoHistory(true);
       const rawBatchAll = (Array.isArray(d.completed_videos) && d.completed_videos.length)
         ? d.completed_videos
         : (d.latest_video ? [d.latest_video] : []);
       const postRes = await _runRef2vaPostPipeline(rawBatchAll);
+      await loadLocalVideoHistory(true);
       const finalBatch = (postRes && postRes.files) ? postRes.files : rawBatchAll;
       const autoSrChk = document.getElementById('autoUpscale2kChk');
       let queuedAnyUpscale = false;
@@ -12119,6 +12992,10 @@ async function upscaleVideoByName(fname, presetOverride, fromQueue = false) {
       setUpscaleBtnRunningState(false);
       return;
     }
+    if (d.already_running && d.source_video && d.source_video !== fname) {
+      if (!autoUpscaleQueue.includes(fname)) autoUpscaleQueue.unshift(fname);
+      currentUpscaleTargetName = d.source_video;
+    }
     if (upscalePollTimer) clearInterval(upscalePollTimer);
     upscalePollTimer = setInterval(pollUpscaleStatus, 1500);
     setTimeout(pollUpscaleStatus, 650);
@@ -12185,8 +13062,8 @@ async function pollUpscaleStatus() {
       setUpscaleBtnRunningState(false);
       return;
     }
-    // 防止队列切换到下一条视频后，云端后台线程尚未把 running 置为 true 时误读到上一条的已完成状态
-    if (!d.running && currentUpscaleTargetName && d.source_video && d.source_video !== currentUpscaleTargetName && (Date.now() - currentUpscaleStartTs) < 15000) {
+    // 防止新开机首条或队列切换到下一条视频后，云端后台线程尚未把 running 置为 true 时误读到空/上一条状态导致跳单
+    if (!d.running && currentUpscaleTargetName && d.source_video !== currentUpscaleTargetName && (Date.now() - currentUpscaleStartTs) < 20000) {
       return;
     }
     const qPref = _upscaleBatchPrefix();
@@ -14268,10 +15145,336 @@ async function restoreUiWorkspaceState() {
     if (tabToUse) {
       switchMiniMaxMode(tabToUse);
     }
+    await restoreLocalStudioDraft();
   } catch (e) {} finally {
     _restoringUiState = false;
   }
 }
+
+// ==================== 刷新防丢失持久化：IndexedDB (大视频/参考图) + localStorage (提示词/开关/参数) ====================
+const _LOCAL_STUDIO_DRAFT_KEY = 'easycolab_studio_draft_v1';
+let _draftMediaDbPromise = null;
+let _saveLocalDraftTimer = null;
+
+function _openDraftMediaDB() {
+  if (_draftMediaDbPromise) return _draftMediaDbPromise;
+  _draftMediaDbPromise = new Promise((resolve) => {
+    try {
+      if (typeof indexedDB === 'undefined') { resolve(null); return; }
+      const req = indexedDB.open('EasyColabDraftMediaDB', 1);
+      req.onupgradeneeded = (ev) => {
+        const db = ev.target.result;
+        if (!db.objectStoreNames.contains('blobs')) {
+          db.createObjectStore('blobs');
+        }
+      };
+      req.onsuccess = (ev) => resolve(ev.target.result);
+      req.onerror = () => resolve(null);
+    } catch (e) {
+      resolve(null);
+    }
+  });
+  return _draftMediaDbPromise;
+}
+
+async function _idbPutMedia(key, val) {
+  if (!val) return _idbDelMedia(key);
+  try {
+    const db = await _openDraftMediaDB();
+    if (!db) return;
+    await new Promise((resolve) => {
+      const tx = db.transaction('blobs', 'readwrite');
+      tx.objectStore('blobs').put(val, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (e) {}
+}
+
+async function _idbGetMedia(key) {
+  try {
+    const db = await _openDraftMediaDB();
+    if (!db) return '';
+    return await new Promise((resolve) => {
+      const tx = db.transaction('blobs', 'readonly');
+      const req = tx.objectStore('blobs').get(key);
+      req.onsuccess = () => resolve(typeof req.result === 'string' ? req.result : '');
+      req.onerror = () => resolve('');
+    });
+  } catch (e) {
+    return '';
+  }
+}
+
+async function _idbDelMedia(key) {
+  try {
+    const db = await _openDraftMediaDB();
+    if (!db) return;
+    await new Promise((resolve) => {
+      const tx = db.transaction('blobs', 'readwrite');
+      tx.objectStore('blobs').delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (e) {}
+}
+
+function saveLocalStudioDraftImmediate() {
+  if (_restoringUiState) return;
+  try {
+    const gVal = (id) => {
+      const el = document.getElementById(id);
+      return el ? String(el.value || '') : '';
+    };
+    const gChk = (id) => {
+      const el = document.getElementById(id);
+      return Boolean(el && el.checked);
+    };
+    const payload = {
+      v: 1,
+      ts: Date.now(),
+      prompts: {
+        videoPrompt: gVal('videoPrompt'),
+        videoSoundPrompt: gVal('videoSoundPrompt'),
+        videoMusicPrompt: gVal('videoMusicPrompt'),
+        videoNegPrompt: gVal('videoNegPrompt'),
+      },
+      spec: {
+        videoRes: gVal('videoRes'),
+        videoSteps: gVal('videoSteps'),
+        videoFrames: gVal('videoFrames'),
+        videoSeed: gVal('videoSeed'),
+        videoRandSeed: gChk('videoRandSeed'),
+        batchCount: typeof selectedBatchCount === 'number' ? selectedBatchCount : 1,
+        autoUpscale2k: gChk('autoUpscale2kChk'),
+        loraSelect: gVal('h3SentinelLoraSelect'),
+        loraStrength: gVal('h3SentinelLoraStrength'),
+        loraCustomPath: gVal('h3SentinelLoraCustomPath'),
+      },
+      ref2va: {
+        srcVideoName: ref2vaSrcVideoName || '',
+        guideVideoName: ref2vaGuideVideoName || '',
+        guideModeUsed: ref2vaGuideModeUsed || '',
+        startSec: gVal('inpRef2vaStartSec'),
+        endSec: gVal('inpRef2vaEndSec'),
+        keepAudio: gChk('chkRef2vaKeepAudio'),
+        matchDur: gChk('chkRef2vaMatchDur'),
+        guideMode: gVal('selRef2vaGuideMode'),
+        smoothness: gVal('selRef2vaSmoothness'),
+        cropMode: gVal('selRef2vaCropMode'),
+        freedom: gVal('selRef2vaFreedom'),
+        muxOrigBgm: gChk('chkRef2vaMuxOrigBgm'),
+        autoFaceFix: gChk('chkRef2vaAutoFaceFix'),
+      },
+    };
+    localStorage.setItem(_LOCAL_STUDIO_DRAFT_KEY, JSON.stringify(payload));
+  } catch (e) {}
+}
+
+function saveLocalStudioDraftDebounced() {
+  if (_restoringUiState) return;
+  if (_saveLocalDraftTimer) clearTimeout(_saveLocalDraftTimer);
+  _saveLocalDraftTimer = setTimeout(() => {
+    saveLocalStudioDraftImmediate();
+  }, 220);
+}
+
+async function restoreLocalStudioDraft() {
+  let draft = null;
+  try {
+    const raw = localStorage.getItem(_LOCAL_STUDIO_DRAFT_KEY);
+    if (raw) draft = JSON.parse(raw);
+  } catch (e) {}
+
+  let restoredPrompt = false;
+  if (draft && draft.prompts) {
+    ['videoPrompt', 'videoSoundPrompt', 'videoMusicPrompt', 'videoNegPrompt'].forEach((id) => {
+      if (typeof draft.prompts[id] === 'string') {
+        const el = document.getElementById(id);
+        if (el) {
+          el.value = draft.prompts[id];
+          if (id === 'videoPrompt' && draft.prompts[id].trim()) restoredPrompt = true;
+        }
+      }
+    });
+    if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
+    if (currentMiniMaxMode === 'ref2va' && typeof _setRef2vaExtraPromptsOpen === 'function') {
+      const hasExtra = ['videoSoundPrompt', 'videoMusicPrompt', 'videoNegPrompt'].some(id => ((document.getElementById(id) || {}).value || '').trim().length > 0);
+      _setRef2vaExtraPromptsOpen(hasExtra);
+    }
+  }
+
+  if (draft && draft.spec) {
+    const sp = draft.spec;
+    const resSel = document.getElementById('videoRes');
+    if (resSel && sp.videoRes) {
+      const hasOpt = Array.from(resSel.options || []).some(o => o.value === sp.videoRes);
+      if (hasOpt) resSel.value = sp.videoRes;
+    }
+    const stEl = document.getElementById('videoSteps');
+    if (stEl && sp.videoSteps) {
+      stEl.value = sp.videoSteps;
+      const stLbl = document.getElementById('stepsValLabel');
+      if (stLbl) stLbl.innerText = sp.videoSteps + ' 步';
+    }
+    const frEl = document.getElementById('videoFrames');
+    if (frEl && sp.videoFrames) {
+      frEl.value = sp.videoFrames;
+      if (typeof onFramesSliderChange === 'function') onFramesSliderChange(sp.videoFrames, false);
+    }
+    const seedEl = document.getElementById('videoSeed');
+    if (seedEl && typeof sp.videoSeed === 'string' && sp.videoSeed) seedEl.value = sp.videoSeed;
+    const randEl = document.getElementById('videoRandSeed');
+    if (randEl && typeof sp.videoRandSeed === 'boolean') randEl.checked = sp.videoRandSeed;
+    if (sp.batchCount && typeof selectBatchCount === 'function') selectBatchCount(sp.batchCount);
+    const upChk = document.getElementById('autoUpscale2kChk');
+    if (upChk && typeof sp.autoUpscale2k === 'boolean') upChk.checked = sp.autoUpscale2k;
+    const loraSel = document.getElementById('h3SentinelLoraSelect');
+    if (loraSel && typeof sp.loraSelect === 'string') {
+      const hasLoraOpt = Array.from(loraSel.options || []).some(o => o.value === sp.loraSelect);
+      if (hasLoraOpt) loraSel.value = sp.loraSelect;
+    }
+    const loraCust = document.getElementById('h3SentinelLoraCustomPath');
+    if (loraCust && typeof sp.loraCustomPath === 'string') {
+      loraCust.value = sp.loraCustomPath;
+      loraCust.style.display = (loraSel && loraSel.value === 'CUSTOM') ? 'inline-block' : 'none';
+    }
+    const loraStr = document.getElementById('h3SentinelLoraStrength');
+    if (loraStr && typeof sp.loraStrength === 'string' && sp.loraStrength) loraStr.value = sp.loraStrength;
+    if (typeof updateH3AutoLoraPreview === 'function') updateH3AutoLoraPreview();
+    if (currentMiniMaxMode === 'ref2va' && typeof _setRef2vaExtraPromptsOpen === 'function') {
+      const hasExtra = ['videoSoundPrompt', 'videoMusicPrompt', 'videoNegPrompt'].some(id => ((document.getElementById(id) || {}).value || '').trim().length > 0);
+      _setRef2vaExtraPromptsOpen(hasExtra);
+    }
+  }
+
+  if (draft && draft.ref2va) {
+    const r2 = draft.ref2va;
+    const setV = (id, v) => { const el = document.getElementById(id); if (el && typeof v === 'string' && v !== '') el.value = v; };
+    const setC = (id, v) => { const el = document.getElementById(id); if (el && typeof v === 'boolean') el.checked = v; };
+    setV('inpRef2vaStartSec', r2.startSec);
+    setV('inpRef2vaEndSec', r2.endSec);
+    setC('chkRef2vaKeepAudio', r2.keepAudio);
+    setC('chkRef2vaMatchDur', r2.matchDur);
+    setV('selRef2vaGuideMode', r2.guideMode);
+    setV('selRef2vaSmoothness', r2.smoothness);
+    setV('selRef2vaCropMode', r2.cropMode);
+    setV('selRef2vaFreedom', r2.freedom);
+    setC('chkRef2vaMuxOrigBgm', r2.muxOrigBgm);
+    setC('chkRef2vaAutoFaceFix', r2.autoFaceFix);
+  }
+
+  // 从 IndexedDB 异步恢复大视频与参考图
+  try {
+    const [srcVid, p0, p1, p2, p3, flFirst, flLast] = await Promise.all([
+      _idbGetMedia('ref2va_src_video'),
+      _idbGetMedia('ref2va_pic_0'),
+      _idbGetMedia('ref2va_pic_1'),
+      _idbGetMedia('ref2va_pic_2'),
+      _idbGetMedia('ref2va_pic_3'),
+      _idbGetMedia('fl2va_first_frame'),
+      _idbGetMedia('fl2va_last_frame'),
+    ]);
+    const pics = [p0, p1, p2, p3];
+    let picCount = 0;
+    pics.forEach((dataUrl, i) => {
+      if (dataUrl) {
+        setRef2vaImgSlot(i, dataUrl, { skipSave: true });
+        picCount++;
+      }
+    });
+    let hasVid = false;
+    if (srcVid) {
+      hasVid = true;
+      ref2vaSrcVideoB64 = srcVid;
+      ref2vaSrcVideoName = (draft && draft.ref2va && draft.ref2va.srcVideoName) || '已恢复视频.mp4';
+      _setRef2vaVideoBlobPreview(srcVid, ref2vaSrcVideoName, { skipSave: true, skipAutoRes: true });
+    }
+    // 如果之前生成过云端预处理白模/深度视频，尝试恢复预览（若云端已重启则自动回退到源视频）
+    const savedGuideName = (draft && draft.ref2va && draft.ref2va.guideVideoName) || '';
+    const savedGuideMode = (draft && draft.ref2va && draft.ref2va.guideModeUsed) || '';
+    if (savedGuideName) {
+      const gUrl = `/api/remote_video_file?name=${encodeURIComponent(savedGuideName)}&t=${Date.now()}`;
+      const gv = document.getElementById('ref2vaGuideVideoPreview');
+      const gEmp = document.getElementById('ref2vaGuideVideoEmpty');
+      const dl = document.getElementById('ref2vaGuideDownloadLink');
+      const tBtn = document.getElementById('btnRef2vaUseRawToggle');
+      const lbl = document.getElementById('ref2vaGuideTitleLbl');
+      ref2vaGuideVideoName = savedGuideName;
+      ref2vaGuideModeUsed = savedGuideMode;
+      if (gv) {
+        if (typeof _setRef2vaGuideColVisible === 'function') _setRef2vaGuideColVisible(true);
+        gv.onerror = () => {
+          ref2vaGuideVideoName = '';
+          ref2vaGuideModeUsed = '';
+          gv.onerror = null;
+          gv.src = '';
+          gv.style.display = 'none';
+          if (typeof _setRef2vaGuideColVisible === 'function') _setRef2vaGuideColVisible(false);
+          if (gEmp) gEmp.style.display = 'block';
+          if (dl) dl.style.display = 'none';
+          if (tBtn) tBtn.style.display = 'none';
+          if (lbl) lbl.innerText = '② 白模/深度引导预览';
+        };
+        gv.src = gUrl;
+        gv.style.display = 'block';
+        if (gEmp) gEmp.style.display = 'none';
+        if (dl) { dl.href = gUrl + '&download=1'; dl.download = savedGuideName; dl.style.display = 'inline'; }
+        if (tBtn) tBtn.style.display = 'inline-block';
+        if (lbl) lbl.innerText = `② 已恢复：${savedGuideMode || '白模/深度'}`;
+      }
+    }
+    if (flFirst) {
+      firstFrameB64 = flFirst;
+      const imgF = document.getElementById('firstFramePreview');
+      if (imgF) { imgF.src = flFirst; imgF.style.display = 'block'; }
+    }
+    if (flLast) {
+      lastFrameB64 = flLast;
+      const imgL = document.getElementById('lastFramePreview');
+      if (imgL) { imgL.src = flLast; imgL.style.display = 'block'; }
+    }
+    if (hasVid || picCount > 0) {
+      const gSt = document.getElementById('ref2vaGuideStatusText');
+      if (gSt) {
+        const parts = [
+          hasVid ? '1段视频' : null,
+          picCount > 0 ? `${picCount}张参考图` : null,
+          restoredPrompt ? '提示词与参数' : null,
+        ].filter(Boolean).join(' + ');
+        gSt.style.color = '#6ee7b7';
+        gSt.innerText = `💾 已自动恢复上次草稿（${parts}），刷新不丢失！如需重新开始请点右上角「🗑️ 清空全部」。`;
+      }
+    }
+  } catch (e) {}
+}
+
+function _bindLocalStudioDraftListeners() {
+  const inputIds = [
+    'videoPrompt', 'videoSoundPrompt', 'videoMusicPrompt', 'videoNegPrompt',
+    'videoSeed', 'inpRef2vaStartSec', 'inpRef2vaEndSec', 'h3SentinelLoraCustomPath', 'h3SentinelLoraStrength',
+  ];
+  const changeIds = [
+    'videoRes', 'videoSteps', 'videoFrames', 'videoRandSeed', 'autoUpscale2kChk',
+    'h3SentinelLoraSelect', 'h3SentinelLoraStrength',
+    'chkRef2vaKeepAudio', 'chkRef2vaMatchDur', 'selRef2vaGuideMode',
+    'selRef2vaSmoothness', 'selRef2vaCropMode', 'selRef2vaFreedom',
+    'chkRef2vaMuxOrigBgm', 'chkRef2vaAutoFaceFix',
+  ];
+  inputIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', saveLocalStudioDraftDebounced);
+  });
+  changeIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', saveLocalStudioDraftDebounced);
+      if (el.type === 'range') el.addEventListener('input', saveLocalStudioDraftDebounced);
+    }
+  });
+  window.addEventListener('beforeunload', () => saveLocalStudioDraftImmediate());
+}
+_bindLocalStudioDraftListeners();
 
 try {
   const fastTab = localStorage.getItem('easycolab_active_tab');
@@ -14306,6 +15509,21 @@ loadLocalVideoHistory(true);
       if (dv && dv.running && !videoPollTimer) {
         pollVideoStatus();
         videoPollTimer = setInterval(pollVideoStatus, 2000);
+      }
+    } catch (e) {}
+    // 刷新页面时若本机锁脸精修正在后台运行，自动续接实时进度条并在完成后自动加载成片
+    try {
+      const rff = await fetch('/api/facefix_status');
+      const dff = await rff.json();
+      if (dff && dff.running) {
+        _renderFacefixProgressUI(dff);
+        _pollFacefixUntilDone(dff.job_id || '').then(async (doneRes) => {
+          if (doneRes && doneRes.ok && doneRes.filename) {
+            await loadLocalVideoHistory(false);
+            playHistoryVideo(doneRes.filename);
+            showGlobalCopyToast(`✅ 逐帧锁脸精修完成：${doneRes.filename}`);
+          }
+        });
       }
     } catch (e) {}
   }
@@ -14541,6 +15759,30 @@ def _run_local_biometric_faceswap(face_b64: str, target_img_bytes: bytes) -> Opt
     return enc_buf.tobytes()
 
 
+_FACEFIX_STATE_LOCK = threading.Lock()
+_FACEFIX_STATE: Dict[str, Any] = {
+    "running": False,
+    "ok": False,
+    "job_id": "",
+    "source_name": "",
+    "filename": "",
+    "stage": "",
+    "pct": 0,
+    "cur": 0,
+    "total": 0,
+    "elapsed_s": 0.0,
+    "eta_s": 0.0,
+    "message": "",
+    "error": "",
+    "report": "",
+}
+
+
+def _set_facefix_progress(**kw):
+    with _FACEFIX_STATE_LOCK:
+        _FACEFIX_STATE.update(kw)
+
+
 def _run_h3_video_facefix(
     video_path: Path,
     ref_face_b64: str = "",
@@ -14613,13 +15855,43 @@ def _run_h3_video_facefix(
 
     # 2. 第一遍扫描：逐帧检测人脸 + ArcFace 身份匹配
     n_frames = len(frames)
+    t_job0 = time.time()
+    t_last_log = 0.0
+    _set_facefix_progress(
+        stage="scan",
+        pct=3,
+        cur=0,
+        total=n_frames,
+        elapsed_s=0.0,
+        eta_s=0.0,
+        message=f"🔍 正在追踪扫描人脸轨迹: 0/{n_frames} 帧 (3%)",
+    )
     per_frame_face = [None] * n_frames
     best_self_face = None
     best_self_area = -1.0
 
     ref_emb = getattr(src_f, "normed_embedding", None) if src_f is not None else None
+    t_scan0 = time.time()
     for idx, frm in enumerate(frames):
         detected = app.get(frm)
+        if idx % 4 == 0 or idx + 1 == n_frames:
+            now_s = time.time()
+            el_scan = now_s - t_scan0
+            pct_s = int(3 + 19 * (idx + 1) / max(1, n_frames))
+            eta_scan = (el_scan / max(1, idx + 1)) * (n_frames - idx - 1)
+            msg_s = f"🔍 正在追踪扫描人脸轨迹: {idx + 1}/{n_frames} 帧 ({pct_s}%)"
+            _set_facefix_progress(
+                stage="scan",
+                pct=pct_s,
+                cur=idx + 1,
+                total=n_frames,
+                elapsed_s=round(now_s - t_job0, 1),
+                eta_s=round(eta_scan + n_frames * 0.9, 1),
+                message=msg_s,
+            )
+            if now_s - t_last_log >= 8.0:
+                t_last_log = now_s
+                _append_panel_log(f"[锁脸精修] {msg_s}")
         if not detected:
             continue
         chosen = None
@@ -14699,6 +15971,8 @@ def _run_h3_video_facefix(
     # 4. 第二遍逐帧融合与遮罩加权色彩匹配
     fixed_count = 0
     out_frames = []
+    t_blend0 = time.time()
+    t_last_blend_log = 0.0
     for i, frm in enumerate(frames):
         f = per_frame_face[i]
         w_op = float(frame_weights[i])
@@ -14716,8 +15990,36 @@ def _run_h3_video_facefix(
             fixed_count += 1
         else:
             out_frames.append(frm)
+        now_b = time.time()
+        el_b = now_b - t_blend0
+        pct_b = int(22 + 72 * (i + 1) / max(1, n_frames))
+        eta_b = (el_b / max(1, i + 1)) * (n_frames - i - 1) + 4.0
+        msg_b = f"🧬 正在逐帧锁脸精修: {i + 1}/{n_frames} 帧 ({pct_b}%)"
+        _set_facefix_progress(
+            stage="blend",
+            pct=pct_b,
+            cur=i + 1,
+            total=n_frames,
+            elapsed_s=round(now_b - t_job0, 1),
+            eta_s=round(eta_b, 1),
+            message=msg_b,
+        )
+        if now_b - t_last_blend_log >= 8.0 or (i + 1 == n_frames):
+            t_last_blend_log = now_b
+            em, es = divmod(int(eta_b), 60)
+            eta_txt = f"{em}分{es:02d}秒" if em > 0 else f"{es}秒"
+            _append_panel_log(f"[锁脸精修] {msg_b} · 剩余约 {eta_txt}")
 
     # 5. 编码视频并无损复制原视频音频 (-c:a copy)
+    _set_facefix_progress(
+        stage="encode",
+        pct=96,
+        cur=n_frames,
+        total=n_frames,
+        elapsed_s=round(time.time() - t_job0, 1),
+        eta_s=3.0,
+        message=f"🎞️ 正在无损封装 H.264 与原声立体声音轨 (96%)...",
+    )
     ts = time.strftime("%Y%m%d_%H%M%S")
     stem = re.sub(r"_dur\d+s.*$", "", video_path.stem)
     out_name = f"{stem}_h3_facefix_{ts}.mp4"
@@ -14795,6 +16097,12 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        if self.path.startswith("/api/facefix_status"):
+            with _FACEFIX_STATE_LOCK:
+                snap = dict(_FACEFIX_STATE)
+            self._send_json(snap)
             return
 
         if self.path.startswith("/api/ui_workspace_state"):
@@ -15038,6 +16346,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                     self.send_response(206)
                     self.send_header("Content-Type", mime_type)
                     self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Cache-Control", "no-cache")
                     self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
                     self.send_header("Content-Length", str(len(chunk)))
                     self.end_headers()
@@ -15049,6 +16358,7 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mime_type)
             self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "no-cache")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -15217,29 +16527,51 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                 self.send_error(400)
                 return
             try:
-                cfg = _load_endpoint_cfg()
-                hdrs_r = {
-                    "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
-                    "User-Agent": "ColabPanel/1.0",
-                }
-                if self.headers.get("Range"):
-                    hdrs_r["Range"] = self.headers.get("Range")
-                req_r = urllib.request.Request(
-                    f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(fname)}",
-                    headers=hdrs_r,
-                )
-                with urllib.request.urlopen(req_r, timeout=60) as rr:
-                    body_r = rr.read()
-                    self.send_response(rr.status)
-                    self.send_header("Content-Type", rr.headers.get("Content-Type") or "video/mp4")
+                cache_dir = Path("/tmp/easycolab_guide_cache")
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                cache_fp = cache_dir / fname
+                if not (cache_fp.is_file() and cache_fp.stat().st_size > 1024):
+                    cfg = _load_endpoint_cfg()
+                    hdrs_r = {
+                        "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                        "User-Agent": "ColabPanel/1.0",
+                    }
+                    req_r = urllib.request.Request(
+                        f"http://127.0.0.1:30000/v1/video/file/{urllib.parse.quote(fname)}",
+                        headers=hdrs_r,
+                    )
+                    with urllib.request.urlopen(req_r, timeout=90) as rr:
+                        raw_r = rr.read()
+                    tmp_cp = cache_fp.with_suffix(".part")
+                    tmp_cp.write_bytes(raw_r)
+                    os.replace(tmp_cp, cache_fp)
+                fsize = cache_fp.stat().st_size
+                range_hdr = self.headers.get("Range")
+                if range_hdr and range_hdr.startswith("bytes=") and not is_dl:
+                    parts = range_hdr.replace("bytes=", "").split("-")
+                    start = int(parts[0]) if parts[0] else 0
+                    end = int(parts[1]) if (len(parts) > 1 and parts[1]) else (fsize - 1)
+                    end = min(end, fsize - 1)
+                    with open(cache_fp, "rb") as rf:
+                        rf.seek(start)
+                        chunk = rf.read(max(0, end - start + 1))
+                    self.send_response(206)
+                    self.send_header("Content-Type", "video/mp4")
                     self.send_header("Accept-Ranges", "bytes")
-                    if rr.headers.get("Content-Range"):
-                        self.send_header("Content-Range", rr.headers.get("Content-Range"))
-                    if is_dl:
-                        self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
-                    self.send_header("Content-Length", str(len(body_r)))
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{fsize}")
+                    self.send_header("Content-Length", str(len(chunk)))
                     self.end_headers()
-                    self.wfile.write(body_r)
+                    self.wfile.write(chunk)
+                    return
+                body_r = cache_fp.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Accept-Ranges", "bytes")
+                if is_dl:
+                    self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+                self.send_header("Content-Length", str(len(body_r)))
+                self.end_headers()
+                self.wfile.write(body_r)
             except Exception:
                 self.send_error(404)
             return
@@ -15363,6 +16695,9 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
 
         if self.path.startswith("/api/video_upscale_status"):
             cfg = _load_endpoint_cfg()
+            if cfg.get("deploying") or _DEPLOY_STATE.get("running"):
+                self._send_json({"running": False, "ready": False, "error": "", "message": "实例开机/切换模型中..."})
+                return
             try:
                 if True:
                     d = _call_recavsr_api("/v1/video/upscale_status", method="GET", timeout=12)
@@ -15405,10 +16740,12 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
                             rem_gpu = max(1.0, blended_total * (1.0 - work_frac))
                         d["eta_sec"] = max(2, int(round(rem_gpu + 4.0)))
                     elif d.get("error"):
+                        had_active_upscale = float(_UPSCALE_TIMING.get("start_ts") or 0.0) > 0.0
                         _UPSCALE_TIMING["start_ts"] = 0.0
                         _UPSCALE_TIMING["compute_start_ts"] = 0.0
                         err_msg = str(d.get("error") or "").strip()
-                        if err_msg and _LAST_LOGGED_UPSCALE_ERR[0] != err_msg:
+                        is_transient_tunnel = any(k in err_msg for k in ("Upstream tunnel error", "instance_offline", "nodename nor servname"))
+                        if err_msg and _LAST_LOGGED_UPSCALE_ERR[0] != err_msg and (had_active_upscale or not is_transient_tunnel):
                             _LAST_LOGGED_UPSCALE_ERR[0] = err_msg
                             _append_panel_log(f"❌ [视频超分失败] {err_msg}")
                     else:
@@ -15525,8 +16862,9 @@ p.wait()
                 except Exception:
                     pass
 
-                is_ming_req = tts_voice_raw.startswith("ming:") or bool(clone_ref_b64)
-                if is_ming_req:
+                is_indextts2_req = tts_voice_raw.startswith("indextts2:")
+                is_ming_req = (not is_indextts2_req) and (tts_voice_raw.startswith("ming:") or bool(clone_ref_b64))
+                if is_indextts2_req or is_ming_req:
                     # 1. 若本地保存的 tunnel_url 失效但 Colab 实例在线，自动从实例 /content/cf_tunnel.log 修复最新隧道地址
                     try:
                         from colab_cli.common import state
@@ -15547,6 +16885,42 @@ p.wait()
                     except Exception:
                         pass
 
+                if is_indextts2_req:
+                    try:
+                        req_i = urllib.request.Request(
+                            "http://127.0.0.1:30000/v1/audio/indextts2",
+                            data=json.dumps({
+                                "text": tts_text,
+                                "voice": tts_voice_raw,
+                                "clone_ref_b64": clone_ref_b64,
+                                "emo_mode": str(payload.get("emo_mode") or "auto"),
+                                "emo_text": str(payload.get("emo_text") or ""),
+                                "emo_preset": str(payload.get("emo_preset") or ""),
+                                "emo_alpha": payload.get("emo_alpha", 0.75),
+                                "emo_vector": payload.get("emo_vector"),
+                                "target_duration_sec": payload.get("target_duration_sec", 0),
+                            }).encode("utf-8"),
+                            headers={
+                                "Content-Type": "application/json",
+                                "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
+                            },
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req_i, timeout=240) as r_i:
+                            d_i = json.loads(r_i.read().decode("utf-8"))
+                            if d_i.get("ok") and d_i.get("audio_b64"):
+                                self._send_json(d_i)
+                                return
+                            self._send_json({"ok": False, "error": d_i.get("error") or "IndexTTS-2 云端合成失败"})
+                            return
+                    except Exception as e_idx:
+                        self._send_json({
+                            "ok": False,
+                            "error": f"云端 IndexTTS-2 未连接（请先在「📦 模型管理」开机部署 T4 版 IndexTTS-2 或任意 G4 模型）：{e_idx}",
+                        })
+                        return
+
+                if is_ming_req:
                     # 2. 请求云端 G4 GPU 上运行的 Ming-3.0-Talker (/v1/audio/ming_tts，MiniMax-H3-Image 与 LongCat-Avatar 均已原生挂载)
                     try:
                         req_m = urllib.request.Request(
@@ -16065,6 +17439,8 @@ p.wait()
             return
 
         if self.path == "/api/stop":
+            stop_reason = str(payload.get("reason") or "manual_stop").strip()
+            print(f"[{time.strftime('%H:%M:%S')}] [panel] POST /api/stop triggered (reason={stop_reason})", flush=True)
             sessions = _list_active_sessions()
             if sessions:
                 shield_blk = _check_active_llama_shield(payload, "关闭并释放 Colab GPU 实例")
@@ -16637,7 +18013,20 @@ p.wait()
                     f"📸 [提交 4K 写真/换装任务{sheet_tag}] 分辨率 {payload.get('resolution', '3552x4736')} · 6步蒸馏直出 · 参考图 {len(payload.get('ref_images_b64') or [])}张"
                 )
             else:
-                if req_mode not in ("avatar", "ref2va"):
+                if req_mode == "ref2va":
+                    v_prompt = str(payload.get("prompt") or "").strip()
+                    v_lora = str(payload.get("lora_path") or "").strip()
+                    vl_low = v_lora.lower()
+                    trig = ""
+                    if "wushu_h3_v8" in vl_low and "wushu_action" not in v_prompt.lower():
+                        trig = "wushu_action, "
+                    elif "gunfu" in vl_low and "bunny" not in v_prompt.lower():
+                        trig = "BUNNY, "
+                    elif "ss_faceswap" in vl_low and "faceswap" not in v_prompt.lower():
+                        trig = "Faceswap, "
+                    if trig and v_prompt and not v_prompt.startswith(trig):
+                        payload["prompt"] = trig + v_prompt
+                elif req_mode != "avatar":
                     v_prompt = str(payload.get("prompt") or "").strip()
                     v_sound = str(payload.get("soundscape") or "").strip() or "Natural synchronized physical Foley, realistic clothing rustle, and clear ambient room tone."
                     v_music = str(payload.get("music") or "").strip() or "N/A"
@@ -16685,10 +18074,14 @@ p.wait()
                     elif trig and not v_prompt.startswith(trig):
                         v_prompt = trig + v_prompt
                     payload["prompt"] = v_prompt
-                lora_log_s = f" · 🔌LoRA:{os.path.basename(str(payload.get('lora_path')))}" if payload.get("lora_path") else ""
+                lora_log_s = (
+                    f" · 🔌LoRA:{os.path.basename(str(payload.get('lora_path')))}({payload.get('lora_strength', 0.85)})"
+                    if payload.get("lora_path")
+                    else ""
+                )
                 if req_mode == "ref2va":
                     _append_panel_log(
-                        f"🕺 [提交白模/动作迁移任务 (Ref2VA)] 分辨率 {payload.get('resolution', '832x480')} · 参考图 {len(payload.get('ref_images_b64') or [])}张 · {'保留原BGM' if payload.get('keep_ref_audio') else 'H3原生配音'} · {payload.get('steps', 30)}步"
+                        f"🕺 [提交白模/动作迁移任务 (Ref2VA)] 分辨率 {payload.get('resolution', '832x480')} · 参考图 {len(payload.get('ref_images_b64') or [])}张 · {'保留原BGM' if payload.get('keep_ref_audio') else 'H3原生配音'} · {payload.get('steps', 30)}步{lora_log_s}"
                     )
                 else:
                     _append_panel_log(
@@ -17200,28 +18593,91 @@ p.wait()
             face_b64 = str(payload.get("face_b64") or "").strip()
             full_fix_below = int(payload.get("full_fix_below_px") or 110)
             no_fix_above = int(payload.get("no_fix_above_px") or 180)
+            is_async = bool(payload.get("async"))
             vpath = LOCAL_MOVIES_DIR / fname
             if not fname or not vpath.is_file():
                 self._send_json({"ok": False, "error": f"本地未找到视频文件: {fname}"})
                 return
-            t0 = time.time()
-            try:
-                _append_panel_log(f"🧬 [PixelAI H3 Video FaceFix] 开始追踪并精修视频远景人脸: {fname} (衰减区间 {full_fix_below}px->{no_fix_above}px @1080p)...")
-                res = _run_h3_video_facefix(
-                    video_path=vpath,
-                    ref_face_b64=face_b64,
-                    full_fix_below_px=full_fix_below,
-                    no_fix_above_px=no_fix_above,
-                )
-                dt = round(time.time() - t0, 1)
-                msg = f"✅ [PixelAI H3 视频崩脸精修] 完成！{res['report']} · 耗时 {dt}s -> {res['filename']}"
-                _append_panel_log(msg)
-                res["elapsed_s"] = dt
-                res["message"] = msg
-                self._send_json(res)
-            except Exception as e:
-                _append_panel_log(f"❌ [PixelAI H3 视频崩脸精修失败] {e}")
-                self._send_json({"ok": False, "error": str(e)})
+
+            with _FACEFIX_STATE_LOCK:
+                if _FACEFIX_STATE.get("running"):
+                    if is_async:
+                        self._send_json({
+                            "ok": True,
+                            "started": True,
+                            "already_running": True,
+                            "job_id": _FACEFIX_STATE.get("job_id", ""),
+                        })
+                        return
+                    self._send_json({"ok": False, "error": "已有本机锁脸精修任务正在运行，请等待当前进度完成"})
+                    return
+                jid = f"ff_{int(time.time() * 1000)}"
+                _FACEFIX_STATE.update({
+                    "running": True,
+                    "ok": False,
+                    "job_id": jid,
+                    "source_name": fname,
+                    "filename": "",
+                    "stage": "init",
+                    "pct": 1,
+                    "cur": 0,
+                    "total": 0,
+                    "elapsed_s": 0.0,
+                    "eta_s": 0.0,
+                    "message": f"🧬 正在初始化 PixelAI H3 FaceFix ({fname})...",
+                    "error": "",
+                    "report": "",
+                })
+
+            def _exec_facefix_worker():
+                t0 = time.time()
+                try:
+                    _append_panel_log(f"🧬 [PixelAI H3 Video FaceFix] 开始追踪并精修视频远景人脸: {fname} (衰减区间 {full_fix_below}px->{no_fix_above}px @1080p)...")
+                    res = _run_h3_video_facefix(
+                        video_path=vpath,
+                        ref_face_b64=face_b64,
+                        full_fix_below_px=full_fix_below,
+                        no_fix_above_px=no_fix_above,
+                    )
+                    dt = round(time.time() - t0, 1)
+                    msg = f"✅ [PixelAI H3 视频崩脸精修] 完成！{res['report']} · 耗时 {dt}s -> {res['filename']}"
+                    _append_panel_log(msg)
+                    res["elapsed_s"] = dt
+                    res["message"] = msg
+                    _set_facefix_progress(
+                        running=False,
+                        ok=True,
+                        pct=100,
+                        cur=res.get("frames_total", 0),
+                        total=res.get("frames_total", 0),
+                        elapsed_s=dt,
+                        eta_s=0.0,
+                        filename=res.get("filename", ""),
+                        report=res.get("report", ""),
+                        message=msg,
+                        error="",
+                    )
+                    return res
+                except Exception as e:
+                    dt = round(time.time() - t0, 1)
+                    _append_panel_log(f"❌ [PixelAI H3 视频崩脸精修失败] {e}")
+                    _set_facefix_progress(
+                        running=False,
+                        ok=False,
+                        elapsed_s=dt,
+                        eta_s=0.0,
+                        error=str(e),
+                        message=f"❌ 锁脸精修失败: {e}",
+                    )
+                    return {"ok": False, "error": str(e)}
+
+            if is_async:
+                threading.Thread(target=_exec_facefix_worker, daemon=True).start()
+                self._send_json({"ok": True, "started": True, "job_id": jid})
+                return
+
+            res_sync = _exec_facefix_worker()
+            self._send_json(res_sync)
             return
 
         if self.path == "/api/extract_last_frame":
@@ -19212,16 +20668,34 @@ def _drama_synthesize_ming_tts_for_fl2va(vt: Dict[str, Any], resume: bool = True
         "Authorization": f"Bearer {cfg.get('api_key', 'sk-colab-ed28e54eb298d0c1')}",
         "User-Agent": "ColabPanel/1.0",
     }
-    body = json.dumps({"text": tts_text, "voice": tts_voice}).encode("utf-8")
-    _append_panel_log(f"🎙️ [Ming-3.0 角色统一配音] 正在为首尾帧镜头 {vt.get('label') or vid_fn} 合成专属音色 ({tts_voice}): 「{tts_text}」...")
-    req = urllib.request.Request("http://127.0.0.1:30000/v1/audio/ming_tts", data=body, headers=headers, method="POST")
-    with _LOCAL_DIRECT_OPENER.open(req, timeout=60) as resp:
+    is_idx_drama = tts_voice.startswith("indextts2:")
+    shot_dur = float(vt.get("duration") or 0.0)
+    if is_idx_drama:
+        body_dict = {
+            "text": tts_text,
+            "voice": tts_voice,
+            "emo_mode": str(vt.get("emo_mode") or ("text" if vt.get("emo_text") else "auto")),
+            "emo_text": str(vt.get("emo_text") or ""),
+            "emo_preset": str(vt.get("emo_preset") or ""),
+            "emo_alpha": float(vt.get("emo_alpha") or 0.75),
+            "target_duration_sec": round(shot_dur * 0.92, 2) if shot_dur > 0.8 else 0.0,
+        }
+        api_url = "http://127.0.0.1:30000/v1/audio/indextts2"
+        eng_lbl = "IndexTTS-2"
+    else:
+        body_dict = {"text": tts_text, "voice": tts_voice}
+        api_url = "http://127.0.0.1:30000/v1/audio/ming_tts"
+        eng_lbl = "Ming-3.0"
+    body = json.dumps(body_dict).encode("utf-8")
+    _append_panel_log(f"🎙️ [{eng_lbl} 角色统一配音] 正在为首尾帧镜头 {vt.get('label') or vid_fn} 合成专属音色 ({tts_voice}): 「{tts_text}」...")
+    req = urllib.request.Request(api_url, data=body, headers=headers, method="POST")
+    with _LOCAL_DIRECT_OPENER.open(req, timeout=180 if is_idx_drama else 60) as resp:
         res = json.loads(resp.read().decode("utf-8"))
     if not res.get("ok") or not res.get("audio_b64"):
-        raise RuntimeError(f"Ming-3.0 语音合成失败: {res.get('error')}")
+        raise RuntimeError(f"{eng_lbl} 语音合成失败: {res.get('error')}")
     b64_data = str(res["audio_b64"]).split(",", 1)[-1]
     out_wav.write_bytes(base64.b64decode(b64_data))
-    _append_panel_log(f"✅ [Ming-3.0 角色统一配音] 已保存 {out_wav.name} ({res.get('duration_sec')}s)")
+    _append_panel_log(f"✅ [{eng_lbl} 角色统一配音] 已保存 {out_wav.name} ({res.get('duration_sec')}s)")
     return out_wav
 
 
