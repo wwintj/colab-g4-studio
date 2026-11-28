@@ -403,38 +403,67 @@ def _check_rclone_drive_has_model(remote_folder: str) -> int:
         return 0
 
 
-def _pull_from_rclone_drive_if_exists(remote_folder: str, local_dir: str) -> bool:
-    """若主干 CDN 不可用，从云盘 gdrive:models/<remote_folder> 开启 16 线程分块拉取兜底"""
+def _pull_from_rclone_drive_if_exists(
+    remote_folder: str,
+    local_dir: str,
+    excludes: Optional[List[str]] = None,
+    includes: Optional[List[str]] = None,
+) -> bool:
+    """优先从 Google Drive (gdrive:models/<remote_folder>) 开启 16 路并发多线程高速拉取至本地盘"""
     rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
     if not (os.path.exists(rc_conf) and shutil.which("rclone")):
         return False
     remote_src = f"gdrive:models/{remote_folder}"
+    filter_args: List[str] = []
+    for inc in (includes or []):
+        if inc:
+            filter_args.extend(["--include", inc])
+    for exc in (excludes or []):
+        if exc:
+            filter_args.extend(["--exclude", exc])
+    if filter_args:
+        filter_args.append("--ignore-case")
     try:
         ls_out = subprocess.check_output(
-            ["rclone", "lsf", remote_src, "--config", rc_conf, "-R", "--files-only"],
+            ["rclone", "lsf", remote_src, "--config", rc_conf, "-R", "--files-only", "--format", "sp"] + filter_args,
             stderr=subprocess.DEVNULL,
             timeout=25,
             text=True,
         )
-        remote_files = [
-            ln.strip() for ln in ls_out.splitlines()
-            if ln.strip().lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))
+        remote_entries: List[Tuple[str, int]] = []
+        for raw in ls_out.splitlines():
+            ln = raw.strip()
+            if ";" not in ln:
+                continue
+            sz_s, rel_p = ln.split(";", 1)
+            rel_p = rel_p.strip()
+            if not rel_p:
+                continue
+            try:
+                rsz = int(sz_s.strip())
+            except ValueError:
+                rsz = -1
+            remote_entries.append((rel_p, rsz))
+        remote_weights = [
+            (rp, rsz) for rp, rsz in remote_entries
+            if rp.lower().endswith((".gguf", ".safetensors", ".onnx", ".pth"))
         ]
     except Exception:
         return False
 
-    if not remote_files:
+    if not remote_weights:
         return False
 
     os.makedirs(local_dir, exist_ok=True)
     if all(
-        os.path.exists(os.path.join(local_dir, rf)) and os.path.getsize(os.path.join(local_dir, rf)) > 1024 * 1024
-        for rf in remote_files
+        os.path.exists(os.path.join(local_dir, rp))
+        and (rsz < 0 or os.path.getsize(os.path.join(local_dir, rp)) == rsz)
+        for rp, rsz in remote_entries
     ):
-        log(f"⚡ 检测到本地高速盘 ({local_dir}) 已完整缓存 {len(remote_files)} 个核心权重文件，0 秒直接复用！")
+        log(f"⚡ 检测到本地高速盘 ({local_dir}) 已完整校验 {len(remote_weights)} 个核心权重及配套文件，0 秒直接复用！")
         return True
 
-    log(f"☁️ 正在从 Google Drive 云盘备份 ({remote_src}) 16 线程并发拉取至本地 ({local_dir})...")
+    log(f"☁️ 正在从您的 Google Drive ({remote_src}) 16 路并发高速拉取 {len(remote_weights)} 个权重文件 (共 {len(remote_entries)} 个文件) 至本地 ({local_dir})...")
     cmd_fg = [
         "rclone", "copy", remote_src, local_dir,
         "--config", rc_conf,
@@ -443,10 +472,11 @@ def _pull_from_rclone_drive_if_exists(remote_folder: str, local_dir: str) -> boo
         "--multi-thread-cutoff", "64M",
         "--buffer-size", "64M",
         "--drive-chunk-size", "128M",
+        "--size-only",
         "--stats", "2s",
         "--stats-one-line",
         "-v",
-    ]
+    ] + filter_args
     proc = subprocess.Popen(
         cmd_fg,
         stdout=subprocess.PIPE,
@@ -2351,7 +2381,7 @@ def _start_minimax_h3_server_on_30000(target_dir: str, variant: str = "FL2VA"):
     proc = None
     if not already_loading_remote:
         log("正在释放旧模型显存 (保留内存盘/NVMe 中的权重以便随时极速切回)...")
-        subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+        subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
         time.sleep(2)
 
         if not os.path.isdir("/content/DiffSynth-Studio/.git"):
@@ -3108,7 +3138,7 @@ def _start_minimax_t4_gguf_server_on_30000(target_dir: str):
         pass
 
     log("正在释放旧模型进程，准备启动 MiniMax-H3 (T4 量化版 · UD-Q2_K_XL)...")
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     _ensure_sd_cli_binary(target_dir)
@@ -4683,7 +4713,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
             check=True,
         )
 
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     lc_link = os.path.join(os.path.dirname(target_dir), "LongCat-Video")
@@ -5837,7 +5867,7 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
             check=True,
         )
 
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     if not os.path.isdir("/content/ComfyUI/.git"):
@@ -7266,7 +7296,7 @@ def _start_indextts2_standalone_on_30000(download_only: bool = False):
         return
 
     subprocess.run(
-        "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|indextts2_server\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
+        "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|indextts2_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
         shell=True,
     )
     time.sleep(1)
@@ -7313,6 +7343,439 @@ def _start_indextts2_standalone_on_30000(download_only: bool = False):
         time.sleep(3)
     tail = subprocess.getoutput("tail -n 40 /content/indextts2_server.log")
     raise TimeoutError(f"等待 IndexTTS-2 启动超时:\n{tail}")
+
+
+def _resolve_hf_all_repo_files(repo_id: str, token: str = "") -> List[Tuple[str, int]]:
+    """查询 HuggingFace 仓库下所有待下载文件 (排除 .gitattributes / README / LICENSE 以外的所有权重与配置)"""
+    url = f"https://huggingface.co/api/models/{repo_id}?blobs=true"
+    headers = {"User-Agent": "ColabDeploy/1.0"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        info = json.loads(resp.read().decode("utf-8"))
+    out: List[Tuple[str, int]] = []
+    for sib in info.get("siblings") or []:
+        rfn = str(sib.get("rfilename") or "").strip()
+        if not rfn or rfn.startswith(".") or rfn in ("README.md", "LICENSE", ".gitattributes"):
+            continue
+        sz = int(sib.get("size") or (sib.get("lfs") or {}).get("size") or 0)
+        out.append((rfn, sz))
+    out.sort(key=lambda x: (0 if not x[0].endswith(".safetensors") else 1, x[0]))
+    return out
+
+
+def _start_glm53_maya_server_on_30000(download_only: bool = False):
+    """在远端 Colab G4 (RTX PRO 6000 96GB) 上通过 Project Maya + EXL3 + DFlash2 + maya-vision 启动 GLM-5.3-Flash 无审查版 (端口 30000，兼容 OpenAI + Anthropic /v1/messages)"""
+    repo_id = (HF_REPO or "MikeRoz/GLM-5.3-Flash-Uncensored-4.05bpw-h6-exl3").strip()
+    folder_name = (MODEL_FOLDER or "GLM-5.3-Flash-4.05bpw").strip()
+    if "2.51" in f"{repo_id} {folder_name}":
+        tier = "2.51"
+        spec_min_p = "0.95"
+    elif "3.05" in f"{repo_id} {folder_name}":
+        tier = "3.05"
+        spec_min_p = "0.90"
+    else:
+        tier = "4.05"
+        spec_min_p = "0.95"
+    model_alias = f"glm-5.3-flash-uncensored-{tier}bpw"
+
+    try:
+        vram_mib_str = subprocess.getoutput("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null").strip().splitlines()[0]
+        vram_gb = float(vram_mib_str) / 1024.0
+    except Exception:
+        vram_gb = 96.0
+    if not download_only and vram_gb < 70.0:
+        raise RuntimeError(f"GLM-5.3-Flash EXL3 ({tier} bpw · 321B) 需要 Colab G4 (RTX PRO 6000 96GB) 或 H100 (80GB) 显存，当前 {vram_gb:.1f} GB 无法加载。")
+
+    # 检测 GPU Compute Capability (G4 Blackwell = 120, H100 = 90)
+    cuda_arch = "120"
+    try:
+        cap_raw = subprocess.getoutput("nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null").strip().splitlines()[0].strip()
+        if re.match(r"^\d+\.\d+$", cap_raw):
+            cuda_arch = cap_raw.replace(".", "")
+    except Exception:
+        pass
+
+    os.environ["PATH"] = "/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin:" + os.environ.get("PATH", "")
+
+    if not shutil.which("cloudflared"):
+        log("正在安装 cloudflared 隧道客户端...")
+        subprocess.run(
+            "curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 "
+            "-o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared",
+            shell=True,
+            check=True,
+        )
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    if not download_only:
+        running_maya = subprocess.getoutput("pgrep -af 'project-maya/serve/server\\.py'").strip()
+        if running_maya:
+            try:
+                req_h = urllib.request.Request(
+                    "http://127.0.0.1:30000/health",
+                    headers={"Authorization": f"Bearer {API_KEY}"},
+                )
+                with opener.open(req_h, timeout=3) as resp:
+                    if resp.status == 200:
+                        hd = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                        cur_m = str(hd.get("model") or "")
+                        if model_alias in cur_m or tier in cur_m:
+                            log(f"✅ 检测到 Project Maya ({cur_m}) 已在 96GB 显存中常驻就绪，直接零等待复用！")
+                            return
+            except Exception:
+                pass
+
+    has_rclone = _has_vm_rclone_drive()
+    rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+    fuse_mounted = os.path.ismount("/content/drive/MyDrive") or os.path.ismount("/content/drive")
+    target_dir = os.path.join("/content/local_models", folder_name)
+    os.makedirs(target_dir, exist_ok=True)
+    dflash_dir = os.path.join(target_dir, "dflash2")
+    vision_dir = os.path.join(target_dir, "vision")
+    os.makedirs(dflash_dir, exist_ok=True)
+    os.makedirs(vision_dir, exist_ok=True)
+    dflash_path = os.path.join(dflash_dir, "GLM-5.3-Flash-DFlash2-Q4_K_M.gguf")
+    mmproj_path = os.path.join(vision_dir, "mmproj-GLM-5.3-Flash-F16.gguf")
+    vocab_path = os.path.join(vision_dir, "GLM-5.3-Flash-vocab.gguf")
+
+    # 1. 若准备启动服务，先释放旧引擎显存/内存盘，再做 236GB NVMe 防爆盘智能腾挪
+    if not download_only:
+        subprocess.run(
+            "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|indextts2_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
+            shell=True,
+        )
+        if os.path.isdir("/dev/shm/local_models"):
+            shutil.rmtree("/dev/shm/local_models", ignore_errors=True)
+
+    # 2. 安装构建工具与 Python 依赖
+    need_apt = not (shutil.which("ninja") and shutil.which("cmake"))
+    need_py = subprocess.run(
+        [sys.executable, "-c", "import huggingface_hub, jinja2, regex, yaml, tqdm, requests, PIL, psutil, jsonschema"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode != 0
+    if need_apt or need_py:
+        log("🔧 [1/5] 正在安装 Project Maya 构建工具与 Python 依赖...")
+        if need_apt:
+            subprocess.run("apt-get -qq update && apt-get -qq install -y aria2 ninja-build cmake build-essential", shell=True, check=True)
+        if need_py:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "-q", "install", "-U", "huggingface_hub", "jinja2", "regex", "pyyaml", "tqdm", "requests", "pillow", "psutil", "jsonschema>=4.18,<5"],
+                check=True,
+            )
+
+    # 3. 准备 Project Maya 源码与 CUDA 二进制（优先从 Google Drive 秒恢复预编译包，免 90s 重复编译）
+    maya_dir = "/content/project-maya"
+    maya_exe = os.path.join(maya_dir, "build", "maya")
+    vision_exe = os.path.join(maya_dir, "build-vision", "bin", "maya-vision")
+    bin_tar_name = f"maya_bin_sm{cuda_arch}.tar.gz"
+    local_bin_tar = f"/tmp/{bin_tar_name}"
+
+    if not os.path.isfile(os.path.join(maya_dir, "CMakeLists.txt")):
+        log("📦 [2/5] 正在拉取 Project Maya (EXL3 + DFlash2 + Anthropic/OpenAI 双协议推理引擎)...")
+        shutil.rmtree(maya_dir, ignore_errors=True)
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/mw00/project-maya.git", maya_dir], check=True)
+
+    if not os.path.isfile(maya_exe) and has_rclone:
+        log(f"☁️ 正在检查 Google Drive 是否已有预编译加速包 ({bin_tar_name})...")
+        rc_pull = subprocess.run(
+            ["rclone", "copy", f"gdrive:models/{folder_name}/{bin_tar_name}", "/tmp", "--config", rc_conf],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if rc_pull.returncode == 0 and os.path.isfile(local_bin_tar) and os.path.getsize(local_bin_tar) > 100_000:
+            subprocess.run(["tar", "-xzf", local_bin_tar, "-C", maya_dir], check=False)
+            if os.path.isfile(maya_exe):
+                os.chmod(maya_exe, 0o755)
+                if os.path.isfile(vision_exe):
+                    os.chmod(vision_exe, 0o755)
+                log(f"⚡ 已从 Google Drive 秒恢复预编译 Maya sm_{cuda_arch} 二进制（跳过 CUDA 编译！）")
+
+    if not os.path.isfile(maya_exe):
+        log(f"⚙️ [2/5] 首次为当前显卡 (CUDA sm_{cuda_arch}) 编译 Project Maya 核心引擎（约 80~100 秒，编完自动存入云盘供下次秒用）...")
+        subprocess.run([sys.executable, "-c", "import setup as S; S.get_llama_cpp()"], cwd=maya_dir, check=True)
+        subprocess.run(
+            [
+                "cmake", "-G", "Ninja", "-S", ".", "-B", "build",
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DSTRATA_ENABLE_CUDA=ON",
+                f"-DCMAKE_CUDA_ARCHITECTURES={cuda_arch}",
+                "-DSTRATA_NATIVE_EXPERTS=ON",
+                "-DSTRATA_BUILD_TESTS=OFF",
+                "-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc",
+                "-DCUDAToolkit_ROOT=/usr/local/cuda",
+                f"-DSTRATA_GGML_DIR={maya_dir}/third_party/llama.cpp",
+            ],
+            cwd=maya_dir,
+            check=True,
+        )
+        subprocess.run(["cmake", "--build", "build", "--target", "maya", "-j", str(min(24, os.cpu_count() or 8))], cwd=maya_dir, check=True)
+        log("✅ Project Maya 核心引擎编译完成！")
+
+        # 顺带尝试编译按需零驻留视觉编码器 maya-vision（失败自动降级纯文本，绝不阻断主引擎）
+        llama_tp = os.path.join(maya_dir, "third_party", "llama.cpp")
+        v_src = os.path.join(maya_dir, "tools", "vision")
+        if os.path.isdir(v_src) and os.path.isdir(llama_tp) and not os.path.isfile(vision_exe):
+            try:
+                log("👁️ 正在编译按需视觉编码器 maya-vision（支持原图/视频反推提示词，平时 0 显存占用）...")
+                for patch_py in ("glm5next_patch.py", "inkling2v_patch.py"):
+                    pp = os.path.join(v_src, patch_py)
+                    if os.path.isfile(pp):
+                        subprocess.run([sys.executable, pp, llama_tp], cwd=maya_dir, check=True)
+                subprocess.run(
+                    [
+                        "cmake", "-G", "Ninja", "-S", v_src, "-B", os.path.join(maya_dir, "build-vision"),
+                        "-DCMAKE_BUILD_TYPE=Release",
+                        f"-DLLAMA_DIR={llama_tp}",
+                        "-DMAYA_VISION_CUDA=ON",
+                        "-DMAYA_VISION_HIP=OFF",
+                        f"-DCMAKE_CUDA_ARCHITECTURES={cuda_arch}",
+                        "-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc",
+                        "-DCUDAToolkit_ROOT=/usr/local/cuda",
+                    ],
+                    cwd=maya_dir,
+                    check=True,
+                )
+                subprocess.run(
+                    ["cmake", "--build", os.path.join(maya_dir, "build-vision"), "--target", "maya-vision", "-j", str(min(16, os.cpu_count() or 8))],
+                    cwd=maya_dir,
+                    check=True,
+                )
+                log("✅ maya-vision 按需视觉编码器编译完成！")
+            except Exception as e_vis:
+                log(f"⚠️ maya-vision 编译跳过 ({e_vis})，GLM-5.3-Flash 将以纯文本顶配模式启动。")
+
+        if has_rclone and os.path.isfile(maya_exe):
+            tar_items = ["build/maya"]
+            if os.path.isdir(os.path.join(maya_dir, "build-vision", "bin")):
+                tar_items.append("build-vision/bin")
+            subprocess.run(["tar", "-czf", local_bin_tar, "-C", maya_dir] + tar_items, check=False)
+            if os.path.isfile(local_bin_tar):
+                subprocess.run(
+                    ["rclone", "copy", local_bin_tar, f"gdrive:models/{folder_name}", "--config", rc_conf],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                log(f"☁️ 已将预编译二进制 {bin_tar_name} 缓存至 Google Drive，下次开机免编译！")
+
+    # 4. 解析模型权重 + DFlash2 投机草稿 + 视觉 mmproj，防爆盘清理并优先从云盘极速拉取
+    gdrive_saved_count = _check_rclone_drive_has_model(folder_name) if (has_rclone and not fuse_mounted) else 0
+    log(f"📥 [3/5] 正在解析 {repo_id} (GLM-5.3-Flash {tier} bpw 无审查版) + DFlash2 + 视觉组件文件清单...")
+    repo_files: List[Tuple[str, int]] = []
+    try:
+        repo_files = _resolve_hf_all_repo_files(repo_id, HF_TOKEN)
+    except Exception as e_meta:
+        if gdrive_saved_count > 0:
+            log(f"⚠️ 暂无法查询 HF 清单 ({e_meta})，检测到 Google Drive 已有 {gdrive_saved_count} 个权重文件，直接全量从您的云盘拉取！")
+        else:
+            raise
+    # 合并 DFlash2 (665MB) 与视觉塔 (1.14GB)
+    plan: List[Tuple[str, str, str, str, int]] = []
+    for rel_fn, sz in repo_files:
+        plan.append((rel_fn, repo_id, rel_fn, target_dir, max(0, int(sz))))
+    if repo_files:
+        plan.append(("dflash2/GLM-5.3-Flash-DFlash2-Q4_K_M.gguf", "Anbeeld/GLM-5.3-Flash-DFlash2-GGUF", "GLM-5.3-Flash-DFlash2-Q4_K_M.gguf", dflash_dir, 665_000_000))
+        plan.append(("vision/mmproj-GLM-5.3-Flash-F16.gguf", "peasantsmith/GLM-5.3-Flash-Maya-GGUF", "vision/mmproj-GLM-5.3-Flash-F16.gguf", target_dir, 1_110_000_000))
+        plan.append(("vision/GLM-5.3-Flash-vocab.gguf", "peasantsmith/GLM-5.3-Flash-Maya-GGUF", "vision/GLM-5.3-Flash-vocab.gguf", target_dir, 32_000_000))
+
+    needed_new = 0
+    for rel_fn, _, _, _, sz in plan:
+        ep = os.path.join(target_dir, rel_fn)
+        if not (os.path.exists(ep) and os.path.getsize(ep) > 0 and (sz <= 0 or abs(os.path.getsize(ep) - sz) < max(64 * 1024 * 1024, int(sz * 0.08)))):
+            needed_new += max(0, sz)
+    if needed_new == 0 and not repo_files:
+        needed_new = 160 * (1024 ** 3)
+
+    free_nvme = shutil.disk_usage("/content").free
+    safety_margin = 16 * (1024 ** 3)
+    if free_nvme < needed_new + safety_margin:
+        for base_clean in ("/content/local_models", "/content/models"):
+            if not os.path.isdir(base_clean):
+                continue
+            for other_name in sorted(os.listdir(base_clean)):
+                other_p = os.path.join(base_clean, other_name)
+                if os.path.abspath(other_p) == os.path.abspath(target_dir):
+                    continue
+                if os.path.isdir(other_p):
+                    log(f"🧹 [NVMe 防爆盘智能腾挪] 当前剩余 {free_nvme/(1024**3):.1f} GB，释放未激活缓存 {other_name} (云盘 20T 已永久保存)...")
+                    shutil.rmtree(other_p, ignore_errors=True)
+                    free_nvme = shutil.disk_usage("/content").free
+                    if free_nvme >= needed_new + safety_margin:
+                        break
+
+    expected_core_count = sum(1 for x in plan if x[0].lower().endswith((".safetensors", ".gguf")))
+    st_stage_tag = "云盘极速预热" if gdrive_saved_count > 0 else "HF 下载"
+    if has_rclone and not fuse_mounted and gdrive_saved_count > 0:
+        log(f"☁️ 检测到您的 Google Drive (gdrive:models/{folder_name}) 已保存 {gdrive_saved_count} 个权重文件，直接优先 16 路并发从您的云盘内网高速拉取！")
+        _pull_from_rclone_drive_if_exists(folder_name, target_dir, excludes=["maya_bin_*.tar.gz", "pack/**"])
+
+    batch_total_bytes = sum(x[4] for x in plan)
+    total_gb = batch_total_bytes / (1024 ** 3)
+    cum_done_bytes = 0
+    for idx, (rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, sz) in enumerate(plan, start=1):
+        ep = os.path.join(target_dir, rel_fn)
+        lbl_str = f"{folder_name} 总进度 ({idx}/{len(plan)} · {os.path.basename(rel_fn)})"
+        if os.path.exists(ep) and os.path.getsize(ep) > 0 and (sz <= 0 or not rel_fn.endswith(".safetensors") or os.path.getsize(ep) == sz):
+            actual_sz = os.path.getsize(ep)
+            cum_done_bytes += actual_sz
+            ov_pct = min(100, cum_done_bytes * 100 // max(1, batch_total_bytes)) if batch_total_bytes > 0 else 100
+            log(f"  [{st_stage_tag}] {lbl_str}: {ov_pct}% ({cum_done_bytes/(1024**3):.2f}/{total_gb:.2f} GB, 本地缓存复用)")
+            continue
+        log(f"正在 16 线程极速预热 [{idx}/{len(plan)}] {rel_fn} ({sz/(1024**3):.2f} GB)...")
+        try:
+            dl_p = fast_parallel_hf_download(
+                dl_repo,
+                dl_rel_fn,
+                dl_dest_dir,
+                token=HF_TOKEN,
+                num_conn=16,
+                batch_done_bytes=cum_done_bytes,
+                batch_total_bytes=batch_total_bytes,
+                batch_label=lbl_str,
+                stage_tag=st_stage_tag,
+            )
+            cum_done_bytes += (os.path.getsize(dl_p) if os.path.exists(dl_p) else sz)
+        except Exception as e_dl:
+            if rel_fn.startswith("vision/"):
+                log(f"⚠️ 可选视觉组件 {rel_fn} 拉取跳过 ({e_dl})，不影响主模型运行。")
+                continue
+            if has_rclone and not fuse_mounted and _pull_from_rclone_drive_if_exists(folder_name, target_dir):
+                break
+            raise
+
+    # 5. 零拷贝 EXL3 Pack（~10 秒）
+    pack_dir = os.path.join(target_dir, "pack")
+    packed_flag = os.path.join(pack_dir, ".packed_ok")
+    if not os.path.isfile(packed_flag):
+        log("📦 [4/5] 正在执行零拷贝 EXL3 权重打包 (exl3_pack.py · 约 10 秒)...")
+        shutil.rmtree(pack_dir, ignore_errors=True)
+        subprocess.run([sys.executable, os.path.join(maya_dir, "tools", "exl3_pack.py"), "--model", target_dir], cwd=maya_dir, check=True)
+        Path(packed_flag).write_text("ok\n", encoding="utf-8")
+        log("✅ 零拷贝 EXL3 打包完成！")
+
+    if has_rclone and not fuse_mounted and gdrive_saved_count < expected_core_count:
+        _sync_local_to_rclone_drive(target_dir, background=not download_only, remote_folder=folder_name)
+
+    if download_only:
+        log(f"🎉 [仅下载模式] GLM-5.3-Flash ({tier} bpw) + DFlash2 + 视觉组件已永久同步至 Google Drive (gdrive:models/{folder_name})！")
+        return
+
+    # 6. 写入 Project Maya 最优 G4 调优配置并启动端口 30000（同时兼容 OpenAI /v1 与 Anthropic /v1/messages）
+    ctx_val = int(CTX_LEN or 131072)
+    if ctx_val > 262144:
+        ctx_val = 262144
+    if ctx_val < 16384:
+        ctx_val = 131072
+    maya_args = [
+        "--glm-pack", pack_dir,
+        "--max-context", str(ctx_val),
+        "--vram-reserve-mib", "200",
+        "--glm-ram-resident",
+    ]
+    if os.path.isfile(dflash_path):
+        maya_args.extend(["--dflash", dflash_path, "--spec-min-p", spec_min_p])
+    if ctx_val <= 131072:
+        maya_args.extend(["--kv", "k8v4"])
+    else:
+        maya_args.extend(["--kv", "int8", "--kv-resident", "20480"])
+
+    has_vision = os.path.isfile(vision_exe) and os.path.isfile(mmproj_path) and os.path.isfile(vocab_path)
+    if has_vision:
+        maya_args.append("--vision")
+
+    maya_cfg: Dict[str, Any] = {
+        "exe": maya_exe,
+        "pack": pack_dir,
+        "tokenizer": os.path.join(pack_dir, "tokenizer"),
+        "model": model_alias,
+        "model_name": model_alias,
+        "host": "0.0.0.0",
+        "port": 30000,
+        "api_key": API_KEY,
+        "max_context": ctx_val,
+        "args": maya_args,
+        "env": {
+            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+            "CUDA_VISIBLE_DEVICES": "0",
+            "MAYA_GLM_PCIE_SHARE": "0.00",
+            "MAYA_GLM_CPU_LANE": "18",
+            "MAYA_GLM_NGRAM_DRAFT": "1",
+            "MAYA_GLM_DSA_GRAPHS": "1",
+        },
+    }
+    if has_vision:
+        maya_cfg["vision"] = {
+            "exe": vision_exe,
+            "mmproj": mmproj_path,
+            "model": vocab_path,
+            "gpu": True,
+            "no_flash_attn": True,
+        }
+
+    cfg_path = "/content/maya-glm53.json"
+    with open(cfg_path, "w", encoding="utf-8") as cf:
+        json.dump(maya_cfg, cf, indent=2, ensure_ascii=False)
+
+    vis_label = " + 👁️按需视觉(图/视频)" if has_vision else ""
+    kv_label = "k8v4" if ctx_val <= 131072 else "int8(20G驻留)"
+    log(f"🚀 [5/5] 正在将 GLM-5.3-Flash ({tier} bpw · 321B 无审查{vis_label}) 装载入 96GB VRAM + 176GB RAM (上下文 {ctx_val // 1024}K · KV {kv_label} · DFlash2)...")
+    with open("/content/maya_server.log", "w", encoding="utf-8") as lf:
+        proc = subprocess.Popen(
+            [
+                sys.executable, "-u", os.path.join(maya_dir, "serve", "server.py"),
+                "--engine", "maya",
+                "--config", cfg_path,
+                "--host", "0.0.0.0",
+                "--port", "30000",
+            ],
+            cwd=maya_dir,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+
+    t_load0 = time.time()
+    last_log_ts = 0.0
+    while time.time() - t_load0 < 600:
+        if proc.poll() is not None:
+            tail = subprocess.getoutput("tail -n 50 /content/maya_server.log")
+            raise RuntimeError(f"Project Maya 服务异常退出:\n{tail}")
+        try:
+            req_m = urllib.request.Request(
+                "http://127.0.0.1:30000/v1/models",
+                headers={"Authorization": f"Bearer {API_KEY}"},
+            )
+            with opener.open(req_m, timeout=3) as resp:
+                if resp.status == 200:
+                    used_gb = 0.0
+                    try:
+                        u_s = subprocess.getoutput("nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null").strip().splitlines()[0]
+                        used_gb = float(u_s) / 1024.0
+                    except Exception:
+                        pass
+                    log(f"[显存装载] GLM-5.3-Flash(321B·{tier}bpw): 100% ({used_gb:.1f}/{vram_gb:.1f} GiB VRAM, 已就绪 · 耗时 {time.time()-t_load0:.1f}s)")
+                    log(f"✅ GLM-5.3-Flash ({tier} bpw · 无审查{vis_label}) 已就绪！同时支持 OpenAI (/v1) 与 Claude Code (/v1/messages)！")
+                    return
+        except Exception:
+            pass
+        now = time.time()
+        if now - last_log_ts >= 4.0:
+            last_log_ts = now
+            try:
+                u_s = subprocess.getoutput("nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null").strip().splitlines()[0]
+                used_gb = float(u_s) / 1024.0
+                pct = min(99, max(5, int((used_gb / max(1.0, vram_gb * 0.94)) * 100)))
+                log(f"[显存装载] GLM-5.3-Flash(321B·{tier}bpw): {pct}% ({used_gb:.1f}/{vram_gb:.1f} GiB VRAM, 正在预热专家权重... {int(now-t_load0)}s)")
+            except Exception:
+                pass
+        time.sleep(2.0)
+
+    tail = subprocess.getoutput("tail -n 50 /content/maya_server.log")
+    raise TimeoutError(f"等待 GLM-5.3-Flash (Project Maya) 启动超时 (600s):\n{tail}")
 
 
 
@@ -7619,6 +8082,12 @@ def run_remote_vm_main():
             _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
         return
 
+    if MODEL_FOLDER.startswith("GLM-5.3-Flash") or "glm-5.3-flash" in HF_REPO.lower():
+        _start_glm53_maya_server_on_30000(download_only=DOWNLOAD_ONLY)
+        if not DOWNLOAD_ONLY:
+            _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
+        return
+
     is_safetensors_repo = (
         HF_REPO in PRESET_SAFETENSORS_FILES
         or FILE_PATTERN.lower().endswith(".safetensors")
@@ -7750,6 +8219,19 @@ def run_remote_vm_main():
                     if os.path.isdir(inactive_tr):
                         log(f"🧹 [NVMe 共享底座腾挪] 保留 72.4 GB 共享破限编码器与 VAE，释放未激活的 {os.path.relpath(inactive_tr, target_dir)} (云盘已永久保存)...")
                         shutil.rmtree(inactive_tr, ignore_errors=True)
+        gdrive_pull_count = (
+            _check_rclone_drive_has_model(storage_folder)
+            if (has_rclone and not fuse_mounted and is_minimax_ref2va and gdrive_saved_count == 0)
+            else gdrive_saved_count
+        )
+        if has_rclone and not fuse_mounted and gdrive_pull_count > 0:
+            drive_excludes: List[str] = []
+            if storage_folder == "MiniMax-H3":
+                drive_excludes = ["FL2VA/transformer/**"] if is_minimax_ref2va else ["Ref2VA/**"]
+            elif storage_folder == "LongCat-Video-Avatar-1.6":
+                drive_excludes = ["base_model/**"] if "int8" in FILE_PATTERN.lower() else ["base_model_int8/**"]
+            log(f"☁️ 优先直接从您的 Google Drive (gdrive:models/{storage_folder}) 16 路并发拉取已备份权重（缺片才走 HF 自动补齐）...")
+            _pull_from_rclone_drive_if_exists(storage_folder, target_dir, excludes=drive_excludes)
         cum_done_bytes = 0
         st_stage_tag = "云盘极速预热" if gdrive_saved_count > 0 else "HF 下载"
         for idx, (rel_fn, dl_repo, dl_rel_fn, dl_dest_dir, sz) in enumerate(resolved_plan, start=1):
@@ -7874,10 +8356,27 @@ def run_remote_vm_main():
     gguf_done_bytes = 0
     gguf_tot_count = 0
 
+    if not local_ggufs and has_rclone and not fuse_mounted and gdrive_gguf_count > 0:
+        if local_model_dir.startswith("/dev/shm"):
+            subprocess.run("pkill -9 -f '[l]lama-server|[r]clone' || true", shell=True)
+            if os.path.isdir("/dev/shm/EasyColab_Models") and shutil.disk_usage("/dev/shm").free < 58 * (1024 ** 3):
+                shutil.rmtree("/dev/shm/EasyColab_Models", ignore_errors=True)
+            if shutil.disk_usage("/dev/shm").free < 56 * (1024 ** 3):
+                log("提示: /dev/shm 空间不足以容纳整份权重，自动切换至 /content/local_models 高速 NVMe 盘...")
+                local_model_dir = os.path.join("/content/local_models", MODEL_FOLDER)
+                os.makedirs(local_model_dir, exist_ok=True)
+        gguf_includes = None
+        if FILE_PATTERN:
+            _pat = FILE_PATTERN.strip()
+            _inc_main = _pat if ("*" in _pat or "?" in _pat) else f"*{_pat}*"
+            gguf_includes = [_inc_main, "*mmproj*", "MTP/**", "*mtp*.gguf"]
+        log(f"☁️ 检测到您的 Google Drive (gdrive:models/{MODEL_FOLDER}) 已保存 {gdrive_gguf_count} 个权重文件，直接优先从您的云盘多线程高速拉取！")
+        if _pull_from_rclone_drive_if_exists(MODEL_FOLDER, local_model_dir, includes=gguf_includes):
+            local_ggufs = _collect_matching_local()
+
     if not local_ggufs:
         if gdrive_gguf_count > 0:
-            log(f"☁️ 已确认您的 Google Drive (gdrive:models/{MODEL_FOLDER}) 已完整持久化保存 {gdrive_gguf_count} 个权重文件！")
-            log(f"🚀 为绕过 Google Drive API 单文件限速 (~20 MB/s)，已自动切换至 G4 10Gbps 专线 16 线程极速预热通道 (500~700 MB/s)，且预热完成后无需重复上传云盘！")
+            log(f"ℹ️ 云盘中未匹配到 {FILE_PATTERN or '目标权重'} 或文件不完整，自动改由 HuggingFace 补齐并回传云盘...")
         log(f"正在解析模型文件列表 {HF_REPO} (过滤规则: {FILE_PATTERN or '自动优选'})...")
         try:
             selected_files = resolve_hf_gguf_files(HF_REPO, FILE_PATTERN, HF_TOKEN)
@@ -8038,7 +8537,7 @@ def run_remote_vm_main():
     if not already_running:
         mtp_candidates = [mtp_gguf, None] if mtp_gguf else [None]
         for attempt_mtp in mtp_candidates:
-            subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+            subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
 
             weights_gb = sum(
                 os.path.getsize(p) / (1024 ** 3)
@@ -8546,11 +9045,15 @@ def run_local_proxy_daemon(port: int = 30000):
             # 1. 兼容客户端把 /v1 重复拼接成 /v1/v1/... 的情况
             while req_path.startswith("/v1/v1/"):
                 req_path = "/v1/" + req_path[len("/v1/v1/"):]
-            # 2. 兼容用户在浏览器直接打开 http://127.0.0.1:30000/v1 或 http://127.0.0.1:30000 测试连通性
-            if self.command == "GET" and req_path.rstrip("/") in ("", "/v1"):
+            # 2. 兼容浏览器打开 http://127.0.0.1:30000/：若当前运行 GLM-5.3 Project Maya 且浏览器请求 HTML，直接透传 Maya Web 监控/对话台；否则返回 /v1/models
+            accept_hdr = (self.headers.get("Accept") or "").lower()
+            is_maya_active = "glm-5.3" in f"{cfg.get('model_folder') or ''} {cfg.get('model_id') or ''}".lower()
+            if self.command == "GET" and req_path.rstrip("/") == "/v1":
                 req_path = "/v1/models"
-            # 3. 兼容未带 /v1 前缀直接请求 /chat/completions、/models、/completions、/embeddings 的客户端
-            elif any(req_path.startswith(p) for p in ("/chat/completions", "/models", "/completions", "/embeddings")):
+            elif self.command == "GET" and req_path in ("", "/"):
+                req_path = "/" if (is_maya_active and "text/html" in accept_hdr) else "/v1/models"
+            # 3. 兼容未带 /v1 前缀直接请求 OpenAI / Anthropic / Responses 路径的客户端
+            elif any(req_path.startswith(p) for p in ("/chat/completions", "/models", "/completions", "/embeddings", "/messages", "/responses")):
                 req_path = "/v1" + req_path
 
             target_url = f"{upstream}{req_path}"
@@ -8561,9 +9064,11 @@ def run_local_proxy_daemon(port: int = 30000):
                 if k.lower() not in ("host", "content-length", "transfer-encoding", "connection", "authorization")
             }
             fwd_headers["User-Agent"] = "ColabLocalGateway/1.0"
-            # 本机回环网关 (127.0.0.1:30000) 自动注入当前生效的 API Key，免除客户端漏填/填错导致的 401 报错
+            # 本机回环网关 (127.0.0.1:30000) 自动注入当前生效的 API Key，同时兼容 OpenAI Bearer 与 Claude Code x-api-key
             api_key = cfg.get("api_key") or "sk-colab-ed28e54eb298d0c1"
             fwd_headers["Authorization"] = f"Bearer {api_key}"
+            if "x-api-key" in {k.lower() for k in fwd_headers}:
+                fwd_headers = {k: (api_key if k.lower() == "x-api-key" else v) for k, v in fwd_headers.items()}
 
             opener_direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             opener_sys = urllib.request.build_opener()
@@ -8604,7 +9109,10 @@ def run_local_proxy_daemon(port: int = 30000):
                     self.send_header("Connection", "close")
                     self.end_headers()
                     while True:
-                        chunk = resp.read(4096 if is_chunked else 262144)
+                        if is_chunked and hasattr(resp, "read1"):
+                            chunk = resp.read1(4096)
+                        else:
+                            chunk = resp.read(4096 if is_chunked else 262144)
                         if not chunk:
                             break
                         self.wfile.write(chunk)
@@ -8612,6 +9120,18 @@ def run_local_proxy_daemon(port: int = 30000):
                             self.wfile.flush()
                     self.wfile.flush()
             except urllib.error.HTTPError as he:
+                # 兼容 Claude Code 调用 /v1/messages/count_tokens 时部分引擎返回 404 的情况：自动本地平滑估算，避免客户端报错
+                if he.code == 404 and req_path.split("?")[0] == "/v1/messages/count_tokens":
+                    est_toks = max(1, len(req_body or b"") // 3)
+                    ok_body = json.dumps({"input_tokens": est_toks}).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Content-Length", str(len(ok_body)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(ok_body)
+                    return
                 err_body = he.read()
                 self.send_response(he.code)
                 self.send_header("Content-Type", he.headers.get("Content-Type", "application/json"))
@@ -8826,35 +9346,69 @@ def run_local_wizard():
     def _allocate_colab_session(sess_id: str) -> None:
         import random
         target_gpu = (args.gpu or "G4").upper()
+        base_delays = (20, 30, 45, 60, 90)
         attempt = 0
+        hard_stop_re = re.compile(
+            r"Allocation refused|precondition failed|Backend rejected|TooManyAssignmentsError|"
+            r"Too Many Requests|Unauthorized|Forbidden|not entitled|no quota|insufficient|"
+            r"invalid_grant|token.*expired|HTTP[^0-9]*(401|403|429)",
+            re.IGNORECASE,
+        )
         while True:
             attempt += 1
             if attempt == 1:
                 print(f"\n-> 正在申请分配 Google Colab {target_gpu} 实例 '{sess_id}'...", flush=True)
             else:
                 print(f"\n🔄 [持续抢卡 · 第 {attempt} 次尝试] 正在申请 Google Colab {target_gpu} 实例 '{sess_id}'...", flush=True)
-            res_new = subprocess.run([colab_bin, "new", "-s", sess_id, "--gpu", target_gpu], check=False)
-            if res_new.returncode == 0:
+            alloc_env = os.environ.copy()
+            alloc_env["COLAB_CLI_ASSIGN_RETRIES"] = "0"
+            res_new = subprocess.run(
+                [colab_bin, "new", "-s", sess_id, "--gpu", target_gpu],
+                capture_output=True,
+                text=True,
+                env=alloc_env,
+                check=False,
+            )
+            comb_out = ((res_new.stdout or "") + "\n" + (res_new.stderr or "")).strip()
+            if comb_out:
+                print(comb_out, flush=True)
+            if res_new.returncode == 0 and not re.search(r"Error:|Traceback|Service Unavailable|Allocation refused|Backend rejected", comb_out, re.IGNORECASE):
                 if attempt > 1:
                     print(f"\n🎉 [抢卡成功] 经过 {attempt} 次尝试，已成功分配到 Google Colab {target_gpu} 实例！", flush=True)
                 return
-            if args.retry_until_ready:
-                wait_s = random.randint(12, 18)
+            clean_err = re.sub(r"\s+", " ", "\n".join(ln for ln in comb_out.splitlines() if not ln.lstrip().startswith(("╭", "│", "╰"))))
+            if hard_stop_re.search(clean_err):
                 print(
-                    f"\n⏳ [持续抢卡 · 第 {attempt} 次未分配到 {target_gpu}] 当前算力池暂满，{wait_s} 秒后自动重试（可随时点击面板「🛑 停止当前任务」取消等待）...",
+                    f"\n🛑 [风控保护硬停] Colab 返回权限/配额/会话上限或限流错误，为避免触发风控已立即停止重试。\n"
+                    f"   👉 请检查当前账户算力余额、是否已有未释放会话，或切换其他账户后重试！",
+                    flush=True,
+                )
+                save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": False})
+                sys.exit(2)
+            if args.retry_until_ready:
+                base_d = base_delays[min(attempt - 1, len(base_delays) - 1)]
+                wait_s = max(12, base_d + random.randint(-4, 4))
+                print(
+                    f"\n⏳ [持续抢卡 · 第 {attempt} 次未分配到 {target_gpu}] 当前算力池暂满 (503/拥堵)，{wait_s} 秒后自动退避重试（可随时点击面板「🛑 停止当前任务」取消等待）...",
                     flush=True,
                 )
                 time.sleep(wait_s)
                 continue
             print(
                 f"\n❌ [GPU_ALLOC_FAILED:{target_gpu}] 当前账户无法分配 {target_gpu} 实例（Colab 服务端返回无 {target_gpu} 权限或算力池暂无空闲）。\n"
-                f"   👉 请在控制台弹出的选择框中自主选择：重试 {target_gpu}、勾选「一直开直到开到为止」、改用其他 GPU (H100 / A100 / L4 / T4)、或切换其他算力账户！",
+                f"   👉 请在控制台弹出的选择框中自主选择：重试 {target_gpu}、勾选「一直开直到开到为止」、改用其他 GPU (H100 / A100 / L4)、或切换其他算力账户！",
                 flush=True,
             )
             save_local_endpoint_config({"last_activity_ts": time.time(), "deploying": False})
             sys.exit(2)
 
-    g4_only_set = {"Huihui-Qwen3.8-27B-abliterated-GGUF", "MiniMax-H3", "MiniMax-H3-Ref2VA", "MiniMax-H3-Image"}
+    if sys.platform == "darwin" and shutil.which("caffeinate"):
+        try:
+            subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+    g4_only_set = {"Huihui-Qwen3.8-27B-abliterated-GGUF", "GLM-5.3-Flash-4.05bpw", "MiniMax-H3", "MiniMax-H3-Ref2VA", "MiniMax-H3-Image"}
     if f"[{session_name}]" not in sess_out and session_name not in sess_out:
         _allocate_colab_session(session_name)
     elif "Hardware: T4" in sess_out and (args.gpu or "G4").upper() != "T4" and model_folder in g4_only_set:

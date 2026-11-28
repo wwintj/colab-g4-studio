@@ -1584,7 +1584,7 @@ for key, root_p in [("local_files", "/dev/shm/local_models"), ("drive_files", "/
         res[key] = items
 
 res["sync_running"] = bool(subprocess.getoutput("pgrep -af '[c]p -rn|[r]clone copy'").strip())
-llama_proc = subprocess.getoutput("pgrep -af '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py'").strip()
+llama_proc = subprocess.getoutput("pgrep -af '[l]lama-server|project-maya/serve/server\\.py|build/maya|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py'").strip()
 res["llama_running"] = bool(llama_proc)
 m_k = re.search(r"--api-key\\s+(\\S+)", llama_proc)
 if m_k:
@@ -1604,7 +1604,7 @@ except Exception:
 try:
     mtimes = [
         float(os.path.getmtime(p))
-        for p in ("/content/llama_server.log", "/content/minimax_server.log", "/content/recavsr_server.log")
+        for p in ("/content/llama_server.log", "/content/maya_server.log", "/content/minimax_server.log", "/content/recavsr_server.log")
         if os.path.exists(p)
     ]
     if mtimes:
@@ -1876,7 +1876,9 @@ def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = ""
     """根据当前活跃模型异步非阻塞拉取对应远端服务日志尾部（stale-while-revalidate，绝不卡顿 /api/logs 响应）"""
     now_ts = time.time()
     hint_low = str(active_hint or "").lower()
-    if "indextts" in hint_low:
+    if "glm-5.3" in hint_low:
+        order = ("maya_server.log", "llama_server.log", "minimax_server.log", "minimax_image_server.log")
+    elif "indextts" in hint_low:
         order = ("indextts2_server.log", "minimax_server.log", "longcat_avatar_server.log", "llama_server.log")
     elif "minimax-h3-image" in hint_low:
         order = ("minimax_image_server.log", "minimax_server.log", "llama_server.log", "longcat_avatar_server.log")
@@ -2111,7 +2113,9 @@ def _query_live_llama_status(cfg: Dict[str, Any], remote_lines: List[str], force
     cache_hit_pct = round((tot_cache * 100.0) / max(1, tot_cache + tot_prompt)) if (tot_cache + tot_prompt) > 0 else 0
 
     model_short = str(cfg.get("model_folder") or cfg.get("model_id") or "Qwen3.8-27B").split("/")[-1]
-    if "qwen3.8" in model_short.lower():
+    if "glm-5.3" in model_short.lower():
+        model_short = "GLM-5.3-Flash (321B · 4.05bpw)"
+    elif "qwen3.8" in model_short.lower():
         model_short = "Qwen3.8-27B (BF16)"
 
     res = {
@@ -2169,7 +2173,9 @@ def _check_active_llama_shield(payload: Dict[str, Any], action_desc: str) -> Opt
 def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu: str, download_only: bool = False, retry_until_ready: bool = False):
     g4_only_folders = {
         "Huihui-Qwen3.8-27B-abliterated-GGUF",
+        "GLM-5.3-Flash-4.05bpw",
         "MiniMax-H3",
+        "MiniMax-H3-Ref2VA",
         "MiniMax-H3-Image",
     }
     auto_switched_note = ""
@@ -2873,11 +2879,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
 <!-- OpenAI 兼容 API 接入参数弹窗 (点击顶部「🔗 API」按钮弹出) -->
 <div id="apiConfigModal" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,0.76);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px;">
-  <div style="width:100%;max-width:720px;background:#1e293b;border:1px solid rgba(168,85,247,0.5);border-radius:16px;padding:18px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.75);">
+  <div style="width:100%;max-width:760px;background:#1e293b;border:1px solid rgba(168,85,247,0.5);border-radius:16px;padding:18px 22px;box-shadow:0 24px 60px rgba(0,0,0,0.75);">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);flex-wrap:nowrap;">
       <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-        <span style="font-size:15.5px;font-weight:800;color:#f8fafc;white-space:nowrap;">🔗 OpenAI 兼容 API 接入参数</span>
-        <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap;">客户端直接填</span>
+        <span style="font-size:15.5px;font-weight:800;color:#f8fafc;white-space:nowrap;">🔗 OpenAI &amp; Claude Code (Anthropic) API 接入</span>
+        <span style="font-size:11.5px;color:#94a3b8;white-space:nowrap;">本机客户端直连</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
         <span id="llamaBadgeModal" class="badge offline" style="font-size:11.5px;white-space:nowrap;flex-shrink:0;">⚪ 推理引擎已关机</span>
@@ -2885,28 +2891,46 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;">
-      <span class="kv-label" style="width:auto;white-space:nowrap;">本机永久固定 URL</span>
+    <div class="kv-row" style="display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:12px;">
+      <span class="kv-label" style="width:auto;white-space:nowrap;">OpenAI Base URL</span>
       <span class="kv-val" id="fixedUrl" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">http://127.0.0.1:30000/v1</span>
       <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('fixedUrl')">复制</button>
     </div>
 
-    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;">
+    <div class="kv-row" style="display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:12px;">
+      <span class="kv-label" style="width:auto;white-space:nowrap;color:#c084fc;">Anthropic (Claude Code)</span>
+      <span class="kv-val" id="anthropicUrl" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">http://127.0.0.1:30000</span>
+      <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('anthropicUrl')">复制</button>
+    </div>
+
+    <div class="kv-row" style="display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:12px;">
       <span class="kv-label" style="width:auto;white-space:nowrap;">公网临时 Tunnel</span>
       <span class="kv-val" id="tunnelUrl" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">--</span>
       <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('tunnelUrl')">复制</button>
     </div>
 
-    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;">
+    <div class="kv-row" style="display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:12px;">
       <span class="kv-label" style="width:auto;white-space:nowrap;">永久固定 API Key</span>
       <span class="kv-val" id="apiKey" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">sk-colab-ed28e54eb298d0c1</span>
       <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('apiKey')">复制</button>
     </div>
 
-    <div class="kv-row" style="display:grid;grid-template-columns:126px minmax(0,1fr) auto;align-items:center;gap:12px;margin-bottom:0;">
+    <div class="kv-row" style="display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:12px;margin-bottom:12px;">
       <span class="kv-label" style="width:auto;white-space:nowrap;">Model ID (模型名)</span>
       <span class="kv-val" id="modelId" style="font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF</span>
       <button class="btn-outline" style="padding:4px 12px;font-size:12px;white-space:nowrap;" onclick="copyText('modelId')">复制</button>
+    </div>
+
+    <div style="padding:10px 12px;border-radius:10px;background:#0f172a;border:1px solid rgba(168,85,247,0.38);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <span style="font-size:12px;font-weight:800;color:#e9d5ff;">⚡ 外部客户端一键命令（运行 GLM-5.3-Flash 321B / Qwen3.8 时直接终端运行）</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="btn-outline" style="padding:3px 10px;font-size:11.5px;border-color:#a855f7;color:#e9d5ff;" onclick="copyClientSnippet('claude')">🤖 复制 Claude Code 启动命令</button>
+          <button type="button" class="btn-outline" style="padding:3px 10px;font-size:11.5px;border-color:#3b82f6;color:#93c5fd;" onclick="copyClientSnippet('openai')">⚙️ 复制 OpenAI / Codex 环境变量</button>
+          <a href="http://127.0.0.1:30000/" target="_blank" rel="noopener" class="btn-outline" style="padding:3px 10px;font-size:11.5px;text-decoration:none;border-color:#10b981;color:#6ee7b7;">🌐 Maya 监控台</a>
+        </div>
+      </div>
+      <pre id="claudeCodeSnippet" style="margin:0;padding:8px 10px;border-radius:7px;background:#020617;border:1px solid #334155;color:#cbd5e1;font-family:'SF Mono',Menlo,monospace;font-size:11.5px;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">ANTHROPIC_BASE_URL="http://127.0.0.1:30000" ANTHROPIC_AUTH_TOKEN="sk-colab-ed28e54eb298d0c1" ANTHROPIC_MODEL="glm-5.3-flash-uncensored-4.05bpw" claude</pre>
     </div>
   </div>
 </div>
@@ -2922,14 +2946,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <div id="gpuChoiceModalReason" style="display:none;font-size:12px;color:#fde68a;line-height:1.5;margin-bottom:12px;padding:9px 11px;border-radius:8px;background:rgba(245,158,11,0.16);border:1px solid rgba(245,158,11,0.48);"></div>
 
     <!-- 本次开机加载模型快捷选择 -->
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border-radius:9px;background:#0f172a;border:1px solid var(--border);">
-      <span style="font-size:12px;font-weight:700;color:#94a3b8;white-space:nowrap;">📦 开机加载模型</span>
-      <select id="bootModelSelect" onchange="onBootModelSelectChange(this.value)" style="flex:1;height:28px;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#f8fafc;font-size:12.5px;font-weight:700;cursor:pointer;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;border-radius:9px;background:#0f172a;border:1px solid var(--border);min-width:0;overflow:hidden;">
+      <span style="font-size:12px;font-weight:700;color:#94a3b8;white-space:nowrap;flex-shrink:0;">📦 开机加载模型</span>
+      <select id="bootModelSelect" onchange="onBootModelSelectChange(this.value)" style="flex:1 1 0;min-width:0;width:0;max-width:100%;height:28px;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#f8fafc;font-size:12.5px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;">
         <option value="MiniMax-H3-Image">📸 [卡片01 · 4K生图/换装] MiniMax-H3-Image (45 GB · 开机最快)</option>
         <option value="MiniMax-H3">🎬 [卡片02/03 · 文生/首尾帧] MiniMax-H3 FL2VA (134 GB · 无审查)</option>
         <option value="MiniMax-H3-Ref2VA">🕺 [卡片06 · 白模/动作迁移] MiniMax-H3 Ref2VA (无审查)</option>
         <option value="LongCat-Video-Avatar-1.6">🎭 [卡片04 · 数字人说话] LongCat-Avatar-1.6 (59 GB)</option>
-        <option value="Huihui-Qwen3.8-27B-abliterated-GGUF">🧠 [写提示词] Qwen3.8-27B 无审查对话 (53 GB)</option>
+        <option value="Huihui-Qwen3.8-27B-abliterated-GGUF">🧠 [写提示词 · 快启] Qwen3.8-27B 无审查对话 (53 GB)</option>
+        <option value="GLM-5.3-Flash-4.05bpw">⚡ [旗舰大脑 · 写词/看图/Claude] GLM-5.3-Flash 321B (154 GB)</option>
         <option value="CURRENT">⚙️ 保持当前模型管理中已选模型</option>
       </select>
     </div>
@@ -3209,11 +3234,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span>☁️ 云盘</span>
         <span id="driveVal" style="color:#f8fafc;font-family:'SF Mono',Menlo,monospace;font-size:11px;font-weight:800;overflow:hidden;text-overflow:ellipsis;">-- / -- GB</span>
       </span>
-      <span id="syncBadge" class="t-head-meta" style="color:var(--green);max-width:72px;">--</span>
+      <span id="syncBadge" class="t-head-meta" style="color:var(--green);flex-shrink:0;white-space:nowrap;">--</span>
       <span id="driveSub" style="display:none;"></span>
     </div>
     <div class="t-bar" style="margin-top:0;"><div class="progress-fill amber" id="driveBar" style="width:0%"></div></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;margin-top:2px;min-width:0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:2px;min-width:0;">
       <div style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;min-width:0;">
         <span style="font-size:10.5px;color:var(--muted);">休眠<small id="idleElapsedHint" style="color:#64748b;margin-left:2px;"></small></span>
         <select id="idleSelect" class="cu-select" onchange="updateIdleConfig()" style="padding:1px 5px;font-size:10.5px;height:22px;">
@@ -3224,7 +3249,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <option value="0">从不</option>
         </select>
       </div>
-      <button class="btn-release-all" onclick="stopColab()" id="btnReleaseAll" style="padding:2px 8px;font-size:10.5px;height:22px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:138px;">
+      <button class="btn-release-all" onclick="stopColab()" id="btnReleaseAll" style="padding:2px 9px;font-size:10.5px;height:22px;white-space:nowrap;flex-shrink:0;">
         ⏻ 释放实例
       </button>
     </div>
@@ -3234,22 +3259,31 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <div class="grid-2" style="align-items:stretch;">
   <div class="card" style="display:flex;flex-direction:column;">
     <h2 style="margin-bottom:10px;">
-      <span>🧠 Qwen3.8-27B 无审查提示词扩写 &amp; 对话</span>
+      <span id="llmChatCardTitle">🧠 无审查旗舰大脑 · 提示词扩写 / 看图反推 &amp; 对话</span>
       <span id="llamaBadge" class="badge offline" style="font-size:11px">⚪ 推理引擎已关机</span>
     </h2>
 
     <div style="flex:1;position:relative;min-height:380px;">
       <div style="position:absolute;inset:0;display:flex;flex-direction:column;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;flex-shrink:0;">
-          <label style="font-size:12.5px;font-weight:700;color:#f8fafc;">💬 输入你想生成的视频想法 (自动扩写下方四项提示词)：</label>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <label style="font-size:12.5px;font-weight:700;color:#f8fafc;">💬 输入想法或附图反推：</label>
+            <button type="button" class="btn-outline" style="padding:3px 9px;font-size:11.5px;border-color:rgba(168,85,247,0.55);color:#e9d5ff;white-space:nowrap;" onclick="document.getElementById('chatImgInput').click()" title="上传或直接在输入框按 ⌘V 粘贴参考图（GLM-5.3-Flash 支持看图反推 H3 提示词）">🖼️ 附图反推</button>
+            <input type="file" id="chatImgInput" accept="image/*" style="display:none;" onchange="handleChatImgPick(this.files)">
+            <span id="chatImgPreviewWrap" style="display:none;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;background:rgba(168,85,247,0.16);border:1px solid rgba(168,85,247,0.5);font-size:11px;color:#e9d5ff;">
+              <img id="chatImgThumb" src="" alt="" style="width:18px;height:18px;border-radius:4px;object-fit:cover;">
+              <span id="chatImgName" style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">已附图</span>
+              <span onclick="clearChatImg()" style="cursor:pointer;color:#fca5a5;font-weight:800;" title="移除参考图">✕</span>
+            </span>
+          </div>
           <div style="display:flex;gap:6px;flex-wrap:nowrap;">
             <button class="btn-primary" style="padding:5px 11px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(true)" id="btnExpand4">✨ 生成四项提示词并填入下方</button>
             <button class="btn-outline" style="padding:5px 10px;font-size:12px;border-color:#3b82f6;color:#93c5fd;white-space:nowrap;" onclick="copyChatToVideoPrompt()">📋 重新填入下方四框</button>
             <button class="btn-outline" style="padding:5px 10px;font-size:12px;white-space:nowrap;" onclick="sendTestChat(false)" id="btnChat">💬 普通对话</button>
           </div>
         </div>
-        <textarea id="chatPrompt" rows="5" placeholder="直接用中文写你想生成什么样的视频，例如：赛博朋克雨夜东京街头，穿透明雨衣的少女走向镜头..." style="flex:1.15 1 0;min-height:110px;width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
-        <div class="chat-out" id="chatOutput" style="flex:1 1 0;min-height:120px;max-height:none;overflow-y:auto;font-size:12px;line-height:1.55;margin-top:10px;">输入视频想法后点击「✨ 生成四项提示词并填入下方」，Qwen3.8 会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并直接填进下方四个框！</div>
+        <textarea id="chatPrompt" rows="5" placeholder="用中文写视频想法，或点「🖼️ 附图反推」/ 直接 ⌘V 粘贴参考图让 GLM-5.3-Flash (321B) / Qwen3.8 自动反推并扩写四项提示词..." style="flex:1.15 1 0;min-height:110px;width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:#0f172a;color:#f8fafc;font-size:13px;line-height:1.5;resize:vertical;"></textarea>
+        <div class="chat-out" id="chatOutput" style="flex:1 1 0;min-height:120px;max-height:none;overflow-y:auto;font-size:12px;line-height:1.55;margin-top:10px;">输入想法或贴参考图后点击「✨ 生成四项提示词并填入下方」，当前大脑（GLM-5.3-Flash 321B / Qwen3.8-27B）会自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】并填入下方四个框！</div>
       </div>
     </div>
   </div>
@@ -3269,7 +3303,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     </div>
     <div id="modelManagerBody" style="display:flex;flex-direction:column;flex:1;opacity:0.52;transition:opacity 0.2s;">
 
-    <!-- G4 96GB 满血模型专区 -->
+    <!-- G4 96GB 满血模型专区（4×2 对称布局） -->
     <div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:8px;margin-bottom:10px;" id="presetModelGrid">
       <div class="folder-tag preset-card" id="preset_qwen_bf16" onclick="selectPresetModel('preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf')" style="margin:0;padding:8px 10px;border-color:#3b82f6;background:rgba(59,130,246,0.14);justify-content:space-between;min-width:0;">
         <div style="min-width:0;">
@@ -3277,6 +3311,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">BF16 原生 + MTP加速 · 53.1 GB</div>
         </div>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;flex-shrink:0;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_glm53_405" onclick="selectPresetModel('preset_glm53_405', 'MikeRoz/GLM-5.3-Flash-Uncensored-4.05bpw-h6-exl3', 'GLM-5.3-Flash-4.05bpw', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#fde68a;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">⚡ GLM-5.3-Flash (321B·无审查)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">EXL3 4.05bpw + 视觉/Claude · 154 GB</div>
+        </div>
+        <span class="preset-check" style="color:#f59e0b;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
       <div class="folder-tag preset-card" id="preset_minimax_h3" onclick="selectPresetModel('preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
@@ -3317,6 +3359,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
           <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FP16 + Qwen情绪 · ~8.0 GB (克隆/控时长)</div>
         </div>
         <span class="preset-check" style="color:#a855f7;font-weight:700;display:none;flex-shrink:0;">✔</span>
+      </div>
+
+      <div class="folder-tag preset-card" id="preset_g4_recavsr" onclick="selectPresetModel('preset_g4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#6ee7b7;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✨ ReCaVSR (2K/4K 视频超分)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Wan2.2-5B 单步超分 · 10.1 GB</div>
+        </div>
+        <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
     </div>
 
@@ -5630,6 +5680,34 @@ function copyText(id) {
   alert('已复制: ' + txt);
 }
 
+function getEffectiveClientModelName() {
+  const raw = ((document.getElementById('modelId') || {}).innerText || '').trim();
+  if (/glm-5\.3/i.test(raw)) {
+    if (raw.includes('2.51')) return 'glm-5.3-flash-uncensored-2.51bpw';
+    if (raw.includes('3.05')) return 'glm-5.3-flash-uncensored-3.05bpw';
+    return 'glm-5.3-flash-uncensored-4.05bpw';
+  }
+  return raw || 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF';
+}
+
+function updateClientSnippets() {
+  const pre = document.getElementById('claudeCodeSnippet');
+  if (!pre) return;
+  const key = ((document.getElementById('apiKey') || {}).innerText || 'sk-colab-ed28e54eb298d0c1').trim();
+  const mdl = getEffectiveClientModelName();
+  pre.innerText = `ANTHROPIC_BASE_URL="http://127.0.0.1:30000" ANTHROPIC_AUTH_TOKEN="${key}" ANTHROPIC_MODEL="${mdl}" claude`;
+}
+
+function copyClientSnippet(kind) {
+  const key = ((document.getElementById('apiKey') || {}).innerText || 'sk-colab-ed28e54eb298d0c1').trim();
+  const mdl = getEffectiveClientModelName();
+  const txt = kind === 'claude'
+    ? `ANTHROPIC_BASE_URL="http://127.0.0.1:30000" ANTHROPIC_AUTH_TOKEN="${key}" ANTHROPIC_MODEL="${mdl}" claude`
+    : `export OPENAI_BASE_URL="http://127.0.0.1:30000/v1"\nexport OPENAI_API_KEY="${key}"\nexport OPENAI_MODEL="${mdl}"`;
+  navigator.clipboard.writeText(txt);
+  alert((kind === 'claude' ? '已复制 Claude Code 启动命令：\n' : '已复制 OpenAI / Codex 环境变量：\n') + txt);
+}
+
 const savedDriveFolders = new Set(['Huihui-Qwen3.8-27B-abliterated-GGUF', 'MiniMax-H3', 'ReCaVSR']);
 let lastDriveFoldersRaw = [];
 let currentPresetTier = 'g4';
@@ -5666,6 +5744,7 @@ function renderGroupedDriveFolders(folders, updateButtons = true) {
   });
   const displayFolderNameMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B-GGUF',
+    'GLM-5.3-Flash-4.05bpw': 'GLM-5.3-Flash (4.05bpw)',
     'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
     'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar-INT8',
   };
@@ -5714,6 +5793,7 @@ function syncDriveFolderHighlight(folderName, rerenderList = true) {
   });
   const shortMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B',
+    'GLM-5.3-Flash-4.05bpw': 'GLM-5.3 (4.05bpw)',
     'MiniMax-H3': 'MiniMax-H3',
     'MiniMax-H3-Image': 'H3-Image 4K',
     'LongCat-Video-Avatar-1.6': 'LongCat-Avatar',
@@ -5758,6 +5838,11 @@ function selectPresetModel(cardId, repo, folder, pattern, keepCurrentTab = false
   document.getElementById('inpRepo').value = repo;
   document.getElementById('inpFolder').value = folder;
   document.getElementById('inpPattern').value = pattern;
+  const ctxEl = document.getElementById('inpCtx');
+  if (ctxEl) {
+    if (folder.startsWith('GLM-5.3-Flash')) ctxEl.value = 131072;
+    else if (folder === 'Huihui-Qwen3.8-27B-abliterated-GGUF') ctxEl.value = 262144;
+  }
   document.querySelectorAll('.preset-card').forEach(el => {
     const active = el.id === cardId;
     el.style.borderColor = active ? '#3b82f6' : 'var(--border)';
@@ -5786,6 +5871,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
   }
   const repoMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
+    'GLM-5.3-Flash-4.05bpw': 'MikeRoz/GLM-5.3-Flash-Uncensored-4.05bpw-h6-exl3',
     'MiniMax-H3': 'MiniMaxAI/MiniMax-H3',
     'MiniMax-H3-Ref2VA': 'MiniMaxAI/MiniMax-H3',
     'MiniMaxAI': 'MiniMaxAI/MiniMax-H3',
@@ -5802,6 +5888,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
   };
   const cardMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'preset_qwen_bf16',
+    'GLM-5.3-Flash-4.05bpw': 'preset_glm53_405',
     'MiniMax-H3': 'preset_minimax_h3',
     'MiniMax-H3-Ref2VA': 'preset_minimax_ref2va',
     'MiniMaxAI': 'preset_minimax_h3',
@@ -5813,11 +5900,12 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'Qwen3-14B-T4-Q6': 'preset_t4_qwen14b',
     'Qwen3-VL-8B-T4-Q8': 'preset_t4_qwenvl8b',
     'MiniMax-H3-T4-GGUF': 'preset_t4_minimax_h3',
-    'ReCaVSR': 'preset_t4_recavsr',
+    'ReCaVSR': 'preset_g4_recavsr',
     'IndexTTS-2': 'preset_g4_indextts2',
   };
   const patternMap = {
     'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf',
+    'GLM-5.3-Flash-4.05bpw': '*.safetensors',
     'MiniMax-H3': 'FL2VA/*.safetensors',
     'MiniMax-H3-Ref2VA': 'Ref2VA/*.safetensors',
     'MiniMax-H3-Image': '*.safetensors',
@@ -5831,6 +5919,11 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'ReCaVSR': '*.pth',
     'IndexTTS-2': '*.pth',
   };
+  const ctxEl2 = document.getElementById('inpCtx');
+  if (ctxEl2) {
+    if (folderName.startsWith('GLM-5.3-Flash')) ctxEl2.value = 131072;
+    else if (folderName === 'Huihui-Qwen3.8-27B-abliterated-GGUF') ctxEl2.value = 262144;
+  }
   if (repoMap[folderName]) {
     document.getElementById('inpRepo').value = repoMap[folderName];
   }
@@ -5863,6 +5956,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
 }
 
 function openApiConfigModal() {
+  updateClientSnippets();
   const m = document.getElementById('apiConfigModal');
   if (m) m.style.display = 'flex';
 }
@@ -6027,6 +6121,7 @@ async function refreshStatus(force = false) {
     document.getElementById('apiKey').innerText = d.endpoint_cfg.api_key || 'sk-colab-ed28e54eb298d0c1';
     document.getElementById('modelId').innerText = d.endpoint_cfg.model_id || 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF';
     document.getElementById('tunnelUrl').innerText = d.endpoint_cfg.tunnel_url ? (d.endpoint_cfg.tunnel_url + '/v1') : '--';
+    updateClientSnippets();
     if (!window._autoModeInit && d.endpoint_cfg && d.endpoint_cfg.model_folder) {
       window._autoModeInit = true;
       const mf = String(d.endpoint_cfg.model_folder);
@@ -6117,6 +6212,8 @@ async function refreshStatus(force = false) {
     const friendlyModelMap = {
       'Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B(无审查)',
       'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF': 'Qwen3.8-27B(无审查)',
+      'GLM-5.3-Flash-4.05bpw': 'GLM-5.3-Flash(321B·4.05bpw)',
+      'MikeRoz/GLM-5.3-Flash-Uncensored-4.05bpw-h6-exl3': 'GLM-5.3-Flash(321B·4.05bpw)',
       'Qwen3.8-27B-T4-Q3': 'Qwen3.8-27B(T4)',
       'Qwen3.8-27B-T4-MTP': 'Qwen3.8-27B(MTP)',
       'Qwen3-14B-T4-Q6': 'Qwen3-14B(Q6)',
@@ -6138,6 +6235,16 @@ async function refreshStatus(force = false) {
     };
     const folderShort = rawFolder.split('/').pop();
     const activeModelDisplay = friendlyModelMap[rawFolder] || friendlyModelMap[folderShort] || folderShort || 'Qwen3.8-27B(无审查)';
+    const chatTitleEl = document.getElementById('llmChatCardTitle');
+    if (chatTitleEl) {
+      if (/glm-5\.3/i.test(rawFolder)) {
+        chatTitleEl.innerText = '⚡ GLM-5.3-Flash (321B · 无审查) 看图反推 / 扩写 & 对话';
+      } else if (/qwen3\.8/i.test(rawFolder)) {
+        chatTitleEl.innerText = '🧠 Qwen3.8-27B 无审查提示词扩写 & 对话';
+      } else {
+        chatTitleEl.innerText = '🧠 无审查旗舰大脑 · 提示词扩写 / 看图反推 & 对话';
+      }
+    }
     if (d.sessions && d.sessions.length > 0) {
       isInstanceOnline = true;
       isPowerBtnUnlocked = true;
@@ -6145,7 +6252,8 @@ async function refreshStatus(force = false) {
       badge.className = 'badge online';
       badge.innerText = `🟢 运行中: ${activeModelDisplay}`;
       if (relBtn) {
-        relBtn.innerText = `⏻ 释放 (${activeModelDisplay})`;
+        relBtn.innerText = '⏻ 释放实例';
+        relBtn.title = `关闭并释放当前实例: ${activeModelDisplay}`;
         relBtn.style.borderColor = 'rgba(239,68,68,0.5)';
         relBtn.style.color = '#fca5a5';
       }
@@ -6162,7 +6270,8 @@ async function refreshStatus(force = false) {
       document.getElementById('cuBurnRate').style.color = 'var(--muted)';
       document.getElementById('cuUptime').innerText = '00:00:00';
       if (relBtn) {
-        relBtn.innerText = '✅ 已释放 (0.00 CU/h)';
+        relBtn.innerText = '✅ 已释放';
+        relBtn.title = '当前已关机 (0.00 CU/h)';
         relBtn.style.borderColor = 'var(--border)';
         relBtn.style.color = '#10b981';
       }
@@ -6227,7 +6336,11 @@ async function refreshStatus(force = false) {
         document.getElementById('driveVal').innerText = `${m.disk_drive.used_gb} / ${m.disk_drive.total_gb} GB`;
         document.getElementById('driveSub').innerText = `剩余可用: ${m.disk_drive.free_gb} GB (${m.disk_drive.pct}%)`;
         document.getElementById('driveBar').style.width = `${Math.min(100, m.disk_drive.pct)}%`;
-        document.getElementById('syncBadge').innerText = m.sync_running ? '⏳ 正在往云盘同步...' : '✅ 已挂载 (同步完成)';
+        const sb1 = document.getElementById('syncBadge');
+        if (sb1) {
+          sb1.innerText = m.sync_running ? '⏳ 同步中' : '✅ 已挂载';
+          sb1.title = m.sync_running ? '正在往 Google Drive 同步权重...' : '已挂载 Google Drive (同步完成)';
+        }
       } else if (!(d.gdrive_info && d.gdrive_info.bound)) {
         document.getElementById('driveVal').innerText = '未挂载';
         document.getElementById('syncBadge').innerText = '未挂载';
@@ -6277,12 +6390,21 @@ async function refreshStatus(force = false) {
     const gd = d.gdrive_info;
     if (gd && gd.bound) {
       if (gd.quota) {
-        const totLabel = gd.quota.total_gb >= 1024 ? `${gd.quota.total_gb} GB (${Math.round(gd.quota.total_gb / 1024)}TB)` : `${gd.quota.total_gb} GB`;
-        document.getElementById('driveVal').innerText = `${gd.quota.used_gb} / ${totLabel}`;
+        const dvEl = document.getElementById('driveVal');
+        const totLabel = gd.quota.total_gb >= 1024 ? `${Math.round(gd.quota.total_gb / 1024)}TB` : `${gd.quota.total_gb} GB`;
+        const usedLabel = gd.quota.total_gb >= 1024 ? `${Number(gd.quota.used_gb).toFixed(1)}G` : `${gd.quota.used_gb}`;
+        if (dvEl) {
+          dvEl.innerText = `${usedLabel} / ${totLabel}`;
+          dvEl.title = `已用 ${gd.quota.used_gb} GB / 总计 ${gd.quota.total_gb} GB (${totLabel}) · 剩余 ${gd.quota.free_gb} GB`;
+        }
         document.getElementById('driveSub').innerText = `剩余可用: ${gd.quota.free_gb} GB (${gd.quota.pct}%)`;
         document.getElementById('driveBar').style.width = `${Math.min(100, gd.quota.pct)}%`;
       }
-      document.getElementById('syncBadge').innerText = isInstanceOnline ? '✅ 已挂载 (永久免弹窗)' : '✅ 永久免弹窗已绑定 (实例关机)';
+      const sbEl = document.getElementById('syncBadge');
+      if (sbEl) {
+        sbEl.innerText = isInstanceOnline ? '✅ 已挂载' : '✅ 已绑定';
+        sbEl.title = isInstanceOnline ? '已挂载 Google Drive (永久免弹窗)' : 'Google Drive 永久免弹窗已绑定 (实例关机)';
+      }
       if (gd.drive_folders && gd.drive_folders.length > 0) {
         renderGroupedDriveFolders(gd.drive_folders);
       }
@@ -6728,6 +6850,7 @@ function onBootModelSelectChange(folderVal) {
     'MiniMax-H3-Image': ['preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors'],
     'LongCat-Video-Avatar-1.6': ['preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors'],
     'Huihui-Qwen3.8-27B-abliterated-GGUF': ['preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf'],
+    'GLM-5.3-Flash-4.05bpw': ['preset_glm53_405', 'MikeRoz/GLM-5.3-Flash-Uncensored-4.05bpw-h6-exl3', 'GLM-5.3-Flash-4.05bpw', '*.safetensors'],
   };
   if (map[folderVal]) {
     const [cid, repo, fold, pat] = map[folderVal];
@@ -6755,8 +6878,10 @@ function openBootModal() {
       ref2va: 'MiniMax-H3-Ref2VA',
     };
     const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
-    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
-    const autoTarget = tabModelMap[currentMiniMaxMode] || (known.has(curF) ? curF : 'CURRENT');
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'GLM-5.3-Flash-4.05bpw']);
+    const autoTarget = (curF === 'GLM-5.3-Flash-4.05bpw' || curF === 'Huihui-Qwen3.8-27B-abliterated-GGUF')
+      ? curF
+      : (tabModelMap[currentMiniMaxMode] || (known.has(curF) ? curF : 'CURRENT'));
     mSel.value = autoTarget;
     if (autoTarget !== 'CURRENT') {
       onBootModelSelectChange(autoTarget);
@@ -6778,7 +6903,7 @@ function openGpuChoiceModal(reasonText, requestedGpu = 'G4') {
   }
   if (mSel) {
     const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
-    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF']);
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'GLM-5.3-Flash-4.05bpw']);
     mSel.value = known.has(curF) ? curF : 'CURRENT';
   }
   selectBootGpuCard(requestedGpu || _selectedBootGpu || 'G4');
@@ -7026,23 +7151,70 @@ async function stopColab(forceInterruptLlm = false) {
 let lastCleanChatReply = '';
 let lastStructured4Prompts = null;
 let selectedBatchCount = 1;
+let chatRefImageDataUrl = '';
+
+function handleChatImgPick(files) {
+  const f = files && files[0];
+  if (!f || !f.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    chatRefImageDataUrl = String(reader.result || '');
+    const wrap = document.getElementById('chatImgPreviewWrap');
+    const thumb = document.getElementById('chatImgThumb');
+    const nm = document.getElementById('chatImgName');
+    if (thumb) thumb.src = chatRefImageDataUrl;
+    if (nm) nm.innerText = f.name || '已附参考图';
+    if (wrap) wrap.style.display = 'inline-flex';
+  };
+  reader.readAsDataURL(f);
+  const inp = document.getElementById('chatImgInput');
+  if (inp) inp.value = '';
+}
+
+function clearChatImg() {
+  chatRefImageDataUrl = '';
+  const wrap = document.getElementById('chatImgPreviewWrap');
+  const thumb = document.getElementById('chatImgThumb');
+  if (thumb) thumb.src = '';
+  if (wrap) wrap.style.display = 'none';
+}
+
+(function bindChatPasteImg() {
+  const el = document.getElementById('chatPrompt');
+  if (!el || el._pasteBound) return;
+  el._pasteBound = true;
+  el.addEventListener('paste', (e) => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.kind === 'file' && it.type.startsWith('image/')) {
+        const f = it.getAsFile();
+        if (f) {
+          handleChatImgPick([f]);
+          e.preventDefault();
+          return;
+        }
+      }
+    }
+  });
+})();
 
 async function sendTestChat(structured4 = true) {
   const prompt = document.getElementById('chatPrompt').value.trim();
-  if (!prompt) return;
+  if (!prompt && !chatRefImageDataUrl) return;
   const out = document.getElementById('chatOutput');
   const btn = document.getElementById('btnChat');
   const btn4 = document.getElementById('btnExpand4');
   if (btn) btn.disabled = true;
   if (btn4) btn4.disabled = true;
+  const activeBrain = /glm-5\.3/i.test(((document.getElementById('modelId') || {}).innerText || '')) ? 'GLM-5.3-Flash (321B·无审查)' : 'Qwen3.8-27B (无审查)';
   out.innerText = structured4
-    ? '⏳ 正在由 Qwen3.8-27B (无审查) 自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】四项提示词...'
-    : '⏳ 正在请求 RTX PRO 6000 模型生成回复...';
+    ? `⏳ 正在由 ${activeBrain} ${chatRefImageDataUrl ? '看图反推并' : ''}自动生成【主体画面 / 环境音效 / 背景音乐 / 反向排除项】四项提示词...`
+    : `⏳ 正在请求 ${activeBrain} 生成回复...`;
   try {
     const r = await fetch('/api/chat_test', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prompt, structured_video: Boolean(structured4)})
+      body: JSON.stringify({prompt, structured_video: Boolean(structured4), image_data_url: chatRefImageDataUrl || ''})
     });
     const d = await r.json();
     if (d.error) {
@@ -17484,32 +17656,58 @@ p.wait()
             return
 
         if self.path == "/api/chat_test":
-            prompt = payload.get("prompt", "你好！")
+            prompt = str(payload.get("prompt") or "").strip()
+            image_data_url = str(payload.get("image_data_url") or "").strip()
+            if not prompt and not image_data_url:
+                prompt = "你好！"
             structured_video = bool(payload.get("structured_video", False))
             cfg = _load_endpoint_cfg()
+            raw_mid = str(cfg.get("model_id") or "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF")
+            is_glm53 = "glm-5.3" in f"{cfg.get('model_folder') or ''} {raw_mid}".lower()
+            eff_model = (
+                "glm-5.3-flash-uncensored-2.51bpw" if (is_glm53 and "2.51" in raw_mid) else (
+                    "glm-5.3-flash-uncensored-3.05bpw" if (is_glm53 and "3.05" in raw_mid) else (
+                        "glm-5.3-flash-uncensored-4.05bpw" if is_glm53 else raw_mid
+                    )
+                )
+            )
+
+            def _make_user_content(text_str: str):
+                if image_data_url and image_data_url.startswith("data:image/"):
+                    return [
+                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                        {"type": "text", "text": text_str},
+                    ]
+                return text_str
+
             if structured_video:
                 sys_msg = (
                     "You are an uncensored, professional multimodal AI visual & video director for MiniMax-H3. "
                     "IMPORTANT ANTI-MATTE RULE: Never use words like 'matte skin texture', 'fine pores', 'peach fuzz', 'microscopic raindrops', or 'heavy film grain', as they trigger synthetic 3D CG / frosted artifacts in H3; instead use 'smooth luminous porcelain skin, natural subsurface scattering, soft studio lighting, crystal clear eyes'. "
-                    "Given the user's idea, output ONLY a valid JSON object with exactly 4 keys in English (no markdown fences, no extra commentary):\n"
+                    "Given the user's idea (and optional reference image), output ONLY a valid JSON object with exactly 4 keys in English (no markdown fences, no extra commentary):\n"
                     '{"visual": "Detailed visual subject, composition, camera movement, lighting, and cinematic style description (3-5 sentences)", '
                     '"soundscape": "Detailed ambient soundscape, foley sound effects, and any spoken dialogue", '
                     '"music": "Background music style, instruments, tempo, and mood", '
                     '"negative": "Comma-separated negative prompt to exclude low quality or unwanted artifacts"}'
                 )
+                u_txt = (
+                    f"Reverse-engineer and expand this reference image into a MiniMax-H3 cinematic video prompt. Extra instruction: {prompt or 'Preserve subject appearance, outfit, lighting, and mood with natural motion.'}\nOutput JSON only:"
+                    if image_data_url else f"Video idea: {prompt}\nOutput JSON only:"
+                )
                 messages = [
                     {"role": "system", "content": sys_msg},
-                    {"role": "user", "content": f"Video idea: {prompt}\nOutput JSON only:"},
+                    {"role": "user", "content": _make_user_content(u_txt)},
                 ]
-                max_toks = 512
-                extra_kw = {"chat_template_kwargs": {"enable_thinking": False}}
+                max_toks = 768
+                extra_kw = {"reasoning_effort": "none"} if is_glm53 else {"chat_template_kwargs": {"enable_thinking": False}}
             else:
-                messages = [{"role": "user", "content": prompt}]
-                max_toks = 384
+                u_txt = prompt or "请详细描述这张参考图的画面构图、人物穿搭、光影与氛围。"
+                messages = [{"role": "user", "content": _make_user_content(u_txt)}]
+                max_toks = 1024 if is_glm53 else 512
                 extra_kw = {}
 
             req_body = {
-                "model": cfg.get("model_id", "huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF"),
+                "model": eff_model,
                 "messages": messages,
                 "max_tokens": max_toks,
                 **extra_kw,
@@ -17524,14 +17722,17 @@ p.wait()
                 },
                 method="POST",
             )
+            t_req0 = time.time()
             try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
+                with urllib.request.urlopen(req, timeout=120) as resp:
                     d = json.loads(resp.read().decode("utf-8"))
+                    elapsed_s = max(0.05, time.time() - t_req0)
                     msg = d.get("choices", [{}])[0].get("message", {})
                     reply = (msg.get("content") or msg.get("reasoning_content") or "").strip()
-                    timings = d.get("timings", {})
-                    tps = round(float(timings.get("predicted_per_second", 0.0)), 1)
-                    toks = d.get("usage", {}).get("completion_tokens", 0)
+                    timings = d.get("timings", {}) or {}
+                    toks = int(d.get("usage", {}).get("completion_tokens", 0) or 0)
+                    raw_tps = float(timings.get("predicted_per_second", 0.0) or 0.0)
+                    tps = round(raw_tps if raw_tps > 0 else (toks / elapsed_s if toks > 0 else 0.0), 1)
                     structured_obj = None
                     if structured_video and d.get("id") in ("chatcmpl-minimax", "chatcmpl-minimax-t4"):
                         clean_idea = str(prompt or "").strip()
