@@ -310,7 +310,7 @@ def fast_parallel_hf_download(
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     temp_path = dest_path + ".part"
 
-    url = f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
+    url = f"https://huggingface.co/{repo_id}/resolve/main/{urllib.parse.quote(filename, safe='/')}"
     opener = urllib.request.build_opener(_StripAuthRedirectHandler())
     headers = {"User-Agent": "ColabDeploy/1.0"}
     if token:
@@ -2381,7 +2381,7 @@ def _start_minimax_h3_server_on_30000(target_dir: str, variant: str = "FL2VA"):
     proc = None
     if not already_loading_remote:
         log("正在释放旧模型显存 (保留内存盘/NVMe 中的权重以便随时极速切回)...")
-        subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+        subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
         time.sleep(2)
 
         if not os.path.isdir("/content/DiffSynth-Studio/.git"):
@@ -3138,7 +3138,7 @@ def _start_minimax_t4_gguf_server_on_30000(target_dir: str):
         pass
 
     log("正在释放旧模型进程，准备启动 MiniMax-H3 (T4 量化版 · UD-Q2_K_XL)...")
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     _ensure_sd_cli_binary(target_dir)
@@ -4713,7 +4713,7 @@ def _start_longcat_avatar_server_on_30000(target_dir: str, total_gb: float = 48.
             check=True,
         )
 
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     lc_link = os.path.join(os.path.dirname(target_dir), "LongCat-Video")
@@ -5867,7 +5867,7 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
             check=True,
         )
 
-    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
     time.sleep(1)
 
     if not os.path.isdir("/content/ComfyUI/.git"):
@@ -5908,6 +5908,792 @@ def _start_minimax_h3_image_server_on_30000(target_dir: str, total_gb: float = 4
                     if h_data.get("engine") == "minimax-h3-image":
                         log(f"[显存装载] MiniMax-H3-Image(33B·无审查4K): 100% ({total_gb:.1f}/{total_gb:.1f} GiB 已就绪)")
                         log("✅ MiniMax-H3-Image (11秒4K无审查写真 + 免Mask锁脸换装) 服务已启动 (端口 30000)！")
+                        _ensure_recavsr_service_on_30002()
+                        _ensure_indextts2_service_on_30003()
+                        return
+        except Exception:
+            pass
+        time.sleep(1)
+
+
+QWEN_IMAGE_21_SERVER_CODE = r'''#!/usr/bin/env python3
+import base64
+import gc
+import io
+import json
+import math
+import os
+import random
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+COMFY_DIR = "/content/ComfyUI"
+if COMFY_DIR not in sys.path:
+    sys.path.insert(0, COMFY_DIR)
+
+MODEL_DIR = os.environ.get("QWEN_IMAGE_21_MODEL_DIR", "/content/local_models/Qwen-Image-2.1-Uncensored")
+OUTPUT_DIR = "/content/outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+BASE_MODELS = {
+    "chatr": "qwen-image-2.1-step90000-BF16.safetensors",
+    "official": "qwen_image_2.1_bf16.safetensors",
+}
+CLIP_FN = "qwen3vl_8b_bf16_heretic.safetensors"
+VAE_FN = "qwen_image_2.1_vae_bf16.safetensors"
+
+GPU_LOCK = threading.Lock()
+ENGINE_INIT_LOCK = threading.Lock()
+_QWEN_ENGINE = {
+    "unet": None,
+    "unet_key": "",
+    "clip": None,
+    "vae": None,
+}
+ENGINE_READY = False
+
+JOB_STATE = {
+    "running": False,
+    "pct": 0,
+    "step": 0,
+    "total_steps": 50,
+    "message": "就绪：Qwen-Image-2.1 (满血 BF16 破限双底模 + 3D控姿势/改图/LoRA) 待命中...",
+    "latest_video": "",
+    "completed_videos": [],
+    "error": "",
+    "seed": 42,
+    "elapsed_s": 0.0,
+    "final_prompt": "",
+    "engine_ready": False,
+}
+
+
+def _list_history_files():
+    out = []
+    if not os.path.isdir(OUTPUT_DIR):
+        return out
+    for fn in sorted(os.listdir(OUTPUT_DIR), reverse=True):
+        if not fn.lower().endswith((".png", ".jpg", ".jpeg", ".mp4")):
+            continue
+        if fn.startswith("_tmp_") or fn.startswith("guide_"):
+            continue
+        p = os.path.join(OUTPUT_DIR, fn)
+        if os.path.isfile(p) and os.path.getsize(p) > 2048:
+            out.append({"name": fn, "size_mb": round(os.path.getsize(p) / (1024 * 1024), 2)})
+            if len(out) >= 60:
+                break
+    return out
+
+
+def _sync_comfy_symlinks():
+    for sub in ("diffusion_models", "text_encoders", "vae", "loras"):
+        src_sub = os.path.join(MODEL_DIR, sub)
+        dst_sub = os.path.join(COMFY_DIR, "models", sub)
+        os.makedirs(dst_sub, exist_ok=True)
+        if not os.path.isdir(src_sub):
+            continue
+        for fn in os.listdir(src_sub):
+            if not fn.lower().endswith(".safetensors"):
+                continue
+            src_p = os.path.join(src_sub, fn)
+            dst_p = os.path.join(dst_sub, fn)
+            if os.path.isfile(src_p) and not os.path.exists(dst_p):
+                try:
+                    os.symlink(src_p, dst_p)
+                except Exception:
+                    shutil.copy2(src_p, dst_p)
+
+
+def _list_available_loras():
+    _sync_comfy_symlinks()
+    lora_dir = os.path.join(COMFY_DIR, "models", "loras")
+    res = []
+    if os.path.isdir(lora_dir):
+        for fn in sorted(os.listdir(lora_dir)):
+            if fn.lower().endswith(".safetensors"):
+                res.append(fn)
+    return res
+
+
+def _ensure_qwen21_engine(base_key: str = "chatr", update_job_state: bool = True):
+    global ENGINE_READY
+    req_key = "official" if str(base_key or "").strip().lower() == "official" else "chatr"
+    with ENGINE_INIT_LOCK:
+        _sync_comfy_symlinks()
+        target_unet_fn = BASE_MODELS[req_key]
+        if not os.path.exists(os.path.join(COMFY_DIR, "models", "diffusion_models", target_unet_fn)):
+            alt_key = "official" if req_key == "chatr" else "chatr"
+            if os.path.exists(os.path.join(COMFY_DIR, "models", "diffusion_models", BASE_MODELS[alt_key])):
+                req_key = alt_key
+                target_unet_fn = BASE_MODELS[req_key]
+
+        if (
+            _QWEN_ENGINE["unet"] is not None
+            and _QWEN_ENGINE["unet_key"] == req_key
+            and _QWEN_ENGINE["clip"] is not None
+            and _QWEN_ENGINE["vae"] is not None
+        ):
+            ENGINE_READY = True
+            return _QWEN_ENGINE["unet"], _QWEN_ENGINE["clip"], _QWEN_ENGINE["vae"], req_key
+
+        import torch
+        import comfy.utils
+        import nodes
+
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+
+        if update_job_state:
+            b_lbl = "ChatR 无审查 Omni BF16" if req_key == "chatr" else "官方满血 BF16"
+            JOB_STATE.update({
+                "pct": 5,
+                "message": f"🚀 [Qwen-Image-2.1] 正在将 {b_lbl} (13.25G) + Heretic BF16 破限编码器 (16.33G) 装载至显存...",
+            })
+
+        def _progress_hook(value, total, preview_image=None, node_id=None):
+            if os.path.exists("/content/.cancel_minimax") or os.path.exists("/content/.cancel_qwen21"):
+                for cf in ("/content/.cancel_minimax", "/content/.cancel_qwen21"):
+                    try:
+                        if os.path.exists(cf):
+                            os.unlink(cf)
+                    except Exception:
+                        pass
+                raise RuntimeError("🛑 已手动停止 Qwen-Image-2.1 生图任务")
+            if JOB_STATE.get("running") and total and total <= 120:
+                cur_s = max(0, min(int(total), int(value)))
+                tot_s = max(1, int(total))
+                ov_pct = min(94, max(12, 12 + int(round((cur_s / float(tot_s)) * 80))))
+                JOB_STATE["step"] = cur_s
+                JOB_STATE["total_steps"] = tot_s
+                JOB_STATE["pct"] = ov_pct
+                JOB_STATE["message"] = f"🎨 [Qwen-Image-2.1 BF16] 正在高清扩散采样: 第 {cur_s}/{tot_s} 步 (总进度 {ov_pct}%)"
+
+        comfy.utils.set_progress_bar_global_hook(_progress_hook)
+
+        with torch.inference_mode():
+            if _QWEN_ENGINE["unet"] is not None and _QWEN_ENGINE["unet_key"] != req_key:
+                _QWEN_ENGINE["unet"] = None
+                gc.collect()
+                torch.cuda.empty_cache()
+
+            if _QWEN_ENGINE["unet"] is None:
+                _QWEN_ENGINE["unet"] = nodes.UNETLoader().load_unet(target_unet_fn, "default")[0]
+                _QWEN_ENGINE["unet_key"] = req_key
+            if _QWEN_ENGINE["clip"] is None:
+                _QWEN_ENGINE["clip"] = nodes.CLIPLoader().load_clip(CLIP_FN, "qwen_image", "default")[0]
+            if _QWEN_ENGINE["vae"] is None:
+                _QWEN_ENGINE["vae"] = nodes.VAELoader().load_vae(VAE_FN)[0]
+
+        ENGINE_READY = True
+        return _QWEN_ENGINE["unet"], _QWEN_ENGINE["clip"], _QWEN_ENGINE["vae"], req_key
+
+
+def _warmup_qwen21_bg():
+    try:
+        with GPU_LOCK:
+            _, _, _, act_k = _ensure_qwen21_engine("chatr", update_job_state=False)
+            if not JOB_STATE.get("running"):
+                b_lbl = "ChatR 无审查 BF16" if act_k == "chatr" else "官方满血 BF16"
+                JOB_STATE["message"] = f"⚡ 就绪：Qwen-Image-2.1 ({b_lbl} + Heretic BF16 破限编码器 · 30.2G常驻显存)"
+                JOB_STATE["engine_ready"] = True
+    except Exception as e:
+        print(f"[Qwen-Image-2.1 Warmup Error] {e}", flush=True)
+
+
+def _pil_from_b64(b64_str: str):
+    import PIL.Image
+    raw_b = str(b64_str).split(",", 1)[-1]
+    return PIL.Image.open(io.BytesIO(base64.b64decode(raw_b))).convert("RGB")
+
+
+def _tensor_from_pil(pil_im):
+    import numpy as np
+    import torch
+    arr = np.asarray(pil_im.convert("RGB"), dtype=np.float32) / 255.0
+    return torch.from_numpy(arr).unsqueeze(0)
+
+
+def _is_already_mannequin_pil(pil_im) -> bool:
+    import numpy as np
+    arr = np.asarray(pil_im.convert("RGB").resize((128, 128)), dtype=np.float32)
+    chroma = float(np.mean(np.abs(arr[:, :, 0] - arr[:, :, 1]) + np.abs(arr[:, :, 1] - arr[:, :, 2])))
+    return chroma < 14.0
+
+
+def _convert_pose_to_clay_pil(pose_b64: str, fallback_pil):
+    """自动将彩色动漫/真人姿势参考图在 GPU 上 0.4s 转为无纹理 3D 素白模，彻底防止原图人脸/发色/服装串入结果"""
+    try:
+        if "/content" not in sys.path:
+            sys.path.insert(0, "/content")
+        import guide_preprocessor
+        res = guide_preprocessor.preprocess_guide(
+            {"guide_mode": "clay", "ref_image_b64": pose_b64},
+            OUTPUT_DIR,
+            gpu_lock=None,
+        )
+        if res.get("ok") and res.get("preview_b64"):
+            return _pil_from_b64(res["preview_b64"]), True
+    except Exception as e_clay:
+        print(f"[Qwen-Image-2.1 AutoClay fallback] {e_clay}", flush=True)
+    return fallback_pil, False
+
+
+@__import__("torch").inference_mode()
+def _run_qwen21_job(payload: dict):
+    global JOB_STATE
+    t0 = time.time()
+    try:
+        import numpy as np
+        import PIL.Image
+        import torch
+        import nodes
+        from comfy_extras.nodes_qwen import TextEncodeQwenImage21
+
+        sub_mode = str(payload.get("qwen_sub_mode") or "t2i").strip().lower()
+        if sub_mode not in ("t2i", "edit", "pose"):
+            sub_mode = "t2i"
+        base_model_key = str(payload.get("qwen_base_model") or "chatr").strip().lower()
+        raw_prompt = str(payload.get("prompt") or "").strip()
+        neg_prompt = str(payload.get("negative_prompt") or "").strip()
+
+        steps = max(4, min(60, int(payload.get("steps") or (25 if sub_mode == "pose" else 50))))
+        cfg_val = max(1.0, min(8.0, float(payload.get("cfg") or (1.0 if sub_mode == "pose" else 2.5))))
+        sampler_name = str(payload.get("sampler_name") or ("euler" if sub_mode == "pose" else "er_sde")).strip()
+        scheduler = str(payload.get("scheduler") or ("simple" if sub_mode == "pose" else "beta")).strip()
+        edit_res = max(512, min(2048, int(payload.get("qwen_edit_res") or 1024)))
+
+        batch_count = max(1, min(4, int(payload.get("batch_count") or 1)))
+        base_seed = int(payload.get("seed") if payload.get("seed") is not None else -1)
+        rand_seed = bool(payload.get("randomize_seed")) or (base_seed < 0)
+        cur_seed = random.randint(1, 2**31 - 1) if rand_seed else base_seed
+
+        res_str = str(payload.get("resolution") or "1152x1728").strip().lower()
+        use_auto_ref_latent = (res_str == "auto" and sub_mode in ("edit", "pose"))
+        width, height = 1152, 1728
+        if "x" in res_str:
+            try:
+                w_s, h_s = res_str.split("x", 1)
+                width = max(512, min(2560, (int(w_s) // 32) * 32))
+                height = max(512, min(2560, (int(h_s) // 32) * 32))
+            except Exception:
+                width, height = 1152, 1728
+
+        lora_1 = str(payload.get("qwen_lora_1") or "").strip()
+        lora_1_str = float(payload.get("qwen_lora_1_strength") if payload.get("qwen_lora_1_strength") is not None else 1.0)
+        lora_2 = str(payload.get("qwen_lora_2") or "").strip()
+        lora_2_str = float(payload.get("qwen_lora_2_strength") if payload.get("qwen_lora_2_strength") is not None else 1.0)
+
+        char_b64 = str(payload.get("qwen_char_b64") or "").strip()
+        pose_b64 = str(payload.get("qwen_pose_b64") or "").strip()
+        ref_list = [str(x).strip() for x in (payload.get("ref_images_b64") or []) if str(x).strip()]
+        if not char_b64 and ref_list:
+            char_b64 = ref_list[0]
+        auto_clay_pose = bool(payload.get("qwen_auto_clay_pose", True))
+
+        if sub_mode == "pose" and (not char_b64 or not pose_b64):
+            raise RuntimeError("3D 控姿势模式需要同时提供【角色图】和【3D 姿势参考图】！")
+        if sub_mode == "edit" and not char_b64:
+            raise RuntimeError("保脸改图 (Edit) 模式需要至少上传 1 张【角色参考图】！")
+
+        mode_cn = {"t2i": "文生图 T2I", "edit": "保脸改图 Edit", "pose": "3D人偶控姿势"}.get(sub_mode, sub_mode)
+        JOB_STATE.update({
+            "running": True,
+            "pct": 6,
+            "step": 0,
+            "total_steps": steps,
+            "seed": cur_seed,
+            "error": "",
+            "message": f"🎨 [Qwen-Image-2.1 BF16 · {mode_cn}] 正在准备满血模型与 LoRA 挂载...",
+        })
+
+        with GPU_LOCK:
+            unet_base, clip, vae, act_base_key = _ensure_qwen21_engine(base_model_key, update_job_state=True)
+            avail_loras = set(_list_available_loras())
+
+            # 组装 LoRA 链 (不污染底座 unet_base)
+            active_model = unet_base
+            lora_chain = []
+            if sub_mode == "pose" and not any("vnccs" in x.lower() for x in (lora_1, lora_2)):
+                default_vnccs = "VNCCS_QI2_PoseStudioV1.1.safetensors" if "VNCCS_QI2_PoseStudioV1.1.safetensors" in avail_loras else (
+                    "VNCCS_QI2_PoseStudioV3.safetensors" if "VNCCS_QI2_PoseStudioV3.safetensors" in avail_loras else ""
+                )
+                if default_vnccs:
+                    lora_chain.append((default_vnccs, 1.0))
+            if lora_1 and lora_1 in avail_loras and abs(lora_1_str) > 1e-4:
+                lora_chain.append((lora_1, lora_1_str))
+            if lora_2 and lora_2 in avail_loras and lora_2 != lora_1 and abs(lora_2_str) > 1e-4:
+                lora_chain.append((lora_2, lora_2_str))
+
+            for l_fn, l_str in lora_chain:
+                active_model = nodes.LoraLoaderModelOnly().load_lora_model_only(active_model, l_fn, l_str)[0]
+
+            images_dict = {}
+            final_prompt = raw_prompt
+            clay_tag = ""
+
+            if sub_mode == "pose":
+                pose_pil = _pil_from_b64(pose_b64)
+                if auto_clay_pose and not _is_already_mannequin_pil(pose_pil):
+                    JOB_STATE.update({"pct": 8, "message": "🗿 [Qwen-Image-2.1] 正在将所选姿势参考图转为无纹理 3D 素白模（杜绝原图串脸串衣）..."})
+                    pose_pil, converted = _convert_pose_to_clay_pil(pose_b64, pose_pil)
+                    if converted:
+                        clay_tag = " · 🗿3D素模防串脸"
+                char_pil = _pil_from_b64(char_b64)
+                images_dict["image_1"] = _tensor_from_pil(pose_pil)
+                images_dict["image_2"] = _tensor_from_pil(char_pil)
+                base_pose_dir = "replace the pose of <image 2> with the pose of <image 1>. keep the character of <image 2>."
+                if raw_prompt and "replace the pose of <image 2>" not in raw_prompt.lower():
+                    final_prompt = f"{base_pose_dir} {raw_prompt}"
+                elif not raw_prompt:
+                    final_prompt = base_pose_dir
+            elif sub_mode == "edit":
+                if ref_list:
+                    for idx, rb in enumerate(ref_list[:4], start=1):
+                        images_dict[f"image_{idx}"] = _tensor_from_pil(_pil_from_b64(rb))
+                else:
+                    images_dict["image_1"] = _tensor_from_pil(_pil_from_b64(char_b64))
+                if not final_prompt:
+                    final_prompt = "keep the exact character identity and facial features of <image 1>, natural lighting, photorealistic photograph"
+            else:
+                if not final_prompt:
+                    final_prompt = "A hyper-realistic candid portrait photograph, soft natural window lighting, natural skin texture, 8k resolution."
+
+            lora_desc = ", ".join(f"{os.path.splitext(n)[0]}@{s:.2f}" for n, s in lora_chain) if lora_chain else "纯底模"
+            JOB_STATE.update({
+                "pct": 10,
+                "final_prompt": final_prompt,
+                "message": f"🎨 [Qwen-Image-2.1 · {mode_cn}] Heretic BF16 编码中 ({lora_desc}{clay_tag})...",
+            })
+
+            cond_out = TextEncodeQwenImage21.execute(
+                clip=clip,
+                prompt=final_prompt,
+                negative_prompt=neg_prompt,
+                vae=vae,
+                resolution=edit_res if images_dict else 1024,
+                images=images_dict,
+            )
+            positive = cond_out[0]
+            negative = cond_out[1]
+            if use_auto_ref_latent and images_dict:
+                latent = cond_out[2]
+                out_w = int(latent["samples"].shape[3]) * 16
+                out_h = int(latent["samples"].shape[2]) * 16
+            else:
+                latent = nodes.EmptyLatentImage().generate(width, height, 1)[0]
+                out_w, out_h = width, height
+
+            completed_imgs = []
+            last_seed = cur_seed
+            rc_conf = os.path.expanduser("~/.config/rclone/rclone.conf")
+            for b_i in range(batch_count):
+                b_seed = (random.randint(1, 2**31 - 1) if (rand_seed and b_i > 0) else (cur_seed + b_i))
+                last_seed = b_seed
+                b_pref = f"[连抽 {b_i + 1}/{batch_count}] " if batch_count > 1 else ""
+                sampled = nodes.KSampler().sample(
+                    model=active_model,
+                    seed=b_seed,
+                    steps=steps,
+                    cfg=cfg_val,
+                    sampler_name=sampler_name,
+                    scheduler=scheduler,
+                    positive=positive,
+                    negative=negative,
+                    latent_image=latent,
+                    denoise=1.0,
+                )[0]
+                JOB_STATE.update({
+                    "pct": min(98, int(round(((b_i + 0.9) / float(batch_count)) * 90)) + 8),
+                    "message": f"🖼️ {b_pref}[Qwen-Image-2.1 BF16] 正在通过原生 BF16 VAE 解码 {out_w}×{out_h} 高清图...",
+                })
+                decoded = nodes.VAEDecode().decode(vae, sampled)[0]
+                img_np = (decoded[0].detach().cpu().numpy().clip(0.0, 1.0) * 255.0).astype(np.uint8)
+                pil_out = PIL.Image.fromarray(img_np)
+
+                dt_i = round(time.time() - t0, 1)
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                fname = f"qwen_image_21_{sub_mode}_{out_w}x{out_h}_{ts}_dur{max(1, int(round(dt_i)))}s_seed{b_seed}.jpg"
+                out_path = os.path.join(OUTPUT_DIR, fname)
+                pil_out.save(out_path, format="JPEG", quality=96, subsampling=0, optimize=True)
+                completed_imgs.append(fname)
+                JOB_STATE["latest_video"] = fname
+                JOB_STATE["completed_videos"] = list(completed_imgs)
+                del decoded, sampled
+                if os.path.exists(rc_conf) and shutil.which("rclone"):
+                    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                    _ym = _dt.now(_tz(_td(hours=8))).strftime("%Y.%m")
+                    subprocess.Popen(
+                        ["rclone", "copy", out_path, f"gdrive:pro6000-output/{_ym}/images", "--config", rc_conf],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+
+            del active_model, latent, positive, negative, images_dict
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        dt = round(time.time() - t0, 1)
+        b_lbl = f"共 {batch_count} 张 · " if batch_count > 1 else ""
+        base_cn = "ChatR无审查BF16" if act_base_key == "chatr" else "官方BF16"
+        JOB_STATE.update({
+            "running": False,
+            "pct": 100,
+            "step": steps,
+            "total_steps": steps,
+            "seed": last_seed,
+            "elapsed_s": dt,
+            "latest_video": completed_imgs[-1] if completed_imgs else "",
+            "completed_videos": completed_imgs,
+            "final_prompt": final_prompt,
+            "message": f"✅ [Qwen-Image-2.1 · {base_cn} · {mode_cn}] {b_lbl}{out_w}×{out_h} 生成完成！耗时 {dt}s ({steps}步 · CFG {cfg_val} · Seed: {last_seed})",
+        })
+    except Exception as e:
+        JOB_STATE.update({
+            "running": False,
+            "error": str(e),
+            "message": f"❌ Qwen-Image-2.1 生成出错: {e}",
+        })
+
+
+class _QwenImage21Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _send_json(self, data: dict, status: int = 200):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path.startswith("/health"):
+            self._send_json({
+                "status": "ok",
+                "engine": "qwen-image-2.1",
+                "engine_ready": ENGINE_READY,
+                "active_base": _QWEN_ENGINE.get("unet_key") or "chatr",
+                "loras": _list_available_loras(),
+            })
+            return
+        if self.path.startswith("/v1/qwen_image/loras"):
+            self._send_json({"ok": True, "loras": _list_available_loras(), "active_base": _QWEN_ENGINE.get("unet_key") or "chatr"})
+            return
+        if self.path.startswith("/v1/models") or self.path.startswith("/models"):
+            self._send_json({
+                "object": "list",
+                "data": [{"id": "Qwen-Image-2.1-Uncensored-BF16", "object": "model", "owned_by": "Qwen-Community"}],
+            })
+            return
+        if self.path.startswith("/v1/video/status"):
+            st = dict(JOB_STATE)
+            st["engine_ready"] = ENGINE_READY
+            st["history"] = _list_history_files()
+            self._send_json(st)
+            return
+        if self.path.startswith("/v1/video/upscale_status"):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:30002/v1/video/upscale_status", timeout=5) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")))
+            except Exception as e:
+                self._send_json({"running": False, "error": str(e)}, status=503)
+            return
+        if self.path.startswith("/v1/audio/indextts2"):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:30003{self.path}", timeout=8) as r:
+                    self._send_json(json.loads(r.read().decode("utf-8")), status=r.status)
+            except Exception as e:
+                self._send_json({"ok": False, "ready": False, "error": str(e)}, status=503)
+            return
+        if self.path.startswith("/v1/video/file/"):
+            fname = os.path.basename(self.path.split("/v1/video/file/", 1)[-1].split("?")[0])
+            fpath = os.path.join(OUTPUT_DIR, fname)
+            if not os.path.isfile(fpath):
+                self._send_json({"error": "File not found"}, status=404)
+                return
+            fsize = os.path.getsize(fpath)
+            ctype = "image/png" if fname.lower().endswith(".png") else ("image/jpeg" if fname.lower().endswith((".jpg", ".jpeg")) else "video/mp4")
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(fsize))
+            self.send_header("Content-Disposition", f'inline; filename="{fname}"')
+            self.end_headers()
+            with open(fpath, "rb") as rf:
+                while True:
+                    buf = rf.read(262144)
+                    if not buf:
+                        break
+                    self.wfile.write(buf)
+            return
+        self._send_json({"status": "ok", "engine": "qwen-image-2.1"})
+
+    def do_POST(self):
+        cl = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(cl).decode("utf-8") if cl > 0 else "{}"
+        try:
+            payload = json.loads(raw) if raw else {}
+        except Exception:
+            payload = {}
+
+        if self.path.startswith("/v1/video/cancel"):
+            open("/content/.cancel_qwen21", "w").write("1")
+            open("/content/.cancel_minimax", "w").write("1")
+            self._send_json({"ok": True, "message": "🛑 正在停止 Qwen-Image-2.1 生成任务..."})
+            return
+
+        if self.path.startswith("/v1/guide/preprocess"):
+            try:
+                if "/content" not in sys.path:
+                    sys.path.insert(0, "/content")
+                import guide_preprocessor
+                res_gp = guide_preprocessor.preprocess_guide(payload, OUTPUT_DIR, gpu_lock=GPU_LOCK)
+                self._send_json(res_gp, status=200 if res_gp.get("ok") else 400)
+            except Exception as e:
+                self._send_json({"ok": False, "error": f"白模/深度预处理失败: {e}"}, status=500)
+            return
+
+        if self.path.startswith("/v1/video/upscale"):
+            try:
+                req2 = urllib.request.Request(
+                    f"http://127.0.0.1:30002{self.path}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2, timeout=15) as r2:
+                    self._send_json(json.loads(r2.read().decode("utf-8")), status=r2.status)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=503)
+            return
+
+        if self.path.startswith("/v1/audio/indextts2"):
+            try:
+                req3 = urllib.request.Request(
+                    f"http://127.0.0.1:30003{self.path}",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req3, timeout=300) as r3:
+                    self._send_json(json.loads(r3.read().decode("utf-8")), status=r3.status)
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=503)
+            return
+
+        if self.path.startswith("/v1/video/generate") or self.path.startswith("/v1/video/generations") or self.path.startswith("/v1/images/generations"):
+            req_m = str(payload.get("mode") or "").strip().lower()
+            if req_m in ("avatar", "t2va", "fl2va", "ref2va") or (req_m == "image" and str(payload.get("image_engine") or "h3") != "qwen21"):
+                self._send_json({"ok": False, "error": "Engine mismatch: qwen-image-2.1 handles qwen_image mode"}, status=503)
+                return
+            for cf in ("/content/.cancel_qwen21", "/content/.cancel_minimax"):
+                try:
+                    if os.path.exists(cf):
+                        os.unlink(cf)
+                except Exception:
+                    pass
+            if JOB_STATE["running"]:
+                self._send_json({"ok": True, "already_running": True, "message": JOB_STATE.get("message") or "当前已有 Qwen-Image-2.1 任务正在运行"})
+                return
+            JOB_STATE.update({
+                "running": True,
+                "pct": 2,
+                "step": 0,
+                "completed_videos": [],
+                "latest_video": "",
+                "error": "",
+                "message": "⏳ Qwen-Image-2.1 (满血 BF16) 任务已提交，正在进入 GPU 渲染队列...",
+            })
+            threading.Thread(target=_run_qwen21_job, args=(payload,), daemon=True).start()
+            self._send_json({"ok": True, "message": "已开始生成 Qwen-Image-2.1 满血 BF16 大图"})
+            return
+
+        if self.path.startswith("/v1/shell"):
+            cmd = str(payload.get("cmd") or "").strip()
+            if not cmd:
+                self._send_json({"ok": False, "error": "empty cmd"}, status=400)
+                return
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=int(payload.get("timeout") or 120))
+                self._send_json({"ok": True, "returncode": r.returncode, "stdout": r.stdout[-16000:], "stderr": r.stderr[-16000:]})
+            except Exception as e:
+                self._send_json({"ok": False, "error": str(e)}, status=500)
+            return
+
+        if "chat/completions" in self.path:
+            reply_txt = (
+                "🎨 当前运行的是【Qwen-Image-2.1 满血 BF16 破限 + 3D 人偶控姿势/精修】图像引擎！\n"
+                "请在下方「01 · 图像与换装」顶部切换至「🎨 Qwen-Image-2.1 满血BF16 · 3D控姿势」直接生图、保脸改图或点选 170 套 3D 姿势库控姿出图！"
+            )
+            self._send_json({
+                "id": "chatcmpl-qwen21-img",
+                "object": "chat.completion",
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": reply_txt}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 42, "total_tokens": 52},
+                "timings": {"predicted_per_second": 100.0},
+            })
+            return
+
+        self._send_json({"ok": True})
+
+
+if __name__ == "__main__":
+    threading.Thread(target=_warmup_qwen21_bg, daemon=True).start()
+    srv = ThreadingHTTPServer(("0.0.0.0", 30000), _QwenImage21Handler)
+    srv.serve_forever()
+'''
+
+
+def _start_qwen_image_21_server_on_30000(download_only: bool = False):
+    """在远端 Colab GPU 实例上部署并启动 Qwen-Image-2.1 满血 BF16 双底模 + Heretic 破限编码器 + 3D控姿势引擎 (端口 30000)"""
+    folder_name = "Qwen-Image-2.1-Uncensored"
+    has_rclone = _has_vm_rclone_drive()
+    fuse_mounted = os.path.ismount("/content/drive/MyDrive") or os.path.ismount("/content/drive")
+    target_dir = os.path.join(DRIVE_MODELS_ROOT, folder_name) if fuse_mounted else os.path.join("/content/local_models", folder_name)
+    os.makedirs(target_dir, exist_ok=True)
+
+    # (dst_rel, hf_repo, hf_rel, approx_bytes)
+    plan = [
+        ("diffusion_models/qwen-image-2.1-step90000-BF16.safetensors", "chatrlabs/Qwen-Image-2.1-Uncensored-Omni-Quantized", "qwen-image-2.1-step90000-BF16/diffusion_pytorch_model.safetensors", 14_230_000_000),
+        ("diffusion_models/qwen_image_2.1_bf16.safetensors", "Comfy-Org/Qwen-Image-2.1", "diffusion_models/qwen_image_2.1_bf16.safetensors", 14_230_000_000),
+        ("text_encoders/qwen3vl_8b_bf16_heretic.safetensors", "pottokao/Qwen-Image-2.1-Text-Encoder-Heretic", "qwen3vl_8b_bf16_heretic.safetensors", 17_530_000_000),
+        ("vae/qwen_image_2.1_vae_bf16.safetensors", "Comfy-Org/Qwen-Image-2.1", "vae/qwen_image_2.1_vae_bf16.safetensors", 679_000_000),
+        ("loras/VNCCS_QI2_PoseStudioV1.1.safetensors", "MIUProject/VNCCS_PoseStudio_QI2.1", "VNCCS_QI2_PoseStudioV1.1.safetensors", 159_400_000),
+        ("loras/VNCCS_QI2_PoseStudioV3.safetensors", "MIUProject/VNCCS_PoseStudio_QI2.1", "VNCCS_QI2_PoseStudioV3.safetensors", 159_400_000),
+        ("loras/chatrlabs-omni-lora-v0.1-bf16.safetensors", "chatrlabs/Qwen-Image-2.1-Uncensored-Omni-LoRA-v0.1", "chatrlabs-omni-lora-v0.1-bf16.safetensors", 679_000_000),
+        ("loras/chatrlabs-omni-turbo-8step-fp32.safetensors", "chatrlabs/Qwen-Image-2.1-Uncensored-Omni-LoRA-v0.1", "chatrlabs-omni-turbo-8step-fp32.safetensors", 679_000_000),
+        ("loras/Qwen-Image-2.1-NSFW-Image-Edit.safetensors", "RunningHubAI/rh-qwen-image-2.1-aio-nsfw-lora", "Qwen-Image-2.1 NSFW Image Edit.safetensors", 84_000_000),
+    ]
+
+    needed_new = sum(
+        sz for dst_rel, _, _, sz in plan
+        if not (os.path.isfile(os.path.join(target_dir, dst_rel)) and os.path.getsize(os.path.join(target_dir, dst_rel)) > max(10_000_000, int(sz * 0.88)))
+    )
+    free_nvme = shutil.disk_usage("/content").free
+    if not fuse_mounted and free_nvme < needed_new + 16 * (1024 ** 3):
+        for base_clean in ("/content/local_models", "/content/models"):
+            if not os.path.isdir(base_clean):
+                continue
+            for other_name in sorted(os.listdir(base_clean)):
+                other_p = os.path.join(base_clean, other_name)
+                if os.path.abspath(other_p) == os.path.abspath(target_dir):
+                    continue
+                if os.path.isdir(other_p):
+                    log(f"🧹 [NVMe 防爆盘智能腾挪] 剩余 {free_nvme/(1024**3):.1f} GB，释放未激活缓存 {other_name} (20T云盘已永久保存)...")
+                    shutil.rmtree(other_p, ignore_errors=True)
+                    free_nvme = shutil.disk_usage("/content").free
+                    if free_nvme >= needed_new + 16 * (1024 ** 3):
+                        break
+
+    gdrive_saved_count = _check_rclone_drive_has_model(folder_name) if (has_rclone and not fuse_mounted) else 0
+    st_stage_tag = "云盘极速预热" if gdrive_saved_count > 0 else "HF 下载"
+    if has_rclone and not fuse_mounted and gdrive_saved_count > 0:
+        log(f"☁️ 检测到您的 Google Drive (gdrive:models/{folder_name}) 已保存 {gdrive_saved_count} 个权重文件，优先 16 路并发从您的云盘高速拉取！")
+        _pull_from_rclone_drive_if_exists(folder_name, target_dir)
+
+    batch_total_bytes = sum(x[3] for x in plan)
+    total_gb = batch_total_bytes / (1024 ** 3)
+    cum_done_bytes = 0
+    for idx, (dst_rel, dl_repo, dl_rel, sz) in enumerate(plan, start=1):
+        ep = os.path.join(target_dir, dst_rel)
+        lbl_str = f"{folder_name} 总进度 ({idx}/{len(plan)} · {os.path.basename(dst_rel)})"
+        if os.path.isfile(ep) and os.path.getsize(ep) > max(10_000_000, int(sz * 0.88)):
+            actual_sz = os.path.getsize(ep)
+            cum_done_bytes += actual_sz
+            ov_pct = min(100, cum_done_bytes * 100 // max(1, batch_total_bytes))
+            log(f"  [{st_stage_tag}] {lbl_str}: {ov_pct}% ({cum_done_bytes/(1024**3):.2f}/{total_gb:.2f} GB, 本地缓存复用)")
+            continue
+        log(f"正在 16 线程补拉缺失权重 [{idx}/{len(plan)}] {dst_rel} ({sz/(1024**3):.2f} GB)...")
+        dl_dir_tmp = os.path.join(target_dir, "_dl_tmp")
+        dl_p = fast_parallel_hf_download(
+            dl_repo,
+            dl_rel,
+            dl_dir_tmp,
+            token=HF_TOKEN,
+            num_conn=16,
+            batch_done_bytes=cum_done_bytes,
+            batch_total_bytes=batch_total_bytes,
+            batch_label=lbl_str,
+            stage_tag=st_stage_tag,
+        )
+        os.makedirs(os.path.dirname(ep), exist_ok=True)
+        shutil.move(dl_p, ep)
+        cum_done_bytes += os.path.getsize(ep)
+    shutil.rmtree(os.path.join(target_dir, "_dl_tmp"), ignore_errors=True)
+
+    if has_rclone and not fuse_mounted and gdrive_saved_count < len(plan):
+        _sync_local_to_rclone_drive(target_dir, background=not download_only, remote_folder=folder_name)
+
+    if download_only:
+        log(f"🎉 [仅下载模式] Qwen-Image-2.1 满血 BF16 双底模 + Heretic 破限编码器 + 5 大 LoRA 已永久同步至 Google Drive (gdrive:models/{folder_name})！")
+        return
+
+    if not shutil.which("cloudflared"):
+        log("正在安装 cloudflared 隧道客户端...")
+        subprocess.run(
+            "curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 "
+            "-o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared",
+            shell=True,
+            check=True,
+        )
+
+    subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+    time.sleep(1)
+
+    if not os.path.isdir("/content/ComfyUI/.git"):
+        log("正在拉取最新 ComfyUI 主干框架 (原生支持 TextEncodeQwenImage21 满血 BF16 + VNCCS 控姿势)...")
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/comfyanonymous/ComfyUI.git", "/content/ComfyUI"], check=False)
+    else:
+        subprocess.run(["git", "-C", "/content/ComfyUI", "pull", "--ff-only"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    log("正在检查 ComfyUI 运行依赖...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", "/content/ComfyUI/requirements.txt"], check=False)
+
+    with open("/content/guide_preprocessor.py", "w", encoding="utf-8") as gwf:
+        gwf.write(GUIDE_PREPROCESSOR_CODE)
+
+    server_py = "/content/qwen_image_server.py"
+    with open(server_py, "w", encoding="utf-8") as wf:
+        wf.write(QWEN_IMAGE_21_SERVER_CODE)
+
+    env = os.environ.copy()
+    env["QWEN_IMAGE_21_MODEL_DIR"] = target_dir
+    with open("/content/minimax_server.log", "w") as lf:
+        subprocess.Popen(
+            [sys.executable, "-u", server_py],
+            env=env,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    for _ in range(35):
+        try:
+            with opener.open("http://127.0.0.1:30000/health", timeout=2) as resp:
+                if resp.status == 200:
+                    h_data = json.loads(resp.read().decode("utf-8"))
+                    if h_data.get("engine") == "qwen-image-2.1":
+                        log("[显存装载] Qwen-Image-2.1 (满血BF16·Heretic破限·3D控姿势): 100% (30.2/30.2 GiB 常驻就绪)")
+                        log("✅ Qwen-Image-2.1 满血 BF16 生图/保脸改图/3D人偶控姿势服务已启动 (端口 30000)！")
                         _ensure_recavsr_service_on_30002()
                         _ensure_indextts2_service_on_30003()
                         return
@@ -7296,7 +8082,7 @@ def _start_indextts2_standalone_on_30000(download_only: bool = False):
         return
 
     subprocess.run(
-        "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|indextts2_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
+        "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|indextts2_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
         shell=True,
     )
     time.sleep(1)
@@ -7443,7 +8229,7 @@ def _start_glm53_maya_server_on_30000(download_only: bool = False):
     # 1. 若准备启动服务，先释放旧引擎显存/内存盘，再做 236GB NVMe 防爆盘智能腾挪
     if not download_only:
         subprocess.run(
-            "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|indextts2_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
+            "pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|indextts2_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true",
             shell=True,
         )
         if os.path.isdir("/dev/shm/local_models"):
@@ -8088,6 +8874,12 @@ def run_remote_vm_main():
             _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
         return
 
+    if MODEL_FOLDER == "Qwen-Image-2.1-Uncensored" or "qwen-image-2.1" in (HF_REPO + " " + MODEL_FOLDER).lower():
+        _start_qwen_image_21_server_on_30000(download_only=DOWNLOAD_ONLY)
+        if not DOWNLOAD_ONLY:
+            _start_cloudflare_tunnel_and_print_summary(t_start, drive_model_dir, drive_mounted)
+        return
+
     is_safetensors_repo = (
         HF_REPO in PRESET_SAFETENSORS_FILES
         or FILE_PATTERN.lower().endswith(".safetensors")
@@ -8537,7 +9329,7 @@ def run_remote_vm_main():
     if not already_running:
         mtp_candidates = [mtp_gguf, None] if mtp_gguf else [None]
         for attempt_mtp in mtp_candidates:
-            subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
+            subprocess.run("pkill -9 -f '[l]lama-server|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py|project-maya/serve/server\\.py|build/maya|maya-vision|/content/app\\.py' || true; fuser -k -9 30000/tcp 2>/dev/null || true", shell=True)
 
             weights_gb = sum(
                 os.path.getsize(p) / (1024 ** 3)
@@ -9307,11 +10099,13 @@ def run_local_wizard():
 
     if not args.download_only and saved_cfg.get("tunnel_url"):
         expected_eng = (
-            "minimax-h3-image" if model_folder == "MiniMax-H3-Image" else (
-                "longcat-avatar" if model_folder.startswith("LongCat-Video-Avatar") else (
-                    "minimax-h3-t4" if model_folder == "MiniMax-H3-T4-GGUF" else (
-                        "minimax-h3-ref2va" if model_folder == "MiniMax-H3-Ref2VA" else (
-                            "minimax-h3" if model_folder == "MiniMax-H3" else ""
+            "qwen-image-2.1" if model_folder == "Qwen-Image-2.1-Uncensored" else (
+                "minimax-h3-image" if model_folder == "MiniMax-H3-Image" else (
+                    "longcat-avatar" if model_folder.startswith("LongCat-Video-Avatar") else (
+                        "minimax-h3-t4" if model_folder == "MiniMax-H3-T4-GGUF" else (
+                            "minimax-h3-ref2va" if model_folder == "MiniMax-H3-Ref2VA" else (
+                                "minimax-h3" if model_folder == "MiniMax-H3" else ""
+                            )
                         )
                     )
                 )

@@ -28,3 +28,4 @@ build_revised_agreement.py
 .deploy_live.log
 .deploy_live.pid
 .apple_face_detect
+.qwen_pose_library/

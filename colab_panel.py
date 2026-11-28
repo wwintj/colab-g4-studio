@@ -1584,7 +1584,7 @@ for key, root_p in [("local_files", "/dev/shm/local_models"), ("drive_files", "/
         res[key] = items
 
 res["sync_running"] = bool(subprocess.getoutput("pgrep -af '[c]p -rn|[r]clone copy'").strip())
-llama_proc = subprocess.getoutput("pgrep -af '[l]lama-server|project-maya/serve/server\\.py|build/maya|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py'").strip()
+llama_proc = subprocess.getoutput("pgrep -af '[l]lama-server|project-maya/serve/server\\.py|build/maya|minimax_server\\.py|minimax_t4_server\\.py|longcat_avatar_server\\.py|minimax_image_server\\.py|qwen_image_server\\.py'").strip()
 res["llama_running"] = bool(llama_proc)
 m_k = re.search(r"--api-key\\s+(\\S+)", llama_proc)
 if m_k:
@@ -1867,7 +1867,7 @@ def _is_active_llama_llm_cfg(cfg: Dict[str, Any]) -> bool:
     combo = f"{mf} {mid}".strip()
     if not combo:
         return False
-    if any(k in combo for k in ("minimax-h3", "longcat", "recavsr", "indextts")):
+    if any(k in combo for k in ("minimax-h3", "qwen-image-2.1", "longcat", "recavsr", "indextts")):
         return False
     return True
 
@@ -1880,6 +1880,8 @@ def _fetch_remote_server_log_fallback(max_lines: int = 30, active_hint: str = ""
         order = ("maya_server.log", "llama_server.log", "minimax_server.log", "minimax_image_server.log")
     elif "indextts" in hint_low:
         order = ("indextts2_server.log", "minimax_server.log", "longcat_avatar_server.log", "llama_server.log")
+    elif "qwen-image-2.1" in hint_low:
+        order = ("minimax_server.log", "minimax_image_server.log", "llama_server.log", "longcat_avatar_server.log")
     elif "minimax-h3-image" in hint_low:
         order = ("minimax_image_server.log", "minimax_server.log", "llama_server.log", "longcat_avatar_server.log")
     elif "longcat" in hint_low:
@@ -2177,6 +2179,7 @@ def _start_deploy_background(repo: str, folder: str, pattern: str, ctx: int, gpu
         "MiniMax-H3",
         "MiniMax-H3-Ref2VA",
         "MiniMax-H3-Image",
+        "Qwen-Image-2.1-Uncensored",
     }
     auto_switched_note = ""
     gpu = (gpu or "G4").upper()
@@ -2528,8 +2531,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     min-height: 76px;
     max-height: 200px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     margin-top: 10px;
     white-space: pre-wrap;
+  }
+  textarea, pre.log-box, .chat-out, [style*="overflow-y:auto"], [style*="overflow-y: auto"], [style*="overflow:auto"], [style*="overflow: auto"] {
+    overscroll-behavior: contain;
   }
   .cu-card {
     background: var(--card);
@@ -2950,6 +2957,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <span style="font-size:12px;font-weight:700;color:#94a3b8;white-space:nowrap;flex-shrink:0;">📦 开机加载模型</span>
       <select id="bootModelSelect" onchange="onBootModelSelectChange(this.value)" style="flex:1 1 0;min-width:0;width:0;max-width:100%;height:28px;padding:0 8px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#f8fafc;font-size:12.5px;font-weight:700;cursor:pointer;overflow:hidden;text-overflow:ellipsis;">
         <option value="MiniMax-H3-Image">📸 [卡片01 · 4K生图/换装] MiniMax-H3-Image (45 GB · 开机最快)</option>
+        <option value="Qwen-Image-2.1-Uncensored">🎨 [卡片01 · 满血BF16/3D控姿] Qwen-Image-2.1 无审查 (45 GB · G4/H100/A100通吃)</option>
         <option value="MiniMax-H3">🎬 [卡片02/03 · 文生/首尾帧] MiniMax-H3 FL2VA (134 GB · 无审查)</option>
         <option value="MiniMax-H3-Ref2VA">🕺 [卡片06 · 白模/动作迁移] MiniMax-H3 Ref2VA (无审查)</option>
         <option value="LongCat-Video-Avatar-1.6">🎭 [卡片04 · 数字人说话] LongCat-Avatar-1.6 (59 GB)</option>
@@ -3337,6 +3345,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span class="preset-check" style="color:#3b82f6;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
+      <div class="folder-tag preset-card" id="preset_qwen_image_21" onclick="selectPresetModel('preset_qwen_image_21', 'chatrlabs/Qwen-Image-2.1-Uncensored-Omni-Quantized', 'Qwen-Image-2.1-Uncensored', '*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;color:#7dd3fc;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎨 Qwen-Image-2.1 (BF16破限)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">双BF16 + Heretic + 3D控姿势 · 45 GB</div>
+        </div>
+        <span class="preset-check" style="color:#38bdf8;font-weight:700;display:none;flex-shrink:0;">✔</span>
+      </div>
+
       <div class="folder-tag preset-card" id="preset_longcat_avatar" onclick="selectPresetModel('preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
         <div style="min-width:0;">
           <div style="font-weight:700;color:#f8fafc;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎭 LongCat-Video-Avatar-1.6</div>
@@ -3361,10 +3377,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <span class="preset-check" style="color:#a855f7;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
 
-      <div class="folder-tag preset-card" id="preset_g4_recavsr" onclick="selectPresetModel('preset_g4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;">
+      <div class="folder-tag preset-card" id="preset_g4_recavsr" onclick="selectPresetModel('preset_g4_recavsr', 'Decorator/ReCaVSR', 'ReCaVSR', '*.pth')" style="margin:0;padding:8px 10px;justify-content:space-between;min-width:0;grid-column:span 2;">
         <div style="min-width:0;">
-          <div style="font-weight:700;color:#6ee7b7;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✨ ReCaVSR (2K/4K 视频超分)</div>
-          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Wan2.2-5B 单步超分 · 10.1 GB</div>
+          <div style="font-weight:700;color:#6ee7b7;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">✨ ReCaVSR (2K/4K 视频超分 · 配套后台副引擎)</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Wan2.2-5B 单步流式超分 · 10.1 GB (随主引擎按需后台启动)</div>
         </div>
         <span class="preset-check" style="color:#10b981;font-weight:700;display:none;flex-shrink:0;">✔</span>
       </div>
@@ -3488,6 +3504,171 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div style="font-size:12.5px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">白模/动作迁移</div>
         <div style="font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Ref2VA · 白模/深度换人换景</div>
       </button>
+    </div>
+  </div>
+
+  <!-- 01 · 双生图引擎顶部切换条 (MiniMax-H3-Image 4K vs Qwen-Image-2.1 满血BF16 · 3D控姿势) -->
+  <div id="imageEngineSwitchBar" style="display:none;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px;margin-bottom:12px;">
+    <button type="button" id="btnImgEngH3" onclick="switchImageEngine('h3')" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 14px;border-radius:10px;border:1.5px solid #ec4899;background:linear-gradient(135deg,rgba(236,72,153,0.26),rgba(147,51,234,0.22),rgba(15,23,42,0.95));color:#fdf2f8;cursor:pointer;text-align:left;transition:all 0.16s;">
+      <div style="min-width:0;">
+        <div style="font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📸 引擎 A：MiniMax-H3-Image (33B · 4K直出/换装)</div>
+        <div style="font-size:11px;color:#fbcfe8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">1680万像素原生4K · 四宫格免Mask锁脸换装 · 6步极速</div>
+      </div>
+      <span id="chkImgEngH3" style="font-size:13px;font-weight:900;color:#f472b6;flex-shrink:0;">✔ 使用中</span>
+    </button>
+    <button type="button" id="btnImgEngQwen" onclick="switchImageEngine('qwen21')" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 14px;border-radius:10px;border:1.5px solid #334155;background:rgba(15,23,42,0.86);color:#cbd5e1;cursor:pointer;text-align:left;transition:all 0.16s;">
+      <div style="min-width:0;">
+        <div style="font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎨 引擎 B：Qwen-Image-2.1 (满血BF16破限 · 3D控姿势)</div>
+        <div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">双BF16底模 + Heretic破限 + 170套3D姿势库 + 双LoRA叠加 (G4/H100/A100通吃)</div>
+      </div>
+      <span id="chkImgEngQwen" style="font-size:13px;font-weight:900;color:#38bdf8;display:none;flex-shrink:0;">✔ 使用中</span>
+    </button>
+  </div>
+
+  <!-- 01-B · Qwen-Image-2.1 满血 BF16 破限生图 & 170 套 3D 人偶控姿势工作台 -->
+  <div id="qwenImageStudioRow" style="display:none;padding:12px 14px;margin-bottom:14px;background:linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(12,74,110,0.48) 55%, rgba(49,46,129,0.45) 100%);border:1.5px solid rgba(56,189,248,0.62);border-radius:12px;">
+    <!-- 顶部栏：3 种创作模式切换 + 双满血 BF16 底模切换 + 一键配方预设 -->
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-size:13.5px;font-weight:900;color:#e0f2fe;white-space:nowrap;">🎨 1. Qwen-Image-2.1 模式</span>
+        <div style="display:inline-flex;gap:4px;padding:3px;border-radius:8px;background:#020617;border:1px solid #334155;">
+          <button type="button" id="qwenSubBtnT2i" onclick="switchQwenImageSubMode('t2i')" style="height:25px;padding:0 10px;border-radius:6px;border:none;background:#0ea5e9;color:#ffffff;font-size:11.5px;font-weight:800;cursor:pointer;">✨ 文生图 (T2I)</button>
+          <button type="button" id="qwenSubBtnEdit" onclick="switchQwenImageSubMode('edit')" style="height:25px;padding:0 10px;border-radius:6px;border:none;background:transparent;color:#94a3b8;font-size:11.5px;font-weight:700;cursor:pointer;">✂️ 保脸改图 (Edit)</button>
+          <button type="button" id="qwenSubBtnPose" onclick="switchQwenImageSubMode('pose')" style="height:25px;padding:0 10px;border-radius:6px;border:none;background:transparent;color:#94a3b8;font-size:11.5px;font-weight:700;cursor:pointer;">🕺 3D人偶控姿势 (170式)</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <select id="qwenBaseModelSelect" style="height:27px;padding:0 8px;border-radius:6px;border:1px solid #38bdf8;background:#0f172a;color:#bae6fd;font-size:11.5px;font-weight:800;cursor:pointer;" title="两套 13.25GB 满血 BF16 主干均已常驻云盘，可随时无损热切换">
+          <option value="chatr" selected>🔥 底模: ChatR 无审查 Omni BF16 (直出未审查·推荐)</option>
+          <option value="official">✨ 底模: 官方满血原版 BF16 (原味+自由挂LoRA)</option>
+        </select>
+        <button type="button" onclick="applyQwenRecipe('author')" style="height:27px;padding:0 9px;border-radius:6px;border:1px solid rgba(244,114,182,0.55);background:rgba(244,114,182,0.16);color:#fbcfe8;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;" title="作者级满血质感：er_sde + beta · 50步 · CFG 2.5 · 1152×1728">🏆 作者50步质感</button>
+        <button type="button" onclick="applyQwenRecipe('turbo')" style="height:27px;padding:0 9px;border-radius:6px;border:1px solid rgba(245,158,11,0.55);background:rgba(245,158,11,0.16);color:#fde68a;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;" title="挂载 8步 Turbo LoRA 极速抽卡：euler + simple · 8步 · CFG 1.0">⚡ 8步Turbo极速</button>
+        <button type="button" onclick="applyQwenRecipe('pose')" style="height:27px;padding:0 9px;border-radius:6px;border:1px solid rgba(56,189,248,0.55);background:rgba(56,189,248,0.16);color:#bae6fd;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;" title="3D控姿黄金配方：VNCCS LoRA @ 1.0 · 25步 · CFG 1.0 · euler/simple">🕺 25步控姿配方</button>
+      </div>
+    </div>
+
+    <!-- 第二排：双 LoRA 热挂载槽 + 采样器 / 调度器 / CFG -->
+    <div style="display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1.15fr) auto;gap:8px;align-items:center;margin-bottom:10px;padding:8px 10px;border-radius:9px;background:rgba(2,6,23,0.78);border:1px solid rgba(56,189,248,0.32);">
+      <div style="display:flex;align-items:center;gap:5px;min-width:0;">
+        <span style="font-size:11px;font-weight:800;color:#7dd3fc;white-space:nowrap;flex-shrink:0;">🔌 主LoRA</span>
+        <select id="qwenLora1Select" style="flex:1;min-width:0;width:0;height:26px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11.5px;font-weight:700;">
+          <option value="">🚫 不挂载主 LoRA (ChatR底模已自带无审查)</option>
+          <option value="chatrlabs-omni-lora-v0.1-bf16.safetensors">🔥 ChatR Uncensored Omni LoRA (质感强化)</option>
+          <option value="VNCCS_QI2_PoseStudioV1.1.safetensors">🕺 VNCCS PoseStudio V1.1 (3D人偶控姿·稳定)</option>
+          <option value="VNCCS_QI2_PoseStudioV3.safetensors">🕺 VNCCS PoseStudio V3 (3D人偶控姿·新版)</option>
+          <option value="Qwen-Image-2.1-NSFW-Image-Edit.safetensors">✂️ NSFW Image Edit (保脸改图/换装专用)</option>
+          <option value="chatrlabs-omni-turbo-8step-fp32.safetensors">⚡ ChatR 8步 Turbo 加速 LoRA</option>
+        </select>
+        <input type="number" id="qwenLora1Str" value="1.0" min="0.1" max="1.5" step="0.05" style="width:48px;height:26px;padding:0 4px;border-radius:5px;border:1px solid #475569;background:#020617;color:#fde68a;font-size:11.5px;font-weight:700;text-align:center;" title="主 LoRA 权重">
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;min-width:0;">
+        <span style="font-size:11px;font-weight:800;color:#c4b5fd;white-space:nowrap;flex-shrink:0;">➕ 副LoRA</span>
+        <select id="qwenLora2Select" style="flex:1;min-width:0;width:0;height:26px;padding:0 6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:11.5px;font-weight:700;">
+          <option value="" selected>🚫 无 (可叠加 Turbo / 自定义云盘 LoRA)</option>
+          <option value="chatrlabs-omni-turbo-8step-fp32.safetensors">⚡ ChatR 8步 Turbo 加速 LoRA</option>
+          <option value="chatrlabs-omni-lora-v0.1-bf16.safetensors">🔥 ChatR Uncensored Omni LoRA</option>
+          <option value="Qwen-Image-2.1-NSFW-Image-Edit.safetensors">✂️ NSFW Image Edit (改图专用)</option>
+          <option value="VNCCS_QI2_PoseStudioV1.1.safetensors">🕺 VNCCS PoseStudio V1.1</option>
+          <option value="VNCCS_QI2_PoseStudioV3.safetensors">🕺 VNCCS PoseStudio V3</option>
+        </select>
+        <input type="number" id="qwenLora2Str" value="0.8" min="0.1" max="1.5" step="0.05" style="width:48px;height:26px;padding:0 4px;border-radius:5px;border:1px solid #475569;background:#020617;color:#fde68a;font-size:11.5px;font-weight:700;text-align:center;" title="副 LoRA 权重">
+        <button type="button" onclick="refreshQwenCloudLoras(true)" style="height:26px;padding:0 7px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#93c5fd;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;" title="扫描云盘 gdrive:models/Qwen-Image-2.1-Uncensored/loras/ 中的全部自定义 Civitai LoRA">🔄</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;">
+        <select id="qwenSamplerSelect" style="height:26px;padding:0 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;font-weight:700;" title="采样器">
+          <option value="er_sde" selected>er_sde</option>
+          <option value="euler">euler</option>
+          <option value="dpmpp_2m">dpmpp_2m</option>
+          <option value="uni_pc">uni_pc</option>
+        </select>
+        <select id="qwenSchedulerSelect" style="height:26px;padding:0 6px;border-radius:5px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:11px;font-weight:700;" title="调度器">
+          <option value="beta" selected>beta</option>
+          <option value="simple">simple</option>
+          <option value="normal">normal</option>
+          <option value="karras">karras</option>
+        </select>
+        <span style="font-size:11px;color:#94a3b8;font-weight:700;">CFG</span>
+        <input type="number" id="qwenCfgInput" value="2.5" min="1.0" max="8.0" step="0.1" style="width:46px;height:26px;padding:0 4px;border-radius:5px;border:1px solid #475569;background:#020617;color:#6ee7b7;font-size:11.5px;font-weight:800;text-align:center;">
+      </div>
+    </div>
+
+    <!-- 第三排：作者 7 要素快捷提示词 & L0-L3 大胆度阶梯快捷填入条 -->
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+      <span style="font-size:11px;font-weight:800;color:#94a3b8;">📝 作者级写词助手：</span>
+      <select id="qwenPromptTplSelect" onchange="applyQwenPromptTemplate(this.value)" style="height:25px;padding:0 8px;border-radius:6px;border:1px solid rgba(56,189,248,0.5);background:#0f172a;color:#bae6fd;font-size:11px;font-weight:700;cursor:pointer;">
+        <option value="">✨ 一键套用 7 要素作者结构 / L0-L3 阶梯模板...</option>
+        <option value="l0_editorial">L0 · 街拍/杂志感（全着装自然光 · 85mm特写）</option>
+        <option value="l1_seaside">L1 · 海边湿身泳装（夕阳反光 + 水珠真皮质感）</option>
+        <option value="l2_lowangle">L2 · 极低机位仰拍私房（暖光百叶窗 + 油润肌肤）</option>
+        <option value="l2_kneel_back">L2 · 窗边跪姿回眸（晨光逆光发丝 + 35mm电影感）</option>
+        <option value="edit_outfit">✂️ Edit 改图模板：保持原脸与姿势，替换穿搭与光影</option>
+        <option value="pose_scene">🕺 3D控姿补充场景模板：替换为海边日落/私房暖光场景</option>
+      </select>
+      <span style="font-size:11px;color:#64748b;">💡 提示：在 <b>文生图</b> 模式下无需传图；切到 <b>保脸改图</b> 或 <b>3D人偶控姿势</b> 将展开下方角色图与 170 姿势可视化库</span>
+    </div>
+
+    <!-- 第四排（仅 Edit / Pose 模式展开）：左侧角色原图槽 + 右侧 170 套 3D 姿势可视化选择器 -->
+    <div id="qwenMediaWorkspace" style="display:none;grid-template-columns:250px minmax(0, 1fr);gap:10px;align-items:stretch;">
+      <!-- 角色原图槽 -->
+      <div style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #a855f7;display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
+          <span style="font-size:12px;font-weight:900;color:#e9d5ff;white-space:nowrap;">🧑 角色原图 (保脸)</span>
+          <div style="display:flex;gap:3px;">
+            <button type="button" onclick="grabPreviewToQwenChar()" style="padding:2px 6px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid #10b981;background:rgba(16,185,129,0.2);color:#6ee7b7;cursor:pointer;" title="一键把右侧刚生成好的 H3/Qwen 预览图载入这里换姿势！">📋取预览</button>
+            <button type="button" onclick="openCc0PortraitGalleryModal('QWEN_CHAR_SLOT', 'portrait')" style="padding:2px 6px;font-size:10px;font-weight:800;border-radius:4px;border:1px solid #c084fc;background:rgba(192,132,252,0.2);color:#e9d5ff;cursor:pointer;" title="从 1,499 张 CC0 高清人脸库挑选">👩脸库</button>
+            <button type="button" onclick="clearQwenCharSlot()" style="padding:2px 5px;font-size:10px;border-radius:4px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer;">✕</button>
+          </div>
+        </div>
+        <label style="position:relative;flex:1;min-height:220px;border-radius:8px;border:1.5px dashed #7e22ce;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;">
+          <img id="qwenCharImg" style="display:none;width:100%;height:100%;max-height:260px;object-fit:contain;background:#020617;">
+          <div id="qwenCharEmpty" style="text-align:center;color:#94a3b8;font-size:11.5px;padding:10px;">
+            <div style="font-size:28px;margin-bottom:4px;">🧑</div>
+            <div style="color:#e9d5ff;font-weight:800;">点击上传【角色原图】</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:4px;">可点右上「📋取预览」直接接力<br>刚用 H3 4K 生成的角色图换姿势</div>
+          </div>
+          <input type="file" id="inpQwenCharFile" accept="image/*" style="display:none;" onchange="onQwenCharFileChange(this)">
+        </label>
+      </div>
+
+      <!-- 右侧：170 套 3D 姿势库选择器 (仅 Pose 模式显示) / Edit 说明卡 (Edit 模式显示) -->
+      <div id="qwenPoseLibraryPanel" style="padding:9px 10px;border-radius:10px;background:rgba(2,6,23,0.88);border:1.5px solid #38bdf8;display:flex;flex-direction:column;gap:7px;min-width:0;overscroll-behavior:contain;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+            <span style="font-size:12px;font-weight:900;color:#bae6fd;white-space:nowrap;">🕺 170 套 3D 姿势库</span>
+            <span id="qwenSelectedPoseBadge" style="font-size:11px;padding:1px 8px;border-radius:999px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.42);color:#7dd3fc;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px;">未选姿势（请点击下方任意姿势）</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <label title="开启后：云端 GPU 会在 0.4 秒内自动将所选姿势图转为无纹理 3D 素白模，彻底防止原图发色/脸型/服饰串入您的角色" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#6ee7b7;cursor:pointer;white-space:nowrap;">
+              <input type="checkbox" id="chkQwenAutoClayPose" checked style="width:13px;height:13px;accent-color:#10b981;margin:0;">
+              <span>🗿 自动转3D素白模防串脸</span>
+            </label>
+            <input type="text" id="inpQwenPoseSearch" oninput="renderQwenPoseGrid()" placeholder="🔍 搜索姿势名 (如 kneel / sit / ballet)..." style="height:24px;width:185px;padding:0 8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#f8fafc;font-size:11px;">
+            <button type="button" onclick="openCc0PortraitGalleryModal('QWEN_POSE_SLOT', 'pose')" style="height:24px;padding:0 7px;border-radius:5px;border:1px solid #38bdf8;background:rgba(56,189,248,0.18);color:#bae6fd;font-size:10.5px;font-weight:800;cursor:pointer;white-space:nowrap;" title="也支持从内置 1,440 式 PoseWear 3D 白模库点选">💃衣姿库(1440)</button>
+            <label style="height:24px;padding:0 7px;border-radius:5px;border:1px solid #64748b;background:#0f172a;color:#cbd5e1;font-size:10.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap;">
+              📤传姿势图
+              <input type="file" id="inpQwenCustomPose" accept="image/*" style="display:none;" onchange="onQwenCustomPoseUpload(this)">
+            </label>
+          </div>
+        </div>
+        <!-- 分类过滤胶囊 -->
+        <div id="qwenPoseCatBar" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"></div>
+        <!-- 可滚动缩略图网格 -->
+        <div id="qwenPoseGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(68px, 1fr));grid-auto-rows:max-content;align-content:start;gap:6px;height:236px;max-height:236px;overflow-y:auto;overscroll-behavior:contain;padding:6px;border-radius:8px;background:#0f172a;border:1px solid #1e293b;">
+          <div style="grid-column:1/-1;text-align:center;color:#64748b;font-size:12px;padding:24px;">正在加载 170 套 3D 姿势库...</div>
+        </div>
+      </div>
+
+      <!-- Edit 模式右侧提示说明 -->
+      <div id="qwenEditGuidePanel" style="display:none;padding:12px 14px;border-radius:10px;background:rgba(2,6,23,0.78);border:1px dashed #6366f1;flex-direction:column;justify-content:center;gap:8px;">
+        <div style="font-size:13px;font-weight:900;color:#c7d2fe;">✂️ Qwen-Image-2.1 保脸改图 (Edit) 使用技巧</div>
+        <div style="font-size:12px;color:#cbd5e1;line-height:1.6;">
+          1. 在左侧上传（或点 <b>「📋取预览」</b> 载入）要修改的角色照片。<br>
+          2. 建议在上方主 LoRA 选择 <b>「✂️ NSFW Image Edit」</b>（权重 1.0）或 <b>ChatR 无审查底模</b> 直出。<br>
+          3. 在下方提示词框中用自然语言写清楚要改的部分（如换装、换姿势、改光照、换背景），并加上 <code>keep the exact face and identity of &lt;image 1&gt;</code>，即可严格锁脸精修！<br>
+          4. 分辨率选择 <b>「📐 自动跟随参考图比例」</b> 时，Edit 构图零偏移。
+        </div>
+      </div>
     </div>
   </div>
 
@@ -4489,7 +4670,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <!-- 2. 采样步数 -->
       <div id="stepsControlWrap" style="display:flex;align-items:center;gap:8px;background:#1e293b;padding:0 12px;height:38px;box-sizing:border-box;border-radius:9px;border:1px solid var(--border);">
         <span style="font-size:12px;color:#94a3b8;white-space:nowrap;font-weight:600;">步数</span>
-        <input type="range" id="videoSteps" min="10" max="60" step="2" value="30" oninput="document.getElementById('stepsValLabel').innerText = this.value + ' 步'" style="flex:1;accent-color:#3b82f6;cursor:pointer;min-width:60px;">
+        <input type="range" id="videoSteps" min="4" max="60" step="1" value="30" oninput="document.getElementById('stepsValLabel').innerText = this.value + ' 步'" style="flex:1;accent-color:#3b82f6;cursor:pointer;min-width:60px;">
         <span id="stepsValLabel" style="font-size:12.5px;font-weight:700;color:#f8fafc;white-space:nowrap;min-width:36px;text-align:right;">30 步</span>
       </div>
 
@@ -5796,6 +5977,7 @@ function syncDriveFolderHighlight(folderName, rerenderList = true) {
     'GLM-5.3-Flash-4.05bpw': 'GLM-5.3 (4.05bpw)',
     'MiniMax-H3': 'MiniMax-H3',
     'MiniMax-H3-Image': 'H3-Image 4K',
+    'Qwen-Image-2.1-Uncensored': 'Qwen-Image-2.1 BF16',
     'LongCat-Video-Avatar-1.6': 'LongCat-Avatar',
     'LongCat-Video-Avatar-1.6-INT8': 'LongCat(INT8)',
     'Qwen3.8-27B-T4-Q3': 'Qwen3.8(T4)',
@@ -5854,6 +6036,10 @@ function selectPresetModel(cardId, repo, folder, pattern, keepCurrentTab = false
     if (folder.startsWith('LongCat-Video-Avatar')) {
       switchMiniMaxMode('avatar');
     } else if (folder === 'MiniMax-H3-Image') {
+      switchImageEngine('h3', true);
+      switchMiniMaxMode('image');
+    } else if (folder === 'Qwen-Image-2.1-Uncensored') {
+      switchImageEngine('qwen21', true);
       switchMiniMaxMode('image');
     } else if (folder === 'MiniMax-H3-Ref2VA') {
       switchMiniMaxMode('ref2va');
@@ -5876,6 +6062,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'MiniMax-H3-Ref2VA': 'MiniMaxAI/MiniMax-H3',
     'MiniMaxAI': 'MiniMaxAI/MiniMax-H3',
     'MiniMax-H3-Image': 'Comfy-Org/MiniMax-H3-Image',
+    'Qwen-Image-2.1-Uncensored': 'chatrlabs/Qwen-Image-2.1-Uncensored-Omni-Quantized',
     'LongCat-Video-Avatar-1.6': 'meituan-longcat/LongCat-Video-Avatar-1.6',
     'LongCat-Video-Avatar-1.6-INT8': 'meituan-longcat/LongCat-Video-Avatar-1.6',
     'Qwen3.8-27B-T4-Q3': 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF',
@@ -5893,6 +6080,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'MiniMax-H3-Ref2VA': 'preset_minimax_ref2va',
     'MiniMaxAI': 'preset_minimax_h3',
     'MiniMax-H3-Image': 'preset_minimax_image',
+    'Qwen-Image-2.1-Uncensored': 'preset_qwen_image_21',
     'LongCat-Video-Avatar-1.6': 'preset_longcat_avatar',
     'LongCat-Video-Avatar-1.6-INT8': 'preset_t4_longcat_int8',
     'Qwen3.8-27B-T4-Q3': 'preset_t4_qwen38_q3',
@@ -5909,6 +6097,7 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     'MiniMax-H3': 'FL2VA/*.safetensors',
     'MiniMax-H3-Ref2VA': 'Ref2VA/*.safetensors',
     'MiniMax-H3-Image': '*.safetensors',
+    'Qwen-Image-2.1-Uncensored': '*.safetensors',
     'LongCat-Video-Avatar-1.6': 'base_model/*.safetensors',
     'LongCat-Video-Avatar-1.6-INT8': 'base_model_int8/*.safetensors',
     'Qwen3.8-27B-T4-Q3': 'Huihui-Qwen3.8-27B-abliterated-UD-Q3_K_XL.gguf',
@@ -5945,6 +6134,10 @@ function selectDriveFolder(folderName, firstFile, keepCurrentTab = false) {
     if (folderName.startsWith('LongCat-Video-Avatar')) {
       switchMiniMaxMode('avatar');
     } else if (folderName === 'MiniMax-H3-Image') {
+      switchImageEngine('h3', true);
+      switchMiniMaxMode('image');
+    } else if (folderName === 'Qwen-Image-2.1-Uncensored') {
+      switchImageEngine('qwen21', true);
       switchMiniMaxMode('image');
     } else if (folderName === 'MiniMax-H3-Ref2VA') {
       switchMiniMaxMode('ref2va');
@@ -6131,6 +6324,10 @@ async function refreshStatus(force = false) {
         if (mf.startsWith('LongCat-Video-Avatar')) {
           switchMiniMaxMode('avatar');
         } else if (mf === 'MiniMax-H3-Image') {
+          switchImageEngine('h3', true);
+          switchMiniMaxMode('image');
+        } else if (mf === 'Qwen-Image-2.1-Uncensored') {
+          switchImageEngine('qwen21', true);
           switchMiniMaxMode('image');
         } else if (mf === 'MiniMax-H3-Ref2VA') {
           switchMiniMaxMode('ref2va');
@@ -6229,6 +6426,8 @@ async function refreshStatus(force = false) {
       'MiniMaxAI/MiniMax-H3-Ref2VA': 'MiniMax-H3-Ref2VA(白模)',
       'MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
       'Comfy-Org/MiniMax-H3-Image': 'MiniMax-H3-Image(4K)',
+      'Qwen-Image-2.1-Uncensored': 'Qwen-Image-2.1(BF16)',
+      'chatrlabs/Qwen-Image-2.1-Uncensored-Omni-Quantized': 'Qwen-Image-2.1(BF16)',
       'LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
       'LongCat-Video-Avatar-1.6-INT8': 'LongCat-Avatar(INT8)',
       'meituan-longcat/LongCat-Video-Avatar-1.6': 'LongCat-Avatar-1.6',
@@ -6848,6 +7047,7 @@ function onBootModelSelectChange(folderVal) {
     'MiniMax-H3': ['preset_minimax_h3', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3', 'FL2VA/*.safetensors'],
     'MiniMax-H3-Ref2VA': ['preset_minimax_ref2va', 'MiniMaxAI/MiniMax-H3', 'MiniMax-H3-Ref2VA', 'Ref2VA/*.safetensors'],
     'MiniMax-H3-Image': ['preset_minimax_image', 'Comfy-Org/MiniMax-H3-Image', 'MiniMax-H3-Image', '*.safetensors'],
+    'Qwen-Image-2.1-Uncensored': ['preset_qwen_image_21', 'chatrlabs/Qwen-Image-2.1-Uncensored-Omni-Quantized', 'Qwen-Image-2.1-Uncensored', '*.safetensors'],
     'LongCat-Video-Avatar-1.6': ['preset_longcat_avatar', 'meituan-longcat/LongCat-Video-Avatar-1.6', 'LongCat-Video-Avatar-1.6', 'base_model/*.safetensors'],
     'Huihui-Qwen3.8-27B-abliterated-GGUF': ['preset_qwen_bf16', 'huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'Huihui-Qwen3.8-27B-abliterated-bf16.gguf'],
     'GLM-5.3-Flash-4.05bpw': ['preset_glm53_405', 'MikeRoz/GLM-5.3-Flash-Uncensored-4.05bpw-h6-exl3', 'GLM-5.3-Flash-4.05bpw', '*.safetensors'],
@@ -6869,7 +7069,7 @@ function openBootModal() {
   if (rEl) rEl.style.display = 'none';
   if (mSel) {
     const tabModelMap = {
-      image: 'MiniMax-H3-Image',
+      image: (currentImageEngine === 'qwen21' ? 'Qwen-Image-2.1-Uncensored' : 'MiniMax-H3-Image'),
       fusion: 'MiniMax-H3-Image',
       t2va: 'MiniMax-H3',
       fl2va: 'MiniMax-H3',
@@ -6878,7 +7078,7 @@ function openBootModal() {
       ref2va: 'MiniMax-H3-Ref2VA',
     };
     const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
-    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'GLM-5.3-Flash-4.05bpw']);
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'Qwen-Image-2.1-Uncensored', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'GLM-5.3-Flash-4.05bpw']);
     const autoTarget = (curF === 'GLM-5.3-Flash-4.05bpw' || curF === 'Huihui-Qwen3.8-27B-abliterated-GGUF')
       ? curF
       : (tabModelMap[currentMiniMaxMode] || (known.has(curF) ? curF : 'CURRENT'));
@@ -6903,7 +7103,7 @@ function openGpuChoiceModal(reasonText, requestedGpu = 'G4') {
   }
   if (mSel) {
     const curF = ((document.getElementById('inpFolder') || {}).value || '').trim();
-    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'GLM-5.3-Flash-4.05bpw']);
+    const known = new Set(['MiniMax-H3', 'MiniMax-H3-Ref2VA', 'MiniMax-H3-Image', 'Qwen-Image-2.1-Uncensored', 'LongCat-Video-Avatar-1.6', 'Huihui-Qwen3.8-27B-abliterated-GGUF', 'GLM-5.3-Flash-4.05bpw']);
     mSel.value = known.has(curF) ? curF : 'CURRENT';
   }
   selectBootGpuCard(requestedGpu || _selectedBootGpu || 'G4');
@@ -7394,6 +7594,567 @@ const H3_IMAGE_RES_OPTIONS_HTML = `
   <option value="1536x2048">1536×2048 (3:4 极速2K人像 · ~2.5s)</option>
 `;
 
+const QWEN_IMAGE_RES_OPTIONS_HTML = `
+  <option value="1152x1728" selected>1152×1728 (2:3 竖版写真 · 作者黄金推荐)</option>
+  <option value="auto">📐 自动跟随参考图比例 (Edit 改图 / 3D控姿零偏移)</option>
+  <option value="1024x1024">1024×1024 (1:1 方形高清)</option>
+  <option value="1728x1152">1728×1152 (3:2 电影横版)</option>
+  <option value="1024x1536">1024×1536 (2:3 经典竖版)</option>
+  <option value="1344x768">1344×768 (16:9 横屏剧照 · 适合送去H3首尾帧)</option>
+  <option value="768x1344">768×1344 (9:16 竖屏剧照 · 适合送去H3首尾帧)</option>
+  <option value="1536x1536">1536×1536 (1:1 超清大图)</option>
+`;
+
+let currentImageEngine = 'h3';
+try {
+  const _savedEng = localStorage.getItem('easycolab_image_engine');
+  if (_savedEng === 'qwen21' || _savedEng === 'h3') currentImageEngine = _savedEng;
+} catch (e) {}
+let qwenSubMode = 't2i';
+let qwenCharB64 = '';
+let qwenCustomPoseB64 = '';
+let qwenSelectedPoseFile = '';
+let qwenSelectedPoseName = '';
+let qwenPoseCatalog = null;
+let qwenPoseActiveCat = 'ALL';
+
+function setQwenCharImage(b64) {
+  qwenCharB64 = b64 || '';
+  const img = document.getElementById('qwenCharImg');
+  const emp = document.getElementById('qwenCharEmpty');
+  if (img && emp) {
+    if (qwenCharB64) {
+      img.src = qwenCharB64;
+      img.style.display = 'block';
+      emp.style.display = 'none';
+    } else {
+      img.src = '';
+      img.style.display = 'none';
+      emp.style.display = 'block';
+    }
+  }
+}
+
+function clearQwenCharSlot() {
+  setQwenCharImage('');
+  const inp = document.getElementById('inpQwenCharFile');
+  if (inp) inp.value = '';
+}
+
+function onQwenCharFileChange(inp) {
+  const f = inp && inp.files && inp.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => setQwenCharImage(String(rd.result || ''));
+  rd.readAsDataURL(f);
+}
+
+async function grabPreviewToQwenChar() {
+  const imgEl = document.getElementById('mmImagePreview');
+  if (!imgEl || !imgEl.src || imgEl.style.display === 'none') {
+    alert('当前右侧预览区还没有图片哦（请先在 MiniMax-H3-Image 或历史记录里点选一张图片）！');
+    return;
+  }
+  try {
+    const resp = await fetch(imgEl.src);
+    const blob = await resp.blob();
+    const b64 = await new Promise((resolve, reject) => {
+      const rd = new FileReader();
+      rd.onload = () => resolve(String(rd.result || ''));
+      rd.onerror = reject;
+      rd.readAsDataURL(blob);
+    });
+    setQwenCharImage(b64);
+    if (typeof showGlobalCopyToast === 'function') showGlobalCopyToast('✅ 已将当前预览图载入【Qwen-Image-2.1 角色原图槽】！');
+  } catch (e) {
+    alert('载入当前预览图失败: ' + e);
+  }
+}
+
+function setQwenCustomPoseImage(b64, label) {
+  qwenCustomPoseB64 = b64 || '';
+  qwenSelectedPoseFile = '';
+  qwenSelectedPoseName = label || '自定义姿势参考图';
+  const badge = document.getElementById('qwenSelectedPoseBadge');
+  if (badge) {
+    badge.innerText = `✅ 已选: ${qwenSelectedPoseName}`;
+    badge.style.color = '#6ee7b7';
+    badge.style.borderColor = '#10b981';
+  }
+  renderQwenPoseGrid();
+}
+
+function onQwenCustomPoseUpload(inp) {
+  const f = inp && inp.files && inp.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => setQwenCustomPoseImage(String(rd.result || ''), f.name);
+  rd.readAsDataURL(f);
+}
+
+async function loadQwenPoseCatalog() {
+  if (Array.isArray(qwenPoseCatalog)) {
+    renderQwenPoseCats();
+    renderQwenPoseGrid();
+    return;
+  }
+  try {
+    const r = await fetch('/api/qwen_poses');
+    const d = await r.json();
+    qwenPoseCatalog = Array.isArray(d.items) ? d.items : [];
+  } catch (e) {
+    qwenPoseCatalog = [];
+  }
+  renderQwenPoseCats();
+  renderQwenPoseGrid();
+}
+
+function renderQwenPoseCats() {
+  const bar = document.getElementById('qwenPoseCatBar');
+  if (!bar || !Array.isArray(qwenPoseCatalog)) return;
+  const counts = {};
+  let curatedCnt = 0;
+  qwenPoseCatalog.forEach(it => {
+    counts[it.cat] = (counts[it.cat] || 0) + 1;
+    if (it.src_cat === '精选55') curatedCnt += 1;
+  });
+  const cats = [
+    ['ALL', `全部 (${qwenPoseCatalog.length})`],
+    ['CURATED', `🔥 精选 (${curatedCnt})`],
+    '站姿', '坐姿', '跪姿', '蹲姿与俯身', '躺卧', '芭蕾与动感', '特写互动', '格斗动感', '精选动作',
+  ];
+  bar.innerHTML = cats.map(c => {
+    const key = Array.isArray(c) ? c[0] : c;
+    const lbl = Array.isArray(c) ? c[1] : `${c} (${counts[c] || 0})`;
+    if (!Array.isArray(c) && !counts[c]) return '';
+    const act = qwenPoseActiveCat === key;
+    return `<button type="button" onclick="qwenPoseActiveCat='${key}';renderQwenPoseCats();renderQwenPoseGrid();" style="height:22px;padding:0 8px;border-radius:999px;border:1px solid ${act ? '#38bdf8' : '#334155'};background:${act ? 'rgba(56,189,248,0.22)' : '#0f172a'};color:${act ? '#e0f2fe' : '#94a3b8'};font-size:10.5px;font-weight:${act ? '800' : '600'};cursor:pointer;white-space:nowrap;">${lbl}</button>`;
+  }).join('');
+}
+
+function selectQwenPoseItem(file, name) {
+  qwenSelectedPoseFile = file;
+  qwenSelectedPoseName = name;
+  qwenCustomPoseB64 = '';
+  const badge = document.getElementById('qwenSelectedPoseBadge');
+  if (badge) {
+    badge.innerText = `✅ 已选: ${name}`;
+    badge.style.color = '#6ee7b7';
+    badge.style.borderColor = '#10b981';
+  }
+  renderQwenPoseGrid();
+}
+
+function renderQwenPoseGrid() {
+  const grid = document.getElementById('qwenPoseGrid');
+  if (!grid || !Array.isArray(qwenPoseCatalog)) return;
+  const kw = (((document.getElementById('inpQwenPoseSearch') || {}).value) || '').trim().toLowerCase();
+  const list = qwenPoseCatalog.filter(it => {
+    if (qwenPoseActiveCat === 'CURATED' && it.src_cat !== '精选55') return false;
+    if (qwenPoseActiveCat !== 'ALL' && qwenPoseActiveCat !== 'CURATED' && it.cat !== qwenPoseActiveCat) return false;
+    if (kw && !(String(it.name || '').toLowerCase().includes(kw) || String(it.cat || '').toLowerCase().includes(kw) || String(it.src_cat || '').toLowerCase().includes(kw))) return false;
+    return true;
+  });
+  if (!list.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#64748b;font-size:12px;padding:24px;">未匹配到姿势，请换个关键词或点右上角上传自定义姿势图</div>';
+    return;
+  }
+  grid.innerHTML = list.map(it => {
+    const sel = qwenSelectedPoseFile === it.file;
+    const safeName = String(it.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const jsFile = String(it.file || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const jsName = String(it.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return `<div onclick="selectQwenPoseItem('${jsFile}','${jsName}')" title="${safeName} (${it.cat})" style="cursor:pointer;border-radius:7px;overflow:hidden;border:2px solid ${sel ? '#10b981' : '#334155'};background:#020617;display:flex;flex-direction:column;height:110px;box-sizing:border-box;">
+      <div style="position:relative;width:100%;height:88px;flex:0 0 88px;background:#f8fafc;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+        <img loading="lazy" src="/api/qwen_pose_img/${encodeURIComponent(it.file)}" style="width:100%;height:100%;object-fit:contain;display:block;">
+        ${sel ? '<span style="position:absolute;top:2px;right:2px;background:#10b981;color:#020617;font-size:9px;font-weight:900;padding:1px 4px;border-radius:4px;line-height:1.1;">✔</span>' : ''}
+      </div>
+      <div style="height:20px;line-height:20px;padding:0 3px;font-size:9.5px;color:${sel ? '#6ee7b7' : '#cbd5e1'};font-weight:${sel ? '800' : '600'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;flex:0 0 20px;">${safeName}</div>
+    </div>`;
+  }).join('');
+}
+
+async function refreshQwenCloudLoras(showToast = false) {
+  try {
+    const r = await fetch('/api/qwen_loras');
+    const d = await r.json();
+    const loras = Array.isArray(d.loras) ? d.loras : [];
+    const labelMap = {
+      'chatrlabs-omni-lora-v0.1-bf16.safetensors': '🔥 ChatR Uncensored Omni LoRA (质感强化)',
+      'VNCCS_QI2_PoseStudioV1.1.safetensors': '🕺 VNCCS PoseStudio V1.1 (3D人偶控姿·稳定)',
+      'VNCCS_QI2_PoseStudioV3.safetensors': '🕺 VNCCS PoseStudio V3 (3D人偶控姿·新版)',
+      'Qwen-Image-2.1-NSFW-Image-Edit.safetensors': '✂️ NSFW Image Edit (保脸改图/换装专用)',
+      'chatrlabs-omni-turbo-8step-fp32.safetensors': '⚡ ChatR 8步 Turbo 加速 LoRA',
+    };
+    ['qwenLora1Select', 'qwenLora2Select'].forEach((sid, idx) => {
+      const sel = document.getElementById(sid);
+      if (!sel) return;
+      const curV = sel.value;
+      const firstOpt = idx === 0
+        ? '<option value="">🚫 不挂载主 LoRA (ChatR底模已自带无审查)</option>'
+        : '<option value="">🚫 无 (可叠加 Turbo / 自定义云盘 LoRA)</option>';
+      sel.innerHTML = firstOpt + loras.map(fn => {
+        const lbl = labelMap[fn] || `🔌 云盘自定义 LoRA: ${fn}`;
+        return `<option value="${fn.replace(/"/g, '&quot;')}">${lbl}</option>`;
+      }).join('');
+      if (loras.includes(curV) || curV === '') sel.value = curV;
+    });
+    if (showToast && typeof showGlobalCopyToast === 'function') {
+      showGlobalCopyToast(`✅ 已同步 ${loras.length} 个 Qwen-Image-2.1 LoRA${d.from_cloud ? '（含云盘实时扫描）' : '（内置预设）'}`);
+    }
+  } catch (e) {}
+}
+
+function applyQwenRecipe(kind) {
+  const stepsEl = document.getElementById('videoSteps');
+  const stepsLbl = document.getElementById('stepsValLabel');
+  const cfgEl = document.getElementById('qwenCfgInput');
+  const sampEl = document.getElementById('qwenSamplerSelect');
+  const schedEl = document.getElementById('qwenSchedulerSelect');
+  const l1 = document.getElementById('qwenLora1Select');
+  const l1s = document.getElementById('qwenLora1Str');
+  const l2 = document.getElementById('qwenLora2Select');
+  const l2s = document.getElementById('qwenLora2Str');
+  const resSel = document.getElementById('videoRes');
+  if (kind === 'author') {
+    if (stepsEl) stepsEl.value = 50;
+    if (stepsLbl) stepsLbl.innerText = '50 步';
+    if (cfgEl) cfgEl.value = '2.5';
+    if (sampEl) sampEl.value = 'er_sde';
+    if (schedEl) schedEl.value = 'beta';
+    if (l1 && !l1.value) l1.value = 'chatrlabs-omni-lora-v0.1-bf16.safetensors';
+    if (l1s) l1s.value = '1.0';
+    if (l2 && l2.value === 'chatrlabs-omni-turbo-8step-fp32.safetensors') l2.value = '';
+    if (resSel && currentImageEngine === 'qwen21') resSel.value = '1152x1728';
+  } else if (kind === 'turbo') {
+    if (stepsEl) stepsEl.value = 8;
+    if (stepsLbl) stepsLbl.innerText = '8 步';
+    if (cfgEl) cfgEl.value = '1.0';
+    if (sampEl) sampEl.value = 'euler';
+    if (schedEl) schedEl.value = 'simple';
+    if (l2) l2.value = 'chatrlabs-omni-turbo-8step-fp32.safetensors';
+    if (l2s) l2s.value = '1.0';
+  } else if (kind === 'pose') {
+    if (qwenSubMode !== 'pose') switchQwenImageSubMode('pose');
+    if (stepsEl) stepsEl.value = 25;
+    if (stepsLbl) stepsLbl.innerText = '25 步';
+    if (cfgEl) cfgEl.value = '1.0';
+    if (sampEl) sampEl.value = 'euler';
+    if (schedEl) schedEl.value = 'simple';
+    if (l1) l1.value = 'VNCCS_QI2_PoseStudioV1.1.safetensors';
+    if (l1s) l1s.value = '1.0';
+    if (resSel && currentImageEngine === 'qwen21') resSel.value = 'auto';
+  }
+}
+
+function applyQwenPromptTemplate(key) {
+  const el = document.getElementById('videoPrompt');
+  const sel = document.getElementById('qwenPromptTplSelect');
+  if (sel) sel.value = '';
+  if (!key || !el) return;
+  const tpls = {
+    l0_editorial: 'A hyper-realistic candid editorial photograph shot on 85mm f/1.4 lens at eye level. A 24-year-old East Asian woman with a slim oval face and long silky dark hair softly framing her shoulders, standing with weight on one leg, one hand resting gently on a stone balcony railing, turning her head slightly back over her shoulder toward the camera with a calm, serene gaze. Warm golden-hour sunlight filtering through sheer foliage with creamy circular bokeh in the background. Natural skin texture with delicate soft highlights and crisp catchlights in her eyes. Wearing a minimalist cream silk slip dress. 8k resolution, cinematic lighting, candid caught-in-the-moment atmosphere, photorealistic.',
+    l1_seaside: 'A hyper-realistic candid beach photograph shot on 50mm f/1.8 lens from a slightly low angle. A 23-year-old East Asian woman with wet dark hair clinging to her collarbones and shoulders, crouching gracefully on wet shoreline sand with knees apart and fingertips lightly touching the sand, looking calmly toward the lens. Late afternoon sunset golden light reflecting off ocean waves behind her. Her skin is glistening with fine water droplets, natural pores, and sunlit warmth. Wearing a damp dark emerald bikini with delicate straps. 8k resolution, cinematic natural lighting, candid caught-in-the-moment atmosphere, photorealistic anatomy.',
+    l2_lowangle: 'A hyper-realistic intimate boudoir photograph shot from a dramatic low angle on 35mm lens. A 24-year-old East Asian woman with tousled dark hair falling across her back, reclining on ivory linen bedding propped on one elbow with legs gracefully parted, gazing softly down toward the lens with parted lips. Warm afternoon sunlight casting slatted Venetian blind shadows across her silhouette and the bedroom wall. Her skin has natural glistening sheen, visible delicate texture, and warm subsurface glow. 8k resolution, cinematic warm chiaroscuro lighting, candid caught-in-the-moment atmosphere, photorealistic anatomy.',
+    l2_kneel_back: 'A hyper-realistic portrait photograph shot on 50mm f/1.4 lens from a three-quarter rear-side angle. A 24-year-old East Asian woman with long loose black hair, kneeling upright on a sunlit plush rug beside floor-to-ceiling sheer curtains, torso gently arched as she looks back over her shoulder with a quiet confident expression. Soft morning backlighting creating luminous rim light along her hair and shoulders. Natural luminous skin texture with subtle sheen. 8k resolution, cinematic lighting, candid atmosphere, photorealistic anatomy.',
+    edit_outfit: 'Keep the exact face, facial features, hairstyle, skin tone, and identity of <image 1> completely unchanged. Change her outfit to a sleek wine-red silk halter dress with delicate lace trim, set in a softly lit luxury hotel lounge at dusk with warm bokeh lights. Natural candid photograph, 8k resolution, photorealistic.',
+    pose_scene: 'Keep her exact face, hairstyle, and clothing details, placed in a warmly lit sunlit coastal villa terrace with soft afternoon shadows, natural skin texture, shallow depth of field, 8k candid photograph.',
+  };
+  if (tpls[key]) el.value = tpls[key];
+}
+
+function switchQwenImageSubMode(sub) {
+  qwenSubMode = (sub === 'edit' || sub === 'pose') ? sub : 't2i';
+  const btns = [
+    ['qwenSubBtnT2i', qwenSubMode === 't2i'],
+    ['qwenSubBtnEdit', qwenSubMode === 'edit'],
+    ['qwenSubBtnPose', qwenSubMode === 'pose'],
+  ];
+  btns.forEach(([id, act]) => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.style.background = act ? '#0ea5e9' : 'transparent';
+    b.style.color = act ? '#ffffff' : '#94a3b8';
+    b.style.fontWeight = act ? '800' : '700';
+  });
+  const ws = document.getElementById('qwenMediaWorkspace');
+  const poseP = document.getElementById('qwenPoseLibraryPanel');
+  const editP = document.getElementById('qwenEditGuidePanel');
+  if (ws) ws.style.display = (qwenSubMode === 't2i') ? 'none' : 'grid';
+  if (poseP) poseP.style.display = (qwenSubMode === 'pose') ? 'flex' : 'none';
+  if (editP) editP.style.display = (qwenSubMode === 'edit') ? 'flex' : 'none';
+
+  const l1 = document.getElementById('qwenLora1Select');
+  const stepsEl = document.getElementById('videoSteps');
+  const stepsLbl = document.getElementById('stepsValLabel');
+  const cfgEl = document.getElementById('qwenCfgInput');
+  const sampEl = document.getElementById('qwenSamplerSelect');
+  const schedEl = document.getElementById('qwenSchedulerSelect');
+  const resSel = document.getElementById('videoRes');
+  if (qwenSubMode === 'pose') {
+    loadQwenPoseCatalog();
+    if (l1 && !String(l1.value || '').toLowerCase().includes('vnccs')) l1.value = 'VNCCS_QI2_PoseStudioV1.1.safetensors';
+    if (stepsEl) stepsEl.value = 25;
+    if (stepsLbl) stepsLbl.innerText = '25 步';
+    if (cfgEl) cfgEl.value = '1.0';
+    if (sampEl) sampEl.value = 'euler';
+    if (schedEl) schedEl.value = 'simple';
+    if (resSel && currentImageEngine === 'qwen21') resSel.value = 'auto';
+  } else if (qwenSubMode === 'edit') {
+    if (l1 && String(l1.value || '').toLowerCase().includes('vnccs')) l1.value = 'Qwen-Image-2.1-NSFW-Image-Edit.safetensors';
+    if (stepsEl) stepsEl.value = 30;
+    if (stepsLbl) stepsLbl.innerText = '30 步';
+    if (cfgEl) cfgEl.value = '2.5';
+    if (sampEl) sampEl.value = 'er_sde';
+    if (schedEl) schedEl.value = 'beta';
+    if (resSel && currentImageEngine === 'qwen21') resSel.value = 'auto';
+  } else {
+    if (l1 && String(l1.value || '').toLowerCase().includes('vnccs')) l1.value = '';
+    if (stepsEl) stepsEl.value = 50;
+    if (stepsLbl) stepsLbl.innerText = '50 步';
+    if (cfgEl) cfgEl.value = '2.5';
+    if (sampEl) sampEl.value = 'er_sde';
+    if (schedEl) schedEl.value = 'beta';
+    if (resSel && currentImageEngine === 'qwen21') resSel.value = '1152x1728';
+  }
+}
+
+function syncImageEngineVisuals() {
+  if (currentMiniMaxMode !== 'image') return;
+  const isQ = currentImageEngine === 'qwen21';
+  const swBar = document.getElementById('imageEngineSwitchBar');
+  const h3Row = document.getElementById('fusionStudioRow');
+  const qRow = document.getElementById('qwenImageStudioRow');
+  const btnH3 = document.getElementById('btnImgEngH3');
+  const btnQ = document.getElementById('btnImgEngQwen');
+  const chkH3 = document.getElementById('chkImgEngH3');
+  const chkQ = document.getElementById('chkImgEngQwen');
+  if (swBar) swBar.style.display = 'grid';
+  if (h3Row) h3Row.style.display = isQ ? 'none' : 'block';
+  if (qRow) qRow.style.display = isQ ? 'block' : 'none';
+  if (btnH3) {
+    btnH3.style.borderColor = isQ ? '#334155' : '#ec4899';
+    btnH3.style.background = isQ ? 'rgba(15,23,42,0.86)' : 'linear-gradient(135deg,rgba(236,72,153,0.26),rgba(147,51,234,0.22),rgba(15,23,42,0.95))';
+    btnH3.style.color = isQ ? '#cbd5e1' : '#fdf2f8';
+  }
+  if (btnQ) {
+    btnQ.style.borderColor = isQ ? '#38bdf8' : '#334155';
+    btnQ.style.background = isQ ? 'linear-gradient(135deg,rgba(14,165,233,0.28),rgba(99,102,241,0.24),rgba(15,23,42,0.95))' : 'rgba(15,23,42,0.86)';
+    btnQ.style.color = isQ ? '#f0f9ff' : '#cbd5e1';
+  }
+  if (chkH3) chkH3.style.display = isQ ? 'none' : 'inline';
+  if (chkQ) chkQ.style.display = isQ ? 'inline' : 'none';
+
+  const titleEl = document.getElementById('videoStudioTitle');
+  const badgeEl = document.getElementById('videoStudioBadge');
+  const pSecTitle = document.getElementById('promptSectionTitle');
+  const pSecSubHint = document.getElementById('promptSectionSubHint');
+  const tplSel = document.getElementById('h3ImageTemplateSelect');
+  const cleanMatteLbl = document.getElementById('lblCleanMatteWords');
+  const dirBtn = document.getElementById('btnOpenPortraitDirector');
+  const autoDirLbl = document.getElementById('lblAutoPortraitDirector');
+  const box4Wrap = document.getElementById('videoNegBoxWrap');
+  const stepsWrap = document.getElementById('stepsControlWrap');
+  const batchWrap = document.getElementById('batchControlWrap');
+  const specRowsCont = document.getElementById('specRowsContainer');
+  const specRow1 = document.getElementById('specRow1Grid');
+  const specRow2 = document.getElementById('specRow2ActionGrid');
+  const avSpecHint = document.getElementById('avatarSpecHint');
+  const pureImgTag = document.getElementById('h3ImagePureTag');
+  const btnImgGen = document.getElementById('btnImageOnlyGen');
+  const resSel = document.getElementById('videoRes');
+
+  if (isQ) {
+    if (titleEl) titleEl.innerText = '🎨 Qwen-Image-2.1 (满血BF16破限) 生图 · 保脸改图 · 170套3D人偶控姿势';
+    if (badgeEl) badgeEl.innerText = 'ChatR无审查BF16 + 官方BF16双切 + Heretic破限编码器 + VNCCS 3D控姿 + 双LoRA热叠加 (G4/H100/A100通吃)';
+    if (pSecTitle) pSecTitle.innerText = '2. Qwen-Image-2.1 画面提示词 (支持 7 要素作者结构 / 控姿场景补充)';
+    if (pSecSubHint) {
+      pSecSubHint.style.display = 'inline';
+      pSecSubHint.innerText = '（3D控姿模式可留空直接换姿势，或补充目标场景/光影/穿搭；文生图建议写满 7 要素细节）';
+    }
+    if (tplSel) tplSel.style.display = 'none';
+    if (cleanMatteLbl) cleanMatteLbl.style.display = 'none';
+    if (dirBtn) dirBtn.style.display = 'none';
+    if (autoDirLbl) autoDirLbl.style.display = 'none';
+    if (box4Wrap) box4Wrap.style.display = 'block';
+    if (stepsWrap) stepsWrap.style.display = 'flex';
+    if (batchWrap) batchWrap.style.display = 'flex';
+    if (specRowsCont) specRowsCont.style.display = 'block';
+    if (specRow1) {
+      specRow1.style.gridTemplateColumns = '1.3fr 1.15fr 1fr 1.15fr';
+      specRow1.style.marginBottom = '10px';
+    }
+    if (specRow2) specRow2.style.gridTemplateColumns = 'minmax(0, 1fr) 240px';
+    if (resSel && resSel.getAttribute('data-res-kind') !== 'qwen21') {
+      resSel.innerHTML = QWEN_IMAGE_RES_OPTIONS_HTML;
+      resSel.setAttribute('data-res-kind', 'qwen21');
+    }
+    if (avSpecHint) {
+      avSpecHint.style.display = 'block';
+      avSpecHint.innerText = '🎨 满血 BF16 常驻 30.2GB · 可一键切换 50步质感 / 8步Turbo / 25步3D控姿';
+    }
+    if (pureImgTag) {
+      pureImgTag.style.display = 'inline-flex';
+      pureImgTag.innerText = '🎨 Qwen-2.1 BF16';
+    }
+    if (btnImgGen) {
+      btnImgGen.style.background = 'linear-gradient(135deg, #0ea5e9, #8b5cf6)';
+      btnImgGen.style.borderColor = 'rgba(56,189,248,0.65)';
+      if (btnImgGen.getAttribute('data-running') !== '1') {
+        btnImgGen.innerText = '🎨 立即生成 Qwen-2.1 满血图';
+      }
+    }
+    refreshQwenCloudLoras(false);
+    if (qwenSubMode === 'pose') loadQwenPoseCatalog();
+  } else {
+    if (titleEl) titleEl.innerText = '📸 MiniMax-H3-Image (33B) 4K 写真生图 & 角色换脸换装二合一工作台';
+    if (badgeEl) badgeEl.innerText = '纯文生1680万像素4K直出 + 免Mask四宫格锁脸换装 + ArcFace二阶生物特征五官精修';
+    if (pSecTitle) pSecTitle.innerText = '2. 4K 写真画面提示词 & 换装补充要求';
+    if (pSecSubHint) {
+      pSecSubHint.style.display = 'inline';
+      pSecSubHint.innerText = '（未传上方参考图时直接按此提示词文生 4K 写真；已传参考图时作为服饰/动作/场景补充要求）';
+    }
+    if (tplSel) tplSel.style.display = 'inline-block';
+    if (cleanMatteLbl) cleanMatteLbl.style.display = 'inline-flex';
+    if (dirBtn) dirBtn.style.display = 'inline-flex';
+    if (autoDirLbl) autoDirLbl.style.display = 'inline-flex';
+    if (box4Wrap) box4Wrap.style.display = 'none';
+    if (stepsWrap) stepsWrap.style.display = 'none';
+    if (batchWrap) batchWrap.style.display = 'none';
+    if (specRowsCont) {
+      specRowsCont.style.display = 'grid';
+      specRowsCont.style.gridTemplateColumns = 'minmax(0, 1.22fr) minmax(0, 1.18fr)';
+      specRowsCont.style.gap = '10px';
+      specRowsCont.style.alignItems = 'center';
+    }
+    if (specRow1) {
+      specRow1.style.gridTemplateColumns = 'minmax(0, 1.6fr) minmax(0, 1fr)';
+      specRow1.style.marginBottom = '0';
+    }
+    if (specRow2) specRow2.style.gridTemplateColumns = 'minmax(0, 1fr) 215px';
+    if (resSel && resSel.getAttribute('data-res-kind') !== 'h3') {
+      resSel.innerHTML = H3_IMAGE_RES_OPTIONS_HTML;
+      resSel.setAttribute('data-res-kind', 'h3');
+    }
+    if (avSpecHint) {
+      avSpecHint.style.display = 'block';
+      avSpecHint.innerText = '⚡ 固定 6 步极速蒸馏 (CFG=1.0 · 免负面词)';
+    }
+    if (pureImgTag) {
+      pureImgTag.style.display = 'inline-flex';
+      pureImgTag.innerText = '🖼️ 4K原图直出';
+    }
+    if (btnImgGen) {
+      btnImgGen.style.background = 'linear-gradient(135deg, #ec4899, #9333ea)';
+      btnImgGen.style.borderColor = 'rgba(244,114,182,0.55)';
+      if (btnImgGen.getAttribute('data-running') !== '1') {
+        btnImgGen.innerText = '📸 立即生成 4K 写真图片';
+      }
+    }
+  }
+}
+
+function switchImageEngine(eng, silent = false) {
+  currentImageEngine = (eng === 'qwen21') ? 'qwen21' : 'h3';
+  try { localStorage.setItem('easycolab_image_engine', currentImageEngine); } catch (e) {}
+  syncImageEngineVisuals();
+  if (!silent && currentImageEngine === 'qwen21') {
+    switchQwenImageSubMode(qwenSubMode);
+  }
+}
+
+async function startQwenImage21Generate(forceInterruptLlm = false) {
+  const prompt = ((document.getElementById('videoPrompt') || {}).value || '').trim();
+  const negPrompt = ((document.getElementById('videoNegPrompt') || {}).value || '').trim();
+  if (qwenSubMode === 't2i' && !prompt) {
+    alert('请输入 Qwen-Image-2.1 画面提示词（或点上方「📝 作者级写词助手」一键套用模板）！');
+    return;
+  }
+  if (qwenSubMode === 'edit' && !qwenCharB64) {
+    alert('请先在左侧上传（或点「📋取预览」/「👩脸库」）载入一张【角色原图】！');
+    return;
+  }
+  if (qwenSubMode === 'pose') {
+    if (!qwenCharB64) {
+      alert('3D 控姿势模式请先在左侧上传（或点「📋取预览」）载入【角色原图】！');
+      return;
+    }
+    if (!qwenSelectedPoseFile && !qwenCustomPoseB64) {
+      alert('请先在右侧 170 套姿势库中点选一个姿势（或上传自定义 3D 姿势图）！');
+      return;
+    }
+  }
+
+  const resVal = ((document.getElementById('videoRes') || {}).value) || '1152x1728';
+  const steps = parseInt(((document.getElementById('videoSteps') || {}).value) || '50', 10) || 50;
+  const randSeed = Boolean((document.getElementById('videoRandSeed') || {}).checked);
+  const seedVal = randSeed ? -1 : (parseInt(((document.getElementById('videoSeed') || {}).value) || '42', 10) || 42);
+  const payload = {
+    mode: 'qwen_image',
+    image_engine: 'qwen21',
+    qwen_sub_mode: qwenSubMode,
+    qwen_base_model: ((document.getElementById('qwenBaseModelSelect') || {}).value) || 'chatr',
+    qwen_lora_1: ((document.getElementById('qwenLora1Select') || {}).value) || '',
+    qwen_lora_1_strength: parseFloat(((document.getElementById('qwenLora1Str') || {}).value) || '1.0') || 1.0,
+    qwen_lora_2: ((document.getElementById('qwenLora2Select') || {}).value) || '',
+    qwen_lora_2_strength: parseFloat(((document.getElementById('qwenLora2Str') || {}).value) || '0.8') || 0.8,
+    sampler_name: ((document.getElementById('qwenSamplerSelect') || {}).value) || 'er_sde',
+    scheduler: ((document.getElementById('qwenSchedulerSelect') || {}).value) || 'beta',
+    cfg: parseFloat(((document.getElementById('qwenCfgInput') || {}).value) || '2.5') || 2.5,
+    steps,
+    resolution: resVal,
+    batch_count: selectedBatchCount || 1,
+    seed: seedVal,
+    randomize_seed: randSeed,
+    prompt,
+    negative_prompt: negPrompt,
+    qwen_char_b64: qwenCharB64 || '',
+    qwen_pose_file: qwenSelectedPoseFile || '',
+    qwen_pose_b64: qwenCustomPoseB64 || '',
+    qwen_auto_clay_pose: Boolean((document.getElementById('chkQwenAutoClayPose') || {}).checked),
+    force_interrupt_llm: Boolean(forceInterruptLlm),
+  };
+
+  const st = document.getElementById('videoGenStatus');
+  const pWrap = document.getElementById('videoProgressWrap');
+  const pBar = document.getElementById('videoProgressBar');
+  setVideoBtnRunningState(true, '🛑 Qwen-2.1 出图中 (点击停止)');
+  if (pWrap) pWrap.style.display = 'block';
+  if (pBar) pBar.style.width = '8%';
+  if (st) {
+    st.innerText = `⏳ 已提交至 Qwen-Image-2.1 (满血BF16 · ${qwenSubMode.toUpperCase()}) 引擎，正在采样 (${steps}步 · CFG ${payload.cfg})...`;
+    st.style.color = '#38bdf8';
+  }
+  try {
+    const r = await fetch('/api/video_generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (d.llm_busy_shield) {
+      if (st) { st.innerText = '🛡️ 后台 LLM 正在推理中，已拦截等待您确认...'; st.style.color = '#f59e0b'; }
+      setVideoBtnRunningState(false);
+      openLlmBusyShieldModal(d, () => startQwenImage21Generate(true));
+      return;
+    }
+    if (!d.ok) {
+      if (st) { st.innerText = '❌ ' + (d.error || 'Qwen-Image-2.1 启动失败'); st.style.color = '#ef4444'; }
+      setVideoBtnRunningState(false);
+      return;
+    }
+    if (d.auto_switching) {
+      selectPresetModel('preset_qwen_image_21', 'chatrlabs/Qwen-Image-2.1-Uncensored-Omni-Quantized', 'Qwen-Image-2.1-Uncensored', '*.safetensors', true);
+      if (st && d.message) { st.innerText = d.message; st.style.color = '#f59e0b'; }
+    }
+    if (videoPollTimer) clearInterval(videoPollTimer);
+    videoPollTimer = setInterval(pollVideoStatus, 2000);
+  } catch (e) {
+    if (st) { st.innerText = '❌ 请求异常: ' + e; st.style.color = '#ef4444'; }
+    setVideoBtnRunningState(false);
+  }
+}
+
 function switchMiniMaxMode(mode) {
   if (mode === 'fusion') mode = 'image';
   const prevMode = currentMiniMaxMode;
@@ -7411,6 +8172,8 @@ function switchMiniMaxMode(mode) {
   const imgRow = document.getElementById('h3ImageControlRow');
   const dramaRow = document.getElementById('autoDramaDirectorRow');
   const fusionRow = document.getElementById('fusionStudioRow');
+  const qwenRow = document.getElementById('qwenImageStudioRow');
+  const imgEngBar = document.getElementById('imageEngineSwitchBar');
   const ref2Row = document.getElementById('ref2vaStudioRow');
   const promptCard = document.getElementById('promptSectionCard');
   const specCard = document.getElementById('specSectionCard');
@@ -7418,7 +8181,9 @@ function switchMiniMaxMode(mode) {
   if (avRow) avRow.style.display = isAv ? 'grid' : 'none';
   if (imgRow) imgRow.style.display = 'none';
   if (dramaRow) dramaRow.style.display = isDrama ? 'block' : 'none';
-  if (fusionRow) fusionRow.style.display = isImg ? 'block' : 'none';
+  if (imgEngBar) imgEngBar.style.display = isImg ? 'grid' : 'none';
+  if (fusionRow) fusionRow.style.display = (isImg && currentImageEngine !== 'qwen21') ? 'block' : 'none';
+  if (qwenRow) qwenRow.style.display = (isImg && currentImageEngine === 'qwen21') ? 'block' : 'none';
   if (ref2Row) ref2Row.style.display = isRef2 ? 'block' : 'none';
   if (promptCard) promptCard.style.display = isDrama ? 'none' : 'block';
   if (specCard) specCard.style.display = isDrama ? 'none' : 'block';
@@ -7476,14 +8241,16 @@ function switchMiniMaxMode(mode) {
   const btnGen = document.getElementById('btnVideoGen');
   const btnImgGen = document.getElementById('btnImageOnlyGen');
   const resSel = document.getElementById('videoRes');
-  if (resSel) {
-    if (isImg && prevMode !== 'image') {
-      resSel.innerHTML = H3_IMAGE_RES_OPTIONS_HTML;
-    } else if (!isImg && prevMode === 'image') {
-      resSel.innerHTML = VIDEO_RES_OPTIONS_HTML;
-      if (isAv) resSel.value = '480x832';
+    if (resSel) {
+      if (isImg && prevMode !== 'image') {
+        resSel.innerHTML = (currentImageEngine === 'qwen21') ? QWEN_IMAGE_RES_OPTIONS_HTML : H3_IMAGE_RES_OPTIONS_HTML;
+        resSel.setAttribute('data-res-kind', currentImageEngine === 'qwen21' ? 'qwen21' : 'h3');
+      } else if (!isImg && prevMode === 'image') {
+        resSel.innerHTML = VIDEO_RES_OPTIONS_HTML;
+        resSel.setAttribute('data-res-kind', 'video');
+        if (isAv) resSel.value = '480x832';
+      }
     }
-  }
   const loraBar = document.getElementById('h3SentinelLoraBar');
   if (isImg) {
     if (loraBar) loraBar.style.display = 'none';
@@ -7545,6 +8312,7 @@ function switchMiniMaxMode(mode) {
     }
     syncFusionRoleDropdown();
     renderFusionTargetCards();
+    syncImageEngineVisuals();
   } else if (isAv) {
     if (loraBar) loraBar.style.display = 'none';
     if (titleEl) titleEl.innerText = '🎭 LongCat-Video-Avatar-1.6 数字人音频驱动视频创作工作台';
@@ -10815,7 +11583,7 @@ function setVideoBtnRunningState(running, customLabel) {
   const btnImg = document.getElementById('btnImageOnlyGen');
   const btnFus = document.getElementById('btnRunFusionStudio');
   const fusSt = document.getElementById('fusionStudioStatusText');
-  const isImgTask = (currentMiniMaxMode === 'image') || (currentMiniMaxMode === 'fusion') || /写真|图片|4K/i.test(customLabel || '');
+  const isImgTask = (currentMiniMaxMode === 'image') || (currentMiniMaxMode === 'fusion') || /写真|图片|4K|Qwen/i.test(customLabel || '');
   if (running) {
     if (btnFus && currentMiniMaxMode === 'fusion') {
       btnFus.disabled = true;
@@ -10849,9 +11617,15 @@ function setVideoBtnRunningState(running, customLabel) {
     if (btnImg) {
       btnImg.setAttribute('data-running', '0');
       btnImg.style.opacity = '1';
-      btnImg.style.background = 'linear-gradient(135deg, #ec4899, #9333ea)';
-      btnImg.style.boxShadow = '0 6px 16px -4px rgba(236,72,153,0.45)';
-      btnImg.innerText = '📸 立即生成 4K 写真图片';
+      if (currentImageEngine === 'qwen21') {
+        btnImg.style.background = 'linear-gradient(135deg, #0ea5e9, #8b5cf6)';
+        btnImg.style.boxShadow = '0 6px 16px -4px rgba(56,189,248,0.45)';
+        btnImg.innerText = '🎨 立即生成 Qwen-2.1 满血图';
+      } else {
+        btnImg.style.background = 'linear-gradient(135deg, #ec4899, #9333ea)';
+        btnImg.style.boxShadow = '0 6px 16px -4px rgba(236,72,153,0.45)';
+        btnImg.innerText = '📸 立即生成 4K 写真图片';
+      }
     }
     if (typeof updateFusionRunBtnLabel === 'function') updateFusionRunBtnLabel();
     if (btnFus) {
@@ -11341,6 +12115,10 @@ async function startVideoGenerate(forceTarget = '', forceInterruptLlm = false) {
     return;
   }
   let autoDirRes = { applied: false, prompt: prompt, label: '' };
+  if (isImgMode && (currentImageEngine === 'qwen21' || forceTarget === 'qwen_image')) {
+    await startQwenImage21Generate(forceInterruptLlm);
+    return;
+  }
   if (isImgMode) {
     autoDirRes = maybeAutoDirectImagePrompt(prompt);
     const effectiveImgPrompt = autoDirRes.applied ? autoDirRes.prompt : prompt;
@@ -13923,6 +14701,8 @@ function renderCc0PortraitGalleryModal() {
     `<option value="FUSION_SLOT_0" ${_cc0ModalState.target === 'FUSION_SLOT_0' ? 'selected' : ''}>🧑 送入【02 · 角色合成】① 人脸照片槽</option>`,
     `<option value="FUSION_OUTFIT" ${(_cc0ModalState.target === 'FUSION_OUTFIT' || _cc0ModalState.target === 'FUSION_TARGET') ? 'selected' : ''}>👗 送入【02 · 角色合成】② 服饰穿搭槽</option>`,
     `<option value="FUSION_POSE" ${_cc0ModalState.target === 'FUSION_POSE' ? 'selected' : ''}>💃 送入【02 · 角色合成】③ 姿势动作槽</option>`,
+    `<option value="QWEN_CHAR_SLOT" ${_cc0ModalState.target === 'QWEN_CHAR_SLOT' ? 'selected' : ''}>🎨 送入【Qwen-2.1】角色原图槽 (保脸)</option>`,
+    `<option value="QWEN_POSE_SLOT" ${_cc0ModalState.target === 'QWEN_POSE_SLOT' ? 'selected' : ''}>🕺 送入【Qwen-2.1】3D 姿势参考槽</option>`,
     `<option value="REF2VA_PIC_0" ${_cc0ModalState.target === 'REF2VA_PIC_0' ? 'selected' : ''}>🕺 送入【06 · 白模动作】&lt;Picture 1&gt; 主角槽</option>`,
     `<option value="REF2VA_PIC_1" ${_cc0ModalState.target === 'REF2VA_PIC_1' ? 'selected' : ''}>👗 送入【06 · 白模动作】&lt;Picture 2&gt; 服装槽</option>`,
   ].join('');
@@ -14125,6 +14905,23 @@ async function pickCc0PortraitItem(itemId, fullPath, descZh, descEn, actionKind,
     const d = await r.json();
     if (!d || !d.ok) {
       alert('选用素材失败: ' + ((d && d.error) || '未知错误'));
+      return;
+    }
+    if (target === 'QWEN_CHAR_SLOT') {
+      if (d.image_b64) setQwenCharImage(d.image_b64);
+      document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
+      switchImageEngine('qwen21', true);
+      if (currentMiniMaxMode !== 'image') switchMiniMaxMode('image');
+      showGlobalCopyToast('✅ 已载入【Qwen-Image-2.1 角色原图槽】！');
+      return;
+    }
+    if (target === 'QWEN_POSE_SLOT') {
+      if (d.image_b64) setQwenCustomPoseImage(d.image_b64, `PoseWear #${itemId}`);
+      document.getElementById('cc0PortraitGalleryModal').style.display = 'none';
+      switchImageEngine('qwen21', true);
+      if (currentMiniMaxMode !== 'image') switchMiniMaxMode('image');
+      switchQwenImageSubMode('pose');
+      showGlobalCopyToast('✅ 已将 PoseWear 3D 姿势载入【Qwen-Image-2.1 控姿势槽】！');
       return;
     }
     if (target.startsWith('REF2VA_PIC_')) {
@@ -15710,6 +16507,55 @@ loadLocalVideoHistory(true);
 })();
 setInterval(pollLogs, 2000);
 setInterval(() => refreshStatus(false), 20000);
+
+// 全局统一滚轮防穿透锁：鼠标位于任意内部滚动框 / 输入框 / 日志框 / 历史列表 / 姿势库 / 弹窗内时，滚轮严格锁在当前框内，绝不把外层网页拖到底部
+(function initGlobalInnerScrollLock() {
+  if (window._easycolabGlobalWheelLockInstalled) return;
+  window._easycolabGlobalWheelLockInstalled = true;
+
+  function findInnerScrollContainer(startEl) {
+    let cur = startEl;
+    let fixedBackdrop = null;
+    while (cur && cur !== document.body && cur !== document.documentElement) {
+      if (cur.nodeType === 1) {
+        if (cur.id === 'qwenPoseLibraryPanel') {
+          const g = document.getElementById('qwenPoseGrid');
+          if (g && g.offsetParent !== null) return g;
+        }
+        const tag = cur.tagName;
+        if (tag === 'TEXTAREA') {
+          return cur;
+        }
+        const cs = window.getComputedStyle(cur);
+        const oy = cs.overflowY;
+        if (oy === 'auto' || oy === 'scroll') {
+          return cur;
+        }
+        if (cs.position === 'fixed' && cur.clientHeight >= window.innerHeight * 0.85 && cs.display !== 'none') {
+          fixedBackdrop = cur;
+        }
+      }
+      cur = cur.parentElement;
+    }
+    return fixedBackdrop;
+  }
+
+  document.addEventListener('wheel', function(e) {
+    if (e.ctrlKey) return;
+    const targetBox = findInnerScrollContainer(e.target);
+    if (!targetBox) return;
+    const scale = e.deltaMode === 1 ? 32 : (e.deltaMode === 2 ? Math.max(100, targetBox.clientHeight) : 1);
+    const dy = (e.deltaY || 0) * scale;
+    const dx = (e.deltaX || 0) * scale;
+    if (Math.abs(dy) < Math.abs(dx) && dx !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const maxScroll = Math.max(0, targetBox.scrollHeight - targetBox.clientHeight);
+    if (maxScroll > 0 && dy !== 0) {
+      targetBox.scrollTop = Math.max(0, Math.min(maxScroll, targetBox.scrollTop + dy));
+    }
+  }, { passive: false, capture: true });
+})();
 </script>
 </body>
 </html>
@@ -16275,6 +17121,52 @@ class PanelRequestHandler(BaseHTTPRequestHandler):
             with _FACEFIX_STATE_LOCK:
                 snap = dict(_FACEFIX_STATE)
             self._send_json(snap)
+            return
+
+        if self.path.startswith("/api/qwen_poses"):
+            manifest_p = BASE_DIR / ".qwen_pose_library" / "manifest.json"
+            items = []
+            if manifest_p.is_file():
+                try:
+                    items = json.loads(manifest_p.read_text(encoding="utf-8"))
+                except Exception:
+                    items = []
+            self._send_json({"ok": True, "count": len(items), "items": items})
+            return
+
+        if self.path.startswith("/api/qwen_pose_img/"):
+            raw_fn = urllib.parse.unquote(self.path.split("/api/qwen_pose_img/", 1)[-1].split("?")[0])
+            safe_fn = os.path.basename(raw_fn)
+            img_p = BASE_DIR / ".qwen_pose_library" / "images" / safe_fn
+            if not img_p.is_file():
+                self._send_json({"error": "pose not found"}, status=404)
+                return
+            data_b = img_p.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/webp" if safe_fn.lower().endswith(".webp") else "image/png")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", str(len(data_b)))
+            self.end_headers()
+            self.wfile.write(data_b)
+            return
+
+        if self.path.startswith("/api/qwen_loras"):
+            builtin_loras = [
+                "chatrlabs-omni-lora-v0.1-bf16.safetensors",
+                "VNCCS_QI2_PoseStudioV1.1.safetensors",
+                "VNCCS_QI2_PoseStudioV3.safetensors",
+                "Qwen-Image-2.1-NSFW-Image-Edit.safetensors",
+                "chatrlabs-omni-turbo-8step-fp32.safetensors",
+            ]
+            live_loras = []
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:30000/v1/qwen_image/loras", timeout=3) as rl:
+                    d_l = json.loads(rl.read().decode("utf-8"))
+                    live_loras = list(d_l.get("loras") or [])
+            except Exception:
+                pass
+            merged = list(dict.fromkeys(live_loras + builtin_loras))
+            self._send_json({"ok": True, "loras": merged, "from_cloud": bool(live_loras)})
             return
 
         if self.path.startswith("/api/ui_workspace_state"):
@@ -17999,7 +18891,8 @@ p.wait()
         if self.path == "/api/video_generate":
             req_mode_chk = str(payload.get("mode") or "t2va").strip()
             mode_cn = {
-                "image": "01·4K生图/换装",
+                "image": "01·4K生图/换装 (MiniMax-H3-Image)",
+                "qwen_image": "01·满血BF16生图/3D控姿势 (Qwen-Image-2.1)",
                 "avatar": "04·数字人说话",
                 "ref2va": "06·白模/动作迁移(Ref2VA)",
             }.get(req_mode_chk, "视频生成")
@@ -18213,6 +19106,17 @@ p.wait()
                 _append_panel_log(
                     f"📸 [提交 4K 写真/换装任务{sheet_tag}] 分辨率 {payload.get('resolution', '3552x4736')} · 6步蒸馏直出 · 参考图 {len(payload.get('ref_images_b64') or [])}张"
                 )
+            elif req_mode == "qwen_image":
+                pose_fn = str(payload.get("qwen_pose_file") or "").strip()
+                if pose_fn and not payload.get("qwen_pose_b64"):
+                    pose_p = BASE_DIR / ".qwen_pose_library" / "images" / os.path.basename(pose_fn)
+                    if pose_p.is_file():
+                        payload["qwen_pose_b64"] = "data:image/webp;base64," + base64.b64encode(pose_p.read_bytes()).decode("ascii")
+                q_sub = str(payload.get("qwen_sub_mode") or "t2i")
+                q_base = "ChatR无审查BF16" if str(payload.get("qwen_base_model") or "chatr") == "chatr" else "官方BF16"
+                _append_panel_log(
+                    f"🎨 [提交 Qwen-Image-2.1 任务] {q_base} · 模式:{q_sub} · {payload.get('resolution', '1152x1728')} · {payload.get('steps', 50)}步 · CFG {payload.get('cfg', 2.5)}"
+                )
             else:
                 if req_mode == "ref2va":
                     v_prompt = str(payload.get("prompt") or "").strip()
@@ -18290,9 +19194,10 @@ p.wait()
                     )
             engine_mismatch = (
                 (req_mode == "image" and active_folder != "MiniMax-H3-Image")
+                or (req_mode == "qwen_image" and active_folder != "Qwen-Image-2.1-Uncensored")
                 or (req_mode == "avatar" and not active_folder.startswith("LongCat-Video-Avatar"))
                 or (req_mode == "ref2va" and active_folder != "MiniMax-H3-Ref2VA")
-                or (req_mode not in ("image", "avatar", "ref2va") and (active_folder in ("MiniMax-H3-Image", "MiniMax-H3-Ref2VA") or not active_folder.startswith("MiniMax-H3")))
+                or (req_mode not in ("image", "qwen_image", "avatar", "ref2va") and (active_folder in ("MiniMax-H3-Image", "Qwen-Image-2.1-Uncensored", "MiniMax-H3-Ref2VA") or not active_folder.startswith("MiniMax-H3")))
             )
             req_data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(
@@ -18365,9 +19270,10 @@ p.wait()
 
             if need_auto_switch:
                 want_image = (req_mode == "image")
+                want_qwen_image = (req_mode == "qwen_image")
                 want_ref2va = (req_mode == "ref2va")
-                want_avatar = (req_mode == "avatar") or (not want_image and not want_ref2va and active_folder.startswith("LongCat-Video-Avatar") and req_mode not in ("t2va", "fl2va"))
-                want_eng = "minimax-h3-image" if want_image else ("longcat-avatar" if want_avatar else ("minimax-h3-ref2va" if want_ref2va else "minimax-h3"))
+                want_avatar = (req_mode == "avatar") or (not want_image and not want_qwen_image and not want_ref2va and active_folder.startswith("LongCat-Video-Avatar") and req_mode not in ("t2va", "fl2va"))
+                want_eng = "qwen-image-2.1" if want_qwen_image else ("minimax-h3-image" if want_image else ("longcat-avatar" if want_avatar else ("minimax-h3-ref2va" if want_ref2va else "minimax-h3")))
                 if not remote_already_loading and not engine_mismatch:
                     try:
                         with urllib.request.urlopen("http://127.0.0.1:30000/health", timeout=6) as hr:
@@ -18388,7 +19294,9 @@ p.wait()
                 _PENDING_VIDEO_JOB["payload"] = payload
                 _PENDING_VIDEO_JOB["error"] = ""
                 _PENDING_VIDEO_JOB["started_at"] = time.time()
-                if want_image:
+                if want_qwen_image:
+                    target_label = "Qwen-Image-2.1 (满血BF16破限 + 3D人偶控姿势)"
+                elif want_image:
                     target_label = "MiniMax-H3-Image (4K无审查黄金铁三角)"
                 elif want_avatar:
                     target_label = "LongCat-Avatar-1.6 (INT8版)" if is_t4_account else "LongCat-Video-Avatar-1.6"
@@ -18411,7 +19319,16 @@ p.wait()
                     else f"🔄 [自动切换引擎] 检测到当前未运行 {target_label}，正在自动加载并在就绪后立即执行任务..."
                 )
                 if not already_deploying and not remote_already_loading:
-                    if want_image:
+                    if want_qwen_image:
+                        _start_deploy_background(
+                            repo="chatrlabs/Qwen-Image-2.1-Uncensored-Omni-Quantized",
+                            folder="Qwen-Image-2.1-Uncensored",
+                            pattern="*.safetensors",
+                            ctx=262144,
+                            gpu="G4",
+                            download_only=False,
+                        )
+                    elif want_image:
                         _start_deploy_background(
                             repo="Comfy-Org/MiniMax-H3-Image",
                             folder="MiniMax-H3-Image",
@@ -19130,7 +20047,7 @@ p.wait()
                 req_im = urllib.request.Request(img_url, headers={"User-Agent": "Mozilla/5.0"})
                 raw_bytes = urllib.request.urlopen(req_im, timeout=25).read()
 
-                if target in ("FUSION_SLOT_0", "FUSION_TARGET", "FUSION_OUTFIT", "FUSION_POSE", "REF2VA_PIC_0", "REF2VA_PIC_1", "REF2VA_PIC_2", "REF2VA_PIC_3"):
+                if target in ("FUSION_SLOT_0", "FUSION_TARGET", "FUSION_OUTFIT", "FUSION_POSE", "QWEN_CHAR_SLOT", "QWEN_POSE_SLOT", "REF2VA_PIC_0", "REF2VA_PIC_1", "REF2VA_PIC_2", "REF2VA_PIC_3"):
                     from PIL import Image
                     im = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
                     buf = io.BytesIO()
